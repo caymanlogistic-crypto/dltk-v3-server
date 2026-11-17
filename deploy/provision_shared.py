@@ -169,9 +169,16 @@ def main():
     if not (release/'app/local-admin/public/index.php').is_file():raise RuntimeError('App entry point absent')
     for path in release.rglob('*'):path.chmod(0o755 if path.is_dir() else 0o644)
     (ROOT/'current').symlink_to(release,target_is_directory=True)
+    # Refuse unrelated upgrades/removals, including PHP common/FPM binaries.
+    package_args=['apt-get','install','-y','--no-remove','--no-upgrade','--no-install-recommends','php8.4-mbstring']
+    package_plan=run(package_args[:1]+['--simulate']+package_args[1:],timeout=60)
+    for line in package_plan.splitlines():
+        if line.startswith('Remv '):raise RuntimeError('Package transaction would remove an existing package')
+        if line.startswith('Inst ') and line.split()[1].split(':')[0] not in ('php8.4-mbstring','libonig5'):
+            raise RuntimeError('Package transaction would change unrelated PHP/system packages')
     # Package hooks cannot restart FPM; explicitly reload after pool validation.
     with suppress_package_fpm_actions():
-        run(['apt-get','install','-y','--no-install-recommends','php8.4-mbstring'],env=dict(os.environ,DEBIAN_FRONTEND='noninteractive',NEEDRESTART_MODE='l'),timeout=240)
+        run(package_args,env=dict(os.environ,DEBIAN_FRONTEND='noninteractive',NEEDRESTART_MODE='l'),timeout=240)
     if run(['/usr/bin/php','-r',"echo extension_loaded('mbstring')?'yes':'no';"])!='yes':
         raise RuntimeError('mbstring installation check failed')
     sql(f'CREATE DATABASE `{SCHEMA}` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;',admin)
@@ -190,7 +197,7 @@ def main():
     cfg={'APP_URL':'https://89.208.213.14:8443','WS_URL':'wss://89.208.213.14:8443/ws','DB_SOCKET':a.mysql_socket,'DB_HOST':'localhost','DB_PORT':'0','DB_NAME':SCHEMA,'DB_USER':'dltk_v3_app','DB_PASSWORD':password,'PRIVATE_DIR':str(SHARED/'app-private')}
     write(SHARED/'runtime.ini','[workspace]\n'+''.join(k+'='+json.dumps(v,ensure_ascii=False)+'\n' for k,v in cfg.items()),0o640)
     os.chown(SHARED/'runtime.ini',0,owner.pw_gid)
-    write(private/'demo-access.txt','ЛК ДЛТК — серверный стенд\n'+cfg['APP_URL']+'/login\nЛогины: manager, logist, dispatcher, head, admin, superadmin\nПароль: '+demo+'\n')
+    write(private/'demo-access.txt','ЛК ДЛТК — серверный стенд\n'+cfg['APP_URL']+'/login\nЛогины: manager, logist, dispatcher, head, admin, superadmin\nПароль для демоаккаунтов: '+demo+'\n')
     venv=SHARED/'venv'
     run(['/usr/bin/python3','-m','venv',venv],timeout=120)
     run([venv/'bin/python','-m','pip','install','--quiet','--disable-pip-version-check','-r',release/'requirements.txt'],timeout=240)
