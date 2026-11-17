@@ -1,31 +1,27 @@
-# Серверный стенд ДЛТК — передача
+# Серверный стенд ДЛТК — текущая передача
 
-17 ноября 2026. Стенд установлен и проверен внутри сервера. Внешний TCP8443 пока недоступен; пользователь получил вопрос об открытии порта в панели хостинга. Не объявлять внешний доступ готовым до реальной проверки снаружи.
+17 ноября 2026: ВНЕШНИЙ ДОСТУП РАБОТАЕТ. Адрес https://89.208.213.14/dltk-v3/ (login /dltk-v3/login). Не просить пользователя открыть8443; прежний запрос отменён. Пользователь потребовал доступ без изменения сетевых настроек/панели хостинга. Добавлен только маршрут своего раздела в существующем HTTPS443; порты, firewall, TLS и MySQL не перенастраивались.
 
-- PRIVATE GitHub: https://github.com/caymanlogistic-crypto/dltk-v3-server
-- Отдельная локальная папка: C:/Users/Vladimir/Documents/ChatGPT/dltk-v3-server.
-- Сервер: 89.208.213.14, root проекта /srv/dltk-v3-test.
-- Запущенный код: cf57245b6990129fbea3439ec84df4f38507f307, GitHub CI44087264735 SUCCESS. Доставка именно CI-артефакта через закреплённый SSH; SHA256 01b7bacd7e88482d973f634c9941da7b3d023e353e2b8fcebec33d4aee8d5983.
-- current -> releases/<commit>; runtime и данные вне исходников. Более поздние коммиты документации не означают обновление работающего кода.
+## Код и размещение
 
-## Решения и изоляция
+PRIVATE GitHub https://github.com/caymanlogistic-crypto/dltk-v3-server, локально C:/Users/Vladimir/Documents/ChatGPT/dltk-v3-server. На сервере /srv/dltk-v3-test/current -> releases/928c49582fc7b4562e9d4a3efdf95b819ec14407. GitHubCI44102818320 SUCCESS, проверенный artifact SHA256 ef1146499e76d1b36ff8a22a1ee2a45cfd9e36895908d60ea7fd0b2e33bcebc9. Более поздние doc-only commits не означают другую runtimeверсию.
 
-Последнее решение пользователя — общие Apache, PHP8.4-FPM и MySQL8.4, а не отдельные экземпляры всех служб. Добавлены собственные Apache-сайт HTTPS8443, FPM-пул dltk-v3-test (loopback33487, максимум8workers), схема dltk_v3_test, DB-учётка dltk_v3_app@localhost и WS-служба dltk-v3-realtime (loopback33486). Каталог и Linux-пользователь dltk-v3-test отдельные. Старые сайты/пулы сохранены; PHP/Apache применены graceful reload. MySQL не перезапускался, его сеть не включалась. Работает через /var/run/mysqld/mysqld.sock. Исходные локальные БД/витрина и Google не менялись.
+Общие Apache/PHP8.4-FPM/MySQL8.4, собственные папка/схема dltk_v3_test/учёткаБД/PHP-пул33487, WSслужбаdltk-v3-realtime33486. DBчерез/var/run/mysqld/mysqld.sock, TCPне включён. APP_URL=https://89.208.213.14, APP_BASE_PATH=/dltk-v3, WS_URL=wss://89.208.213.14/dltk-v3/ws. Runtime/private/SQLотдельноотGit. Старый8443сайтнеявляетсяадресомпользователя.
 
-Старые конфигурации Apache/пула PHP проверены по хешам. Apache masterPID854, MySQLPID16352, старый ERP PID354353 сохранились. Старый HTTPS443 до и после возвращал200 на /login/?next=/. Установлены только php8.4-mbstring/libonig5; временная package-policy восстановлена. Существующий TLS-сертификат используется через штатные пути; ключ не копировался в Git. Старые приложения/их данные не изменялись.
+Внутрь существующего /etc/apache2/sites-enabled/ipya-erp-https.conf (resolvedtarget) передrootProxyPass добавлена одна IncludeOptional /etc/apache2/conf-available/dltk-v3-prefix.conf. Новыйincludeсодержиттолько/dltk-v3маршруты:WSпередисключениемпрефиксаизстарогоrootproxy,Aliaspublic/сFallbackResource+ownFCGI. СтарыйvhostисходныйSHA c4273ba3e012f928996526492dea6bbdebc428389b4ff87785b1de19cf22a2fd. Patcher deploy/mount_shared_prefix.py делаетприватныйbackup/configtest/rollback. Остальнойvhost/маршрутыстарыхпроектовсохранены.
 
-## Данные и доступы
+## Проверки
 
-Импортирована отдельная SQL-копия рабочей БД:7425исходных строк Вывоза, manifest6000 и четыре демотаблицы. Схемы/права не включают другие базы. Аудит/outbox runtime имеет SELECT/INSERT, прочие рабочие таблицы CRUD безDDL. Шесть демоаккаунтов manager/logist/dispatcher/head/admin/superadmin пока равноправны; серверный пароль новый, локальный не менялся.
+ВсеPHP/JS/Python syntax,66форматов,13runtime/path/DSN и18Python units PASS. Apacheconfigtest иstrictTLShealth200. Извне /dltk-v3/ ->login200, assethelper200, старая/ и/lk-dltk-v2/ по-прежнемуlogin200. ApachePID854/MySQL16352/старыйERP354353 неизменны. БраузерIABоткрылреальнуюстраницувходасправильнымоформлением/полями.
 
-Секреты не коммитить. На сервере: shared/runtime.ini, shared/private/demo-access.txt, shared/private/mysql-admin.cnf. Приватный deployment-receipt.json содержит точный коммит/хеши/идентификацию общей БД/состояния служб. Локальный файл для пользователя: C:/Users/Vladimir/AppData/Local/DltkV3/server-demo-access.txt. Пароль SSH не сохранялся в проекте. SQL-staging /home/user/dltk-v3-stage закрыт0700, файлы0600; не публиковать.
+ВнешнийE2Eдвухдемоаккаунтов:presenceдоsave/late snapshot/stop/disconnect;save->чужойWSсавтором->чтениедругимпользователем->точныйаудит. Демозначениевосстановлено,аудитсохранён;реальныйВывознеписался. Save-to-observer102.18ms.15внешнихнезависимыхсеансов,3раунда,6000manifest,15WS:PASS;initialresponsep50/p952330.961/3468.886ms,100строк3601.999/5114.886ms,WSready327.921/506.921ms. Этоограниченныйburst,неSLA/незамеротрисовки. JSONбезперсональныхзначенийвdocs/evidence/2026-11-17-external-*.json.
 
-## Проверено
+## Доступы и данные
 
-66форматов,7PHPconfig/DSN,12WS/config/presence units и все PHP/JS/Python syntax; CI SUCCESS. Серверные Apache/FPM configtest, HTTPS+DB health PASS. Два аккаунта: presence до сохранения, snapshot позднему клиенту, stop/disconnect cleanup, сохранение демоячейки -> второй WS с автором -> чтение вторым аккаунтом -> точный before/after аудит. Значение восстановлено, аудит сохранён; реальный Вывоз не изменялся. Save-to-observer102.81ms (одиночная операция внутри сервера).
+Серверныйпарольшестидемоаккаунтовтольковshared/private/demo-access.txt;локальнодляпользователяC:/Users/Vladimir/AppData/Local/DltkV3/server-demo-access.txt (адресвфайлеобновлён). Не выводить/коммититьсекреты. RuntimeINIroot:app640,private700;SQLиSSHсекретыотдельноотGit. Шестьролейравноправны,Googleвыключен,локальныйстенднеизменялся.7425исходныхстрокВывоза,6000manifest,4демотаблицы.
 
-15независимых сессий/6аккаунтов,3раунда:15начальных таблиц,45bootstrap,45порций100строк,15одновременных авторизованных WS. Ошибокнет, везде6000manifest. Полное чтение ответа p50/p95: initial1862.675/3334.844ms;100строк2556.280/3459.135ms; bootstrap287.886/417.033ms. WSready p50/p95230.609/334.756ms. Это ограниченный внутренний server burst, не замер интернета/отрисовки/длительная нагрузка. JSONбез значений ячеек — docs/evidence.
+## Обновление
 
-## Следующий шаг
+Не запускать first-install поверхсуществующейБД. НовыйGitHubCIartifactSHA->новыйreleases/<sha>->атомарныйcurrent, сохраняяshared/БД;gracefulPHPиrestartтолькосвоегоWSпринеобходимости. Приватныйbackupпрефиксногообновления shared/private/prefix-upgrade-backup содержитстарыйruntimeиreceipt; mountbackup prefix-mount-* содержитисходныйvhost. Ниодногоимпорта/сбросаБДприэтомобновлениинебыло. APP_BASE_PATHподдержанвPHP/HTML/JS/benchmark/E2E;неподменятьнаURLrootбезэтойнастройки. ВсеUIошибкиPlanexNotifications,селектыcs-*.
 
-Проверить извне https://89.208.213.14:8443/api/health после открытия TCP8443, затем browser/login/таблица и внешний benchmark. Внутри HTTPS успешно; на Windows443 доступен,8443таймаут; nft ruleset пуст. Вероятна внешняя сетевая фильтрация, конкретная панель/правило не подтверждены. Не менять существующий сайт443 без нового решения пользователя. Не запускать first-install повторно: установщик намеренно отказывается от существующей установки. Для обновления — новый проверенный GitHubартефакт -> новый releases/<sha>, сохраняя shared/DB, переключение current и graceful reload только нужного пула/WS. Документация deploy/provision_shared.py и docs/DEPLOYMENT.md; native/Docker — альтернативы, не текущая схема.
+Историяпервичнойустановки/внутреннихзамеров: history/2026-11-17-before-https-prefix.md. Еёстарыеуказанияоткрыть8443иожидатьвнешнийдоступотменены.
