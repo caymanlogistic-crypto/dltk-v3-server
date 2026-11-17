@@ -1,0 +1,2 @@
+.vitrine .vitrine-table tr[data-virtual-spacer] > td { height:var(--spacer-height,0px); min-height:0; padding:0; border:0; background:transparent; line-height:0; font-size:0; width:auto; min-width:0; max-width:none; }
+.vitrine .vitrine-table-scroll { overflow-anchor:none; }

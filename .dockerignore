@@ -1,0 +1,14 @@
+.git
+.venv
+__pycache__
+config/runtime.ini
+.env
+*.cnf
+*.sql
+*.sql.gz
+*.sqlite*
+*.pem
+*.key
+private
+var
+artifacts/private

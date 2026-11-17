@@ -1,0 +1,14 @@
+config/runtime.ini
+.env
+*.cnf
+*.sql
+*.sql.gz
+*.sqlite*
+*.pem
+*.key
+.venv/
+__pycache__/
+*.pyc
+private/
+var/
+artifacts/private/

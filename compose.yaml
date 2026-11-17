@@ -1,0 +1,70 @@
+name: dltk-v3-test
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    env_file: ${DLTK_SHARED_DIR:-/srv/dltk-v3-test/shared}/compose.env
+    command: ["--innodb-buffer-pool-size=256M", "--max-connections=80", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    volumes:
+      - ${DLTK_SHARED_DIR:-/srv/dltk-v3-test/shared}/mysql:/var/lib/mysql
+      - ${DLTK_SHARED_DIR:-/srv/dltk-v3-test/shared}/db-admin.cnf:/run/dltk/admin.cnf:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping --protocol=tcp -h127.0.0.1 --silent >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    cpus: 1.0
+    mem_limit: 1g
+    logging: &logs
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  php:
+    build: {context: ., dockerfile: deploy/php.Dockerfile}
+    restart: unless-stopped
+    environment: {DLTK_CONFIG_FILE: /run/dltk/runtime.ini}
+    volumes:
+      - ${DLTK_SHARED_DIR:-/srv/dltk-v3-test/shared}/runtime.ini:/run/dltk/runtime.ini:ro
+      - ${DLTK_SHARED_DIR:-/srv/dltk-v3-test/shared}/private:/var/lib/dltk-private
+      - sessions:/var/lib/php/sessions
+    networks: [backend]
+    depends_on: {db: {condition: service_healthy}}
+    cpus: 1.0
+    mem_limit: 512m
+    logging: *logs
+  realtime:
+    build: {context: ., dockerfile: deploy/realtime.Dockerfile}
+    restart: unless-stopped
+    environment: {DLTK_CONFIG_FILE: /run/dltk/runtime.ini, DLTK_WS_BIND: "0.0.0.0", DLTK_WS_PORT: "33386"}
+    volumes:
+      - ${DLTK_SHARED_DIR:-/srv/dltk-v3-test/shared}/runtime.ini:/run/dltk/runtime.ini:ro
+    networks: [backend]
+    depends_on: {db: {condition: service_healthy}}
+    cpus: 0.5
+    mem_limit: 192m
+    logging: *logs
+  nginx:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    ports: ["127.0.0.1:33485:80"]
+    volumes:
+      - ./app/local-admin/public:/var/www/dltk/app/local-admin/public:ro
+      - ./deploy/nginx-http.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx-common.conf:/etc/nginx/dltk-common.conf:ro
+    networks: [frontend, backend]
+    depends_on: [php, realtime]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    cpus: 0.25
+    mem_limit: 128m
+    logging: *logs
+networks:
+  frontend: {}
+  backend:
+    internal: true
+volumes:
+  sessions:

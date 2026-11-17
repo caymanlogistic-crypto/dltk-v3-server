@@ -1,0 +1,46 @@
+name: Check and package server project
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Test runtimes
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-cli php-mbstring
+          python3 -m venv .ci-venv
+          .ci-venv/bin/pip install -q -r requirements.txt
+      - name: Syntax and regression checks
+        run: |
+          find app -name '*.php' -print0 | xargs -0 -n 1 php -l
+          find app -name '*.js' -print0 | xargs -0 -n 1 node --check
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          for folder in ['tools','deploy','tests']:
+              for file in Path(folder).rglob('*.py'):
+                  ast.parse(file.read_text(encoding='utf-8'),filename=str(file))
+          PY
+          php tests/vitrine_clipboard_check.php
+          .ci-venv/bin/python -m unittest discover -s tests -p 'test_server_*.py'
+      - name: Package exact Git source
+        run: |
+          mkdir -p artifacts
+          git archive --format=tar.gz --output=artifacts/dltk-v3-${GITHUB_SHA}.tar.gz HEAD
+          cd artifacts
+          sha256sum dltk-v3-${GITHUB_SHA}.tar.gz > dltk-v3-${GITHUB_SHA}.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dltk-v3-release-${{ github.sha }}
+          path: artifacts/dltk-v3-*
+          if-no-files-found: error
+          retention-days: 7

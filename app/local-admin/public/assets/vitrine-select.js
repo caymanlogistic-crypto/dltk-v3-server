@@ -1,0 +1,108 @@
+'use strict';
+(() => {
+  if (window.VitrineSelect) return;
+  const instances = new Set();
+  let sequence = 0;
+  document.addEventListener('click', event => {
+    for (const instance of instances) if (!instance.element.contains(event.target)) instance.close();
+  });
+  const observer = new MutationObserver(() => {
+    for (const instance of instances) {
+      if (instance.element.isConnected) instance.attached = true;
+      else if (instance.attached) instances.delete(instance);
+    }
+  });
+  observer.observe(document.documentElement, {childList:true,subtree:true});
+
+  window.VitrineSelect = Object.freeze({
+    create(sourceOptions, initialValue = '') {
+      const options = sourceOptions.map(option => ({value:String(option.value ?? ''),label:String(option.label ?? option.value ?? ''),color:option.color}));
+      const id = 'vitrine-select-' + (++sequence);
+      const element = document.createElement('div');
+      element.className = 'custom-select vitrine-select';
+      const field = document.createElement('input');
+      field.type = 'text'; field.readOnly = true;
+      field.className = 'cs-trigger vitrine-select-field';
+      field.value = String(initialValue);
+      field.placeholder = options.find(option => option.value === '')?.label || 'Не выбран';
+      field.setAttribute('role','combobox'); field.setAttribute('aria-autocomplete','none');
+      field.setAttribute('aria-haspopup','listbox'); field.setAttribute('aria-controls',id);
+      field.setAttribute('aria-expanded','false'); field.autocomplete = 'off';
+      const arrow = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      arrow.setAttribute('class','cs-chevron vitrine-select-chevron');
+      arrow.setAttribute('width','12'); arrow.setAttribute('height','12'); arrow.setAttribute('viewBox','0 0 16 16'); arrow.setAttribute('aria-hidden','true');
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d','m4 6 4 4 4-4'); path.setAttribute('fill','none'); path.setAttribute('stroke','currentColor'); path.setAttribute('stroke-width','1.5'); arrow.append(path);
+      const dropdown = document.createElement('div'); dropdown.className = 'cs-dropdown';
+      const list = document.createElement('div'); list.className = 'cs-options'; list.id = id;
+      list.setAttribute('role','listbox'); list.setAttribute('aria-label','Варианты значения');
+      dropdown.append(list); element.append(field,arrow,dropdown);
+      let opened = false, activeIndex = -1, typed = '', typedAt = 0;
+      const nodes = options.map((option,index) => {
+        const node = document.createElement('div'); node.className = 'cs-option'; node.id = id + '-' + index;
+        node.setAttribute('role','option'); node.setAttribute('aria-selected',String(option.value === field.value));
+        if (/^#[0-9a-f]{6}$/i.test(option.color || '')) {
+          const chip = document.createElement('span'); chip.className = 'vitrine-select-chip'; window.VitrineDisplay.paint(chip,option.color); chip.setAttribute('aria-hidden','true'); node.append(chip);
+        }
+        const label = document.createElement('span'); label.className = 'cs-value'; label.textContent = option.label; node.append(label);
+        node.addEventListener('mousedown',event => event.preventDefault());
+        node.addEventListener('click',event => { event.stopPropagation(); choose(index); });
+        node.addEventListener('pointermove',() => activate(index));
+        list.append(node); return node;
+      });
+      function selectedIndex() { return options.findIndex(option => option.value === field.value); }
+      function activate(index) {
+        activeIndex = index;
+        nodes.forEach((node,i) => {
+          const selected = options[i].value === field.value;
+          node.classList.toggle('is-selected',selected); node.setAttribute('aria-selected',String(selected));
+          node.classList.toggle('is-active',i === index);
+        });
+        if (nodes[index]) { field.setAttribute('aria-activedescendant',nodes[index].id); nodes[index].scrollIntoView({block:'nearest'}); }
+        else field.removeAttribute('aria-activedescendant');
+      }
+      function close() {
+        opened = false; element.classList.remove('is-open'); field.classList.remove('is-open'); dropdown.classList.remove('is-open');
+        field.setAttribute('aria-expanded','false'); field.removeAttribute('aria-activedescendant');
+      }
+      function open() {
+        if (field.disabled || !options.length) return;
+        for (const instance of instances) if (instance.element !== element) instance.close();
+        opened = true; element.classList.add('is-open'); field.classList.add('is-open'); dropdown.classList.add('is-open');
+        field.setAttribute('aria-expanded','true');
+        const rect = field.getBoundingClientRect();
+        const expectedHeight = Math.min(220,options.length * 30 + 2);
+        const up = window.innerHeight - rect.bottom < expectedHeight && rect.top > expectedHeight;
+        dropdown.classList.toggle('vitrine-select-up',up);
+        activate(Math.max(0,selectedIndex()));
+      }
+      function choose(index) {
+        if (!options[index]) return;
+        field.value = options[index].value; activate(index); close();
+        field.dispatchEvent(new Event('input',{bubbles:true})); field.dispatchEvent(new Event('change',{bubbles:true}));
+        field.focus({preventScroll:true});
+      }
+      field.addEventListener('click',event => { event.stopPropagation(); if (opened) close(); else open(); });
+      field.addEventListener('keydown',event => {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault(); event.stopPropagation();
+          if (!opened) open(); else activate(Math.max(0,Math.min(options.length-1,activeIndex + (event.key === 'ArrowDown' ? 1 : -1))));
+        } else if (opened && event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); choose(activeIndex); }
+        else if (opened && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
+        else if (event.key === 'Tab') close();
+        else if (opened && (event.key === 'Home' || event.key === 'End')) { event.preventDefault(); event.stopPropagation(); activate(event.key === 'Home' ? 0 : options.length-1); }
+        else if (event.key === ' ' && !opened) { event.preventDefault(); event.stopPropagation(); open(); }
+        else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault(); event.stopPropagation();
+          const now = performance.now(); typed = now - typedAt < 700 ? typed + event.key : event.key; typedAt = now;
+          if (!opened) open();
+          const match = options.findIndex(option => option.label.toLocaleLowerCase('ru').startsWith(typed.toLocaleLowerCase('ru')));
+          if (match >= 0) activate(match);
+        }
+      });
+      element.addEventListener('focusout',event => { if (!element.contains(event.relatedTarget)) close(); });
+      const instance = {element,close,attached:false}; instances.add(instance);
+      return {element,field};
+    }
+  });
+})();

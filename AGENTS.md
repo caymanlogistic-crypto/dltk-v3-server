@@ -1,0 +1,3 @@
+# DLTK server test project
+
+Read README.md and docs/HANDOFF.md first. This repository is a separate server copy of the local ЛК-ДЛТК V3 app. Never modify or restart other server projects, including /srv/ip_ya. Only /srv/dltk-v3-test and its own database/services belong to this test deployment. Google integration is disabled and must not be included. Six roles have equal access until the user requests restrictions. All errors/warnings use PlanexNotifications; selects use VitrineSelect/cs-*. Maintain docs/HANDOFF.md and deployment receipts. Never commit runtime config, SQL backups, real customer data, passwords, tokens, SSH private keys or cookies. Server data transfer is separate from Git. Keep known hosts pinned.
