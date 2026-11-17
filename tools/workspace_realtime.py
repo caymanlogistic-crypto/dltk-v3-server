@@ -18,7 +18,13 @@ def runtime_config():
     if not parser.read(path, encoding='utf-8') or not parser.has_section('workspace'):
         raise RuntimeError('Workspace runtime configuration is not available')
     cfg = {key:(json.loads(value) if value.startswith(chr(34)) and value.endswith(chr(34)) else value[1:-1] if value.startswith(chr(39)) and value.endswith(chr(39)) else value) for key,value in parser['workspace'].items()}
-    required = ['app_url','db_host','db_port','db_name','db_user','db_password']
+    required = ['app_url','db_name','db_user','db_password']
+    socket_path = cfg.get('db_socket', '')
+    if socket_path:
+        if not socket_path.startswith('/') or any(ord(c)<32 or c==';' for c in socket_path):
+            raise RuntimeError('Invalid database socket')
+    else:
+        required += ['db_host','db_port']
     if any(not cfg.get(key) for key in required):
         raise RuntimeError('Workspace runtime configuration is incomplete')
     return cfg
@@ -34,7 +40,8 @@ def configured_origins(cfg):
 
 def connection():
     cfg = runtime_config()
-    return pymysql.connect(host=cfg['db_host'],port=int(cfg['db_port']),database=cfg['db_name'],user=cfg['db_user'],password=cfg['db_password'],charset='utf8mb4',autocommit=True,cursorclass=pymysql.cursors.DictCursor,connect_timeout=3,read_timeout=5,write_timeout=5)
+    transport = {'unix_socket':cfg['db_socket']} if cfg.get('db_socket') else {'host':cfg['db_host'],'port':int(cfg['db_port'])}
+    return pymysql.connect(**transport,database=cfg['db_name'],user=cfg['db_user'],password=cfg['db_password'],charset='utf8mb4',autocommit=True,cursorclass=pymysql.cursors.DictCursor,connect_timeout=3,read_timeout=5,write_timeout=5)
 
 
 def authenticate(ticket):

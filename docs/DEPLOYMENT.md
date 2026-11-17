@@ -1,6 +1,20 @@
 # Isolated Linux test deployment
 
-This is a separate deployment of DLTK V3. It must never replace or restart the existing 1C-IP v2 application.
+This is a separate deployment of DLTK V3. It must never replace the existing 1C-IP v2 application.
+
+## Current choice: shared Apache, PHP-FPM and MySQL
+
+The user explicitly chose the existing common services. `deploy/provision_shared.py` is the first-install adapter for this choice; the standalone/native and Docker variants below are alternatives, not the selected installation. No installer has been executed merely by adding these files.
+
+The shared adapter creates only `/srv/dltk-v3-test`, schema `dltk_v3_test`, account `dltk_v3_app@localhost`, PHP pool `/etc/php/8.4/fpm/pool.d/dltk-v3-test.conf`, Apache site `/etc/apache2/sites-available/dltk-v3-test.conf` plus its enabled symlink, and `dltk-v3-realtime.service`. The new pool runs as its own Linux user and accepts only loopback FCGI on33487, with at most8workers. The WebSocket service accepts loopback33486 and keeps its own resource limits. Apache adds HTTPS8443; existing80/443 sites and pool files remain byte-identical and their hashes enter a private receipt.
+
+MySQL stays on its existing UNIX socket `/var/run/mysqld/mysqld.sock`, with networking disabled (`@@port=0`) and expected datadir `/srv/ip_ya/mysql/data`. Both PHP and Python support `DB_SOCKET`; neither requires enabling TCP. The installer verifies all three server identity values before database creation, refuses an existing target schema/account, imports only the checksum-verified private export, and verifies the workspace marker. Runtime privileges cover only the new schema; audit and outbox tables are append-only. It never changes MySQL authentication/configuration or restarts MySQL.
+
+The standard `php8.4-mbstring` distribution package is installed if needed. During that package transaction a temporary `policy-rc.d` blocks only package-triggered PHP8.4-FPM service actions, delegates all other decisions to any existing policy, and restores that policy in `finally`. It also requests needrestart list-only mode. The new pool is config-tested before an explicit graceful PHP-FPM reload. Apache `proxy_fcgi` and `proxy_wstunnel` are enabled, config-tested and gracefully reloaded. These reloads are the intentional shared-service changes authorized by the user; no old pool or site is replaced. In case the installer process is forcibly killed during the package transaction, inspect `/usr/sbin/.policy-rc.d.dltk-v3-original` and restore the original policy before further package maintenance.
+
+TLS refers to the existing renewed certificate paths supplied by the operator; it does not copy or publish the private key. The installer performs strict certificate-verified HTTPS `/api/health` readiness. A private receipt records exact artifact/SQL checksums, commit, shared-server identity, existing configuration hashes and before/after service state. Demo passwords are randomized only in the new schema and written only to `shared/private/demo-access.txt`.
+
+Run the reviewed installer as root with `--archive`, `--archive-sha`, `--commit`, `--sql`, `--sql-sha`, `--tls-cert`, `--tls-key`. Optional `--mysql-socket` and `--mysql-datadir` must describe the explicitly chosen existing instance. If installation fails, retain the partial new scope for inspection; the first-install command deliberately refuses rerunning over it. There is no automatic schema reset or broad rollback of shared services. No Git or Docker installation on the server is required: source arrives as the checksum-verified artifact of the separate private GitHub repository.
 
 ## Actual target: native isolated services (17 November 2026)
 

@@ -1,11 +1,15 @@
 <?php
 declare(strict_types=1);
 
+function workspace_database_dsn(array $config): string {
+    $endpoint=($config['DB_SOCKET']??'')!==''?'unix_socket='.$config['DB_SOCKET']:'host='.$config['DB_HOST'].';port='.$config['DB_PORT'];
+    return 'mysql:'.$endpoint.';dbname='.$config['DB_NAME'].';charset=utf8mb4';
+}
 function workspace_db(): PDO {
     static $db;
     if ($db instanceof PDO) return $db;
     $config=runtime_config();
-    $dsn='mysql:host='.$config['DB_HOST'].';port='.$config['DB_PORT'].';dbname='.$config['DB_NAME'].';charset=utf8mb4';
+    $dsn=workspace_database_dsn($config);
     $db=new PDO($dsn,$config['DB_USER'],$config['DB_PASSWORD'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false,PDO::ATTR_TIMEOUT=>5]);
     $db->exec("SET time_zone='+00:00'");
     if (json_decode((string)$db->query("SELECT value FROM workspace_meta WHERE `key`='marker'")->fetchColumn(),true)!=='dltk-workspace-v1') throw new ApiError('workspace_unavailable','Неожиданная рабочая БД.',503);

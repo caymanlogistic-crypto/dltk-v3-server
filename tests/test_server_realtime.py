@@ -75,6 +75,24 @@ class PresenceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RuntimeConfigTests(unittest.TestCase):
+    def test_unix_socket_without_tcp_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'runtime.ini'
+            path.write_text('[workspace]\nAPP_URL=https://host\nDB_SOCKET=/var/run/mysqld/mysqld.sock\nDB_NAME=dltk_v3_test\nDB_USER=dltk_v3_app\nDB_PASSWORD=example\n',encoding='utf-8')
+            with patch.dict(os.environ,{'DLTK_CONFIG_FILE':str(path)}), patch.object(live.pymysql,'connect') as connect:
+                live.connection()
+                self.assertEqual(connect.call_args.kwargs['unix_socket'],'/var/run/mysqld/mysqld.sock')
+                self.assertNotIn('host',connect.call_args.kwargs)
+                self.assertNotIn('port',connect.call_args.kwargs)
+
+    def test_invalid_socket_rejected(self):
+        for socket_value in ['relative/socket','/tmp/a;other=value']:
+            with tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/'runtime.ini'
+                path.write_text('[workspace]\nAPP_URL=https://host\nDB_SOCKET='+socket_value+'\nDB_NAME=test\nDB_USER=test\nDB_PASSWORD=example\n',encoding='utf-8')
+                with patch.dict(os.environ,{'DLTK_CONFIG_FILE':str(path)}), self.assertRaises(RuntimeError):
+                    live.runtime_config()
+
     def test_private_ini_quoted_values(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'runtime.ini'

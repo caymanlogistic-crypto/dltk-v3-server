@@ -13,8 +13,15 @@ function runtime_config(): array {
     $parsed=@parse_ini_file($file,true,INI_SCANNER_RAW);
     if(!is_array($parsed)||!is_array($parsed['workspace']??null))throw new ApiError('configuration_invalid','Серверная конфигурация некорректна.',503);
     $config=$parsed['workspace'];
-    foreach(['APP_URL','WS_URL','DB_HOST','DB_PORT','DB_NAME','DB_USER','DB_PASSWORD','PRIVATE_DIR'] as $key)if(!array_key_exists($key,$config)||!is_string($config[$key])||($key!=='DB_PASSWORD'&&$config[$key]===''))throw new ApiError('configuration_invalid','Не все параметры сервера настроены.',503);
-    if(!preg_match('/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/D',$config['DB_NAME'])||!ctype_digit($config['DB_PORT'])||(int)$config['DB_PORT']<1||(int)$config['DB_PORT']>65535||preg_match('/[;\x00-\x20]/',$config['DB_HOST']))throw new ApiError('configuration_invalid','Некорректные параметры рабочей БД.',503);
+    foreach(['APP_URL','WS_URL','DB_NAME','DB_USER','DB_PASSWORD','PRIVATE_DIR'] as $key)if(!array_key_exists($key,$config)||!is_string($config[$key])||($key!=='DB_PASSWORD'&&$config[$key]===''))throw new ApiError('configuration_invalid','Не все параметры сервера настроены.',503);
+    $config['DB_SOCKET']=$config['DB_SOCKET']??'';
+    if(!preg_match('/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/D',$config['DB_NAME'])||!is_string($config['DB_SOCKET']))throw new ApiError('configuration_invalid','Некорректные параметры рабочей БД.',503);
+    if($config['DB_SOCKET']!==''){
+        if(!str_starts_with($config['DB_SOCKET'],'/')||preg_match('/[;\x00-\x1F\x7F]/',$config['DB_SOCKET']))throw new ApiError('configuration_invalid','DB_SOCKET должен быть абсолютным путём Unix-сокета.',503);
+    }else{
+        $config['DB_HOST']=$config['DB_HOST']??'127.0.0.1';$config['DB_PORT']=$config['DB_PORT']??'3306';
+        if(!is_string($config['DB_HOST'])||$config['DB_HOST']===''||!is_string($config['DB_PORT'])||!ctype_digit($config['DB_PORT'])||(int)$config['DB_PORT']<1||(int)$config['DB_PORT']>65535||preg_match('/[;\x00-\x20]/',$config['DB_HOST']))throw new ApiError('configuration_invalid','Некорректные TCP-параметры рабочей БД.',503);
+    }
     $app=parse_url($config['APP_URL']);$ws=parse_url($config['WS_URL']);
     if(!is_array($app)||!in_array($app['scheme']??'',['http','https'],true)||empty($app['host'])||isset($app['user'])||isset($app['pass'])||isset($app['query'])||isset($app['fragment'])||!in_array($app['path']??'',['','/'],true))throw new ApiError('configuration_invalid','APP_URL должен содержать только адрес отдельного сайта.',503);
     if(!is_array($ws)||!in_array($ws['scheme']??'',['ws','wss'],true)||empty($ws['host'])||isset($ws['user'])||isset($ws['pass'])||isset($ws['fragment'])||isset($ws['query'])||($app['scheme']==='https'&&$ws['scheme']!=='wss'))throw new ApiError('configuration_invalid','Некорректный адрес WebSocket.',503);

@@ -31,6 +31,7 @@ jobs:
                   ast.parse(file.read_text(encoding='utf-8'),filename=str(file))
           PY
           php tests/vitrine_clipboard_check.php
+          php tests/runtime_config_check.php
           .ci-venv/bin/python -m unittest discover -s tests -p 'test_server_*.py'
       - name: Package exact Git source
         run: |
