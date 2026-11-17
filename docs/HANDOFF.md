@@ -4,7 +4,7 @@
 
 ## Код и размещение
 
-PRIVATE GitHub https://github.com/caymanlogistic-crypto/dltk-v3-server, локально C:/Users/Vladimir/Documents/ChatGPT/dltk-v3-server. На сервере /srv/dltk-v3-test/current -> releases/928c49582fc7b4562e9d4a3efdf95b819ec14407. GitHubCI44102818320 SUCCESS, проверенный artifact SHA256 ef1146499e76d1b36ff8a22a1ee2a45cfd9e36895908d60ea7fd0b2e33bcebc9. Более поздние doc-only commits не означают другую runtimeверсию.
+PRIVATE GitHub https://github.com/caymanlogistic-crypto/dltk-v3-server, локально C:/Users/Vladimir/Documents/ChatGPT/dltk-v3-server. Исходная ручная версия была928c49582fc7b4562e9d4a3efdf95b819ec14407; теперь current меняется автоматически из main, точный SHA проверять по публичному /assets/deployment-version.json. GitHubCI44102818320 SUCCESS, проверенный artifact SHA256 ef1146499e76d1b36ff8a22a1ee2a45cfd9e36895908d60ea7fd0b2e33bcebc9. Более поздние doc-only commits не означают другую runtimeверсию.
 
 Общие Apache/PHP8.4-FPM/MySQL8.4, собственные папка/схема dltk_v3_test/учёткаБД/PHP-пул33487, WSслужбаdltk-v3-realtime33486. DBчерез/var/run/mysqld/mysqld.sock, TCPне включён. APP_URL=https://89.208.213.14, APP_BASE_PATH=/dltk-v3, WS_URL=wss://89.208.213.14/dltk-v3/ws. Runtime/private/SQLотдельноотGit. Старый8443сайтнеявляетсяадресомпользователя.
 
@@ -22,7 +22,7 @@ PRIVATE GitHub https://github.com/caymanlogistic-crypto/dltk-v3-server, лока
 
 ## Автодеплой
 
-По поручению пользователя включается автоматическая выкладка main после успешного check. См. AUTODEPLOY.md: отдельный restricted SSH key, root-owned receiver вне releases, SHA/проверки/атомарное переключение/health/откат, без импорта или изменений данных. Настоящий текущий commit проверять по assets/deployment-version.json и Actions; указанный выше928c495 — исходная ручная версия до автодеплоя. Runtime/секреты сохраняются.
+По поручению пользователя ВКЛЮЧЕНА автоматическая выкладка main после успешного check. ПервыйGitHubrun44106360729/check+deploy SUCCESS, опубликованb839b0aa44987b2876dd7eec22c1c61e82aee3bc. ВнешнийE2EпослеавтовыкладкиPASS, демоячейкавосстановлена. См. AUTODEPLOY.md: отдельный restricted SSH key, root-owned receiver вне releases, SHA/проверки/атомарное переключение/health/откат, без импорта или изменений данных. Настоящий текущий commit проверять по assets/deployment-version.json и Actions; указанный выше928c495 — исходная ручная версия до автодеплоя. Runtime/секреты сохраняются.
 
 ## Обновление
 
