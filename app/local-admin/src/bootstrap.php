@@ -13,6 +13,8 @@ function runtime_config(): array {
     $parsed=@parse_ini_file($file,true,INI_SCANNER_RAW);
     if(!is_array($parsed)||!is_array($parsed['workspace']??null))throw new ApiError('configuration_invalid','Серверная конфигурация некорректна.',503);
     $config=$parsed['workspace'];
+    $config['APP_BASE_PATH']=$config['APP_BASE_PATH']??'';
+    if(!is_string($config['APP_BASE_PATH'])||($config['APP_BASE_PATH']!==''&&!preg_match('~^/(?:[A-Za-z0-9_-]+)(?:/[A-Za-z0-9_-]+)*$~D',$config['APP_BASE_PATH'])))throw new ApiError('configuration_invalid','Некорректный путь приложения.',503);
     foreach(['APP_URL','WS_URL','DB_NAME','DB_USER','DB_PASSWORD','PRIVATE_DIR'] as $key)if(!array_key_exists($key,$config)||!is_string($config[$key])||($key!=='DB_PASSWORD'&&$config[$key]===''))throw new ApiError('configuration_invalid','Не все параметры сервера настроены.',503);
     $config['DB_SOCKET']=$config['DB_SOCKET']??'';
     if(!preg_match('/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/D',$config['DB_NAME'])||!is_string($config['DB_SOCKET']))throw new ApiError('configuration_invalid','Некорректные параметры рабочей БД.',503);
@@ -33,6 +35,17 @@ function configured_origin(string $url): string {
     return $scheme.'://'.$host.($port&&$port!==$default?':'.$port:'');
 }
 function private_dir(): string { return runtime_config()['PRIVATE_DIR']; }
+function app_url_path(string $path='/'): string {
+    if(!str_starts_with($path,'/')||str_starts_with($path,'//'))throw new InvalidArgumentException('Expected application-relative absolute path');
+    return runtime_config()['APP_BASE_PATH'].$path;
+}
+function app_route_path(string $path): string {
+    $base=runtime_config()['APP_BASE_PATH'];
+    if($base==='')return $path;
+    if($path===$base)return '/';
+    if(!str_starts_with($path,$base.'/'))throw new ApiError('not_found','Страница не найдена.',404);
+    return substr($path,strlen($base));
+}
 function json_response(array $body,int $status=200): never {
     http_response_code($status);header('Content-Type: application/json; charset=utf-8');
     echo json_encode($body,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE|JSON_THROW_ON_ERROR);exit;
@@ -44,7 +57,7 @@ function secure_request(): void {
     header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ".configured_origin($config['WS_URL'])."; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     ini_set('display_errors','0');ini_set('log_errors','0');ini_set('session.use_strict_mode','1');
     session_name('dltk_v3_server');
-    session_set_cookie_params(['httponly'=>true,'secure'=>str_starts_with($origin,'https://'),'samesite'=>'Strict','path'=>'/']);
+    session_set_cookie_params(['httponly'=>true,'secure'=>str_starts_with($origin,'https://'),'samesite'=>'Strict','path'=>app_url_path('/')]);
     session_start();
     if(!isset($_SESSION['csrf']))$_SESSION['csrf']=bin2hex(random_bytes(32));
     if(!in_array($_SERVER['REQUEST_METHOD']??'GET',['GET','HEAD','OPTIONS'],true)){

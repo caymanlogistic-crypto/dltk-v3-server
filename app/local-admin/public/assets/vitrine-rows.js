@@ -25,7 +25,7 @@
       const version=manifestVersion;
       const wanted=ids.slice(number*pageSize,(number+1)*pageSize);
       if(!wanted.length)return;
-      const response=await fetch('/api/vitrine/rows?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')+'&ids='+wanted.join(','),{credentials:'same-origin'});
+      const response=await fetch(window.DltkPaths.path('/api/vitrine/rows?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')+'&ids='+wanted.join(',')),{credentials:'same-origin'});
       const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось загрузить строки.');
       if(version!==manifestVersion){queue();return;}
       if(!Array.isArray(result.rowIds)||typeof result.html!=='string')throw new Error('Не удалось прочитать строки таблицы.');
@@ -148,7 +148,7 @@
     refreshTask=(async()=>{
       do{
         refreshAgain=false;
-        const response=await fetch('/api/workspace/manifest?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz'),{credentials:'same-origin'});
+        const response=await fetch(window.DltkPaths.path('/api/workspace/manifest?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')),{credentials:'same-origin'});
         const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось обновить список строк.');
         if(!Array.isArray(result.rowIds)||result.rowIds.some(id=>!Number.isInteger(id)))throw new Error('Некорректный список строк.');
         if(window.VitrineGrid?.editing()){manifestDeferred=true;return;}

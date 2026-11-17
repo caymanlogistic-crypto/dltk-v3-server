@@ -13,7 +13,7 @@ import sys
 import time
 import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from benchmark import Session, password_from_file, validate_base, meta_value, BenchmarkFailure, is_loopback
+from benchmark import Session, password_from_file, validate_base, meta_value, BenchmarkFailure, is_loopback, origin
 
 TABLE = 'table-2'
 
@@ -76,7 +76,7 @@ async def receive(ws, predicate, seconds=10):
 async def open_ws(session, no_proxy, context):
     from websockets.asyncio.client import connect
     ticket=session.ticket()
-    options={'origin':session.base,'open_timeout':15,'max_size':2*1024*1024}
+    options={'origin':origin(session.base),'open_timeout':15,'max_size':2*1024*1024}
     if no_proxy or is_loopback(session.base):options['proxy']=None
     if ticket['url'].startswith('wss://'):options['ssl']=context
     ws=await connect(ticket['url'],**options)

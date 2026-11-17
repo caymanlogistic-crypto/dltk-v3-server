@@ -27,7 +27,7 @@
     if (polling || stopped || cursor === null || socket?.readyState === WebSocket.OPEN) return;
     polling = true;
     try {
-      const response = await fetch('/api/workspace/events?after=' + cursor, {credentials:'same-origin',cache:'no-store'});
+      const response = await fetch(window.DltkPaths.path('/api/workspace/events?after=' + cursor), {credentials:'same-origin',cache:'no-store'});
       if (response.status === 401) { stop(); return; }
       if (!response.ok) return;
       const result = await response.json();
@@ -45,7 +45,7 @@
   async function connect() {
     if (stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
     try {
-      const response = await fetch('/api/workspace/ws-ticket', {method:'POST',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/json'},credentials:'same-origin',body:'{}'});
+      const response = await fetch(window.DltkPaths.path('/api/workspace/ws-ticket'), {method:'POST',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/json'},credentials:'same-origin',body:'{}'});
       if (response.status === 401) { stop(); return; }
       if (!response.ok) throw Error('ticket');
       const ticket = await response.json();

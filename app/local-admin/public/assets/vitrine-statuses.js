@@ -28,7 +28,7 @@
     const options = payload === undefined ? { credentials:'same-origin' } : {
       method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRF-Token':csrf}, body:JSON.stringify(payload)
     };
-    const response = await fetch('/api/vitrine/statuses?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz'),options);
+    const response = await fetch(window.DltkPaths.path('/api/vitrine/statuses?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')),options);
     const result = await response.json();
     if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось прочитать справочник.');
     if (!Array.isArray(result.statuses) || !Array.isArray(result.palette)) throw new Error('Сервер вернул неполный справочник.');

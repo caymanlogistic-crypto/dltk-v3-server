@@ -2,6 +2,14 @@
 
 This is a separate deployment of DLTK V3. It must never replace the existing 1C-IP v2 application.
 
+## Public prefix on existing HTTPS443
+
+The current routing adapter is `deploy/mount_shared_prefix.py`: it mounts the existing project at `https://89.208.213.14/dltk-v3/` without opening a port or changing the server panel. The application must first support the matching APP_BASE_PATH and public APP_URL/WS_URL; the routing script intentionally does not modify runtime.ini or application source.
+
+It adds only `/etc/apache2/conf-available/dltk-v3-prefix.conf` and one `IncludeOptional` inside the explicitly selected existing HTTPS443 vhost, before its catch-all `ProxyPass /`. The included routes place the specific WebSocket proxy first, exclude only `/dltk-v3` and `/dltk-v3/` from the existing root proxy, and use Alias plus FallbackResource to reach the project's public front controller/assets and PHP pool. Existing root and other project routing directives are preserved. The former8443 site may remain available internally.
+
+Run as root with `--vhost-file` and `--expected-vhost-sha256`; the latter must be the reviewed current file checksum. Add `--reload` to gracefully apply the config after `apache2ctl configtest`; without it the script only prepares/tests configuration. It refuses ambiguous HTTPS vhosts, multiple root proxies, unknown existing prefix config, or an ownership-marker mismatch. It stores the original vhost, any existing owned include and a nonsecret receipt inside a new root-only `shared/private/prefix-mount-*` backup. Configtest/reload failures restore the original files and, when requested, attempt a graceful reload of the restored configuration. No packages, listeners, firewall rules, database values or other project files are changed.
+
 ## Current choice: shared Apache, PHP-FPM and MySQL
 
 The user explicitly chose the existing common services. `deploy/provision_shared.py` is the first-install adapter for this choice; the standalone/native and Docker variants below are alternatives, not the selected installation. No installer has been executed merely by adding these files.

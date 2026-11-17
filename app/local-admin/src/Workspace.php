@@ -48,16 +48,16 @@ function workspace_auth_route(string $path): void {
             if(!$u||!$u['active']||!workspace_password_verify($password,$u['password_hash']))throw new ApiError('invalid_login','Неверный логин или пароль.',401);
             wquery('DELETE FROM login_attempts WHERE login_key=?',[$attemptKey]);
             session_start();session_regenerate_id(true);$_SESSION['user_id']=(int)$u['id'];$_SESSION['auth_version']=(int)$u['auth_version'];$_SESSION['csrf']=bin2hex(random_bytes(32));session_write_close();
-            json_response(['redirect'=>'/vitrine?table=vyvoz']);
+            json_response(['redirect'=>app_url_path('/vitrine?table=vyvoz')]);
         }
         if($_SERVER['REQUEST_METHOD']!=='GET')throw new ApiError('method','Метод не поддерживается.',405);
         header('Content-Type:text/html;charset=utf-8');require __DIR__.'/../views/login.php';exit;
     }
     if($path==='/logout'){
         if($_SERVER['REQUEST_METHOD']!=='POST')throw new ApiError('method','Выход выполняется кнопкой «Выйти».',405);
-        session_start();$_SESSION=[];session_destroy();json_response(['redirect'=>'/login']);
+        session_start();$_SESSION=[];session_destroy();json_response(['redirect'=>app_url_path('/login')]);
     }
-    try{workspace_current_user();}catch(ApiError $e){if($e->httpStatus!==401||str_starts_with($path,'/api/'))throw $e;header('Location: /login',true,302);exit;}
+    try{workspace_current_user();}catch(ApiError $e){if($e->httpStatus!==401||str_starts_with($path,'/api/'))throw $e;header('Location: '.app_url_path('/login'),true,302);exit;}
 }
 /** Open business policy now; centralized rules permit future restrictions without UI bypasses. */
 function workspace_can(string $type,string $resource,string $action,?int $tableId=null): bool {

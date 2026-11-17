@@ -45,11 +45,14 @@ def validate_base(value: str) -> str:
     try:
         parts = urllib.parse.urlsplit(value)
         if (parts.scheme not in ('http', 'https') or not parts.hostname or parts.username or
-                parts.password or parts.query or parts.fragment or parts.path not in ('', '/')):
+                parts.password or parts.query or parts.fragment):
             raise ValueError()
-        return origin(value)
+        prefix = parts.path.rstrip('/')
+        if prefix and not re.fullmatch(r'/(?:[A-Za-z0-9_-]+/?)+', prefix):
+            raise ValueError()
+        return origin(value) + prefix
     except ValueError:
-        raise BenchmarkFailure('Base URL must be an HTTP(S) root origin without credentials.') from None
+        raise BenchmarkFailure('Base URL must be HTTP(S) with an optional safe application prefix, without credentials.') from None
 
 
 def is_loopback(url: str) -> bool:
@@ -107,7 +110,7 @@ class Session:
         self.index, self.base, self.password = index, base, password
         self.csrf = ''
         self.manifest: list[int] = []
-        handlers = [urllib.request.HTTPCookieProcessor(CookieJar()), SameOriginRedirect(base)]
+        handlers = [urllib.request.HTTPCookieProcessor(CookieJar()), SameOriginRedirect(origin(base))]
         if no_proxy or is_loopback(base):
             handlers.append(urllib.request.ProxyHandler({}))
         self.opener = urllib.request.build_opener(*handlers)
@@ -117,7 +120,7 @@ class Session:
         data = None
         if body is not None:
             data = json.dumps(body).encode('utf-8')
-            headers.update({'Content-Type': 'application/json', 'Origin': self.base, 'X-CSRF-Token': self.csrf})
+            headers.update({'Content-Type': 'application/json', 'Origin': origin(self.base), 'X-CSRF-Token': self.csrf})
         req = urllib.request.Request(self.base + path, data=data, headers=headers)
         start = time.perf_counter()
         try:
@@ -231,7 +234,7 @@ async def websocket_phase(sessions, tickets, no_proxy, hold):
 
     async def one(session, ticket):
         nonlocal ready_count
-        options = {'origin': session.base, 'open_timeout': TIMEOUT, 'max_size': MAX_BODY}
+        options = {'origin': origin(session.base), 'open_timeout': TIMEOUT, 'max_size': MAX_BODY}
         if no_proxy or is_loopback(session.base):
             options['proxy'] = None
         if ticket['url'].startswith('wss://'):

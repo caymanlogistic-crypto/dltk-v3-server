@@ -111,7 +111,7 @@
     if (cell.dataset.kind === 'time') cell.title = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' + result.value;
   }
   async function writeCell(cell, value, reset = false, paste = null, editAction = null) {
-    const response = await fetch('/api/vitrine/cell?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz'), {
+    const response = await fetch(window.DltkPaths.path('/api/vitrine/cell?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')), {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
       body:JSON.stringify({row:Number(cell.dataset.row),column:cell.dataset.column,value,
@@ -437,7 +437,7 @@
     if (inEditor) {
       const editor = active;
       try {
-        const response = await fetch('/api/vitrine/paste-check?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
+        const response = await fetch(window.DltkPaths.path('/api/vitrine/paste-check?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
         const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'Не удалось проверить формат.');
         if (active !== editor) return;
         if (active.field.dataset.customSelect) active.field.value = value;

@@ -11,7 +11,7 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
 ?>
 <!doctype html>
 <html lang="ru">
-<head>
+<head><meta name="app-base-path" content="<?= htmlspecialchars(runtime_config()['APP_BASE_PATH'],ENT_QUOTES,'UTF-8') ?>">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
@@ -24,44 +24,44 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
   <meta name="workspace-table" content="<?= $escape($currentTable['slug']) ?>">
   <meta name="vitrine-load-error" content="<?= $escape($error ?? '') ?>">
   <title><?= $escape($currentTable['title']) ?> — ЛК ДЛТК</title>
-  <link rel="stylesheet" href="/assets/vitrine/palette.css">
-  <link rel="stylesheet" href="/assets/vitrine-base.css">
-  <link rel="stylesheet" href="/assets/vitrine.css">
-  <link rel="stylesheet" href="/assets/vitrine-editor.css">
-  <link rel="stylesheet" href="/assets/vitrine-select.css">
-  <link rel="stylesheet" href="/assets/vitrine-statuses.css">
-  <link rel="stylesheet" href="/assets/vitrine-display.css">
-  <link rel="stylesheet" href="/assets/vitrine-rows.css">
-  <script defer src="/assets/vitrine-notifications.js"></script>
-  <script defer src="/assets/vitrine.js"></script>
-  <script defer src="/assets/vitrine-display.js"></script>
-  <script defer src="/assets/vitrine-statuses.js"></script>
-  <script defer src="/assets/vitrine-select.js"></script>
-  <script defer src="/assets/vitrine-editor.js"></script>
-  <script defer src="/assets/vitrine-rows.js"></script>
-  <script defer src="/assets/workspace-live.js"></script>
-  <script defer src="/assets/workspace-grid.js"></script>
-  <script defer src="/assets/workspace-presence.js"></script>
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine/palette.css'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-base.css'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.css'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-select.css'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-statuses.css'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.css'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.css'),ENT_QUOTES,'UTF-8') ?>">
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-paths.js'),ENT_QUOTES,'UTF-8') ?>"></script><script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-notifications.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-statuses.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-select.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-grid.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-presence.js'),ENT_QUOTES,'UTF-8') ?>"></script>
 </head>
 <body class="vitrine" data-workspace-user="<?= (int)$currentUser['id'] ?>" data-workspace-table="<?= $escape($currentTable['slug']) ?>">
 <a class="vitrine-skip" href="#workspace">К таблице</a>
 <div class="app app--workspace">
   <header class="vitrine-topbar">
-    <a class="sidebar-brand vitrine-brand" href="/vitrine"><span class="logo-mark" aria-hidden="true"></span><span class="brand-name">ЛК ДЛТК</span></a>
+    <a class="sidebar-brand vitrine-brand" href="<?= htmlspecialchars(app_url_path('/vitrine'),ENT_QUOTES,'UTF-8') ?>"><span class="logo-mark" aria-hidden="true"></span><span class="brand-name">ЛК ДЛТК</span></a>
     <nav class="vitrine-topnav" aria-label="Основная навигация">
       <div class="vitrine-nav-start">
       <?php foreach($workspaceTables as $table): ?>
-        <a class="nav-item <?= $currentTable['id']===$table['id']?'is-active':'' ?>" href="/vitrine?table=<?= $escape($table['slug']) ?>" title="<?= $escape($table['title']) ?>"><span class="nav-label"><?= $escape($table['title']) ?></span></a>
+        <a class="nav-item <?= $currentTable['id']===$table['id']?'is-active':'' ?>" href="<?= htmlspecialchars(app_url_path('/vitrine?table='),ENT_QUOTES,'UTF-8') ?><?= $escape($table['slug']) ?>" title="<?= $escape($table['title']) ?>"><span class="nav-label"><?= $escape($table['title']) ?></span></a>
       <?php endforeach; ?>
       </div>
       <details class="vitrine-folder">
         <summary class="nav-item is-parent"><span class="nav-label">Система</span></summary>
         <div class="vitrine-dropdown">
-          <a class="nav-sub-item" href="/workspace?section=history&table=<?= $escape($currentTable['slug']) ?>">Журнал изменений</a>
-          <a class="nav-sub-item" href="/workspace?section=reports">Сводные</a>
-          <a class="nav-sub-item" href="/workspace?section=users">Сотрудники и роли</a>
+          <a class="nav-sub-item" href="<?= htmlspecialchars(app_url_path('/workspace?section=history&table='),ENT_QUOTES,'UTF-8') ?><?= $escape($currentTable['slug']) ?>">Журнал изменений</a>
+          <a class="nav-sub-item" href="<?= htmlspecialchars(app_url_path('/workspace?section=reports'),ENT_QUOTES,'UTF-8') ?>">Сводные</a>
+          <a class="nav-sub-item" href="<?= htmlspecialchars(app_url_path('/workspace?section=users'),ENT_QUOTES,'UTF-8') ?>">Сотрудники и роли</a>
           <button class="nav-sub-item" type="button" id="workspace-new-row">Добавить строку</button>
-          <a class="nav-sub-item" href="/workspace?section=history&table=<?= $escape($currentTable['slug']) ?>" id="workspace-row-history">История строки</a>
+          <a class="nav-sub-item" href="<?= htmlspecialchars(app_url_path('/workspace?section=history&table='),ENT_QUOTES,'UTF-8') ?><?= $escape($currentTable['slug']) ?>" id="workspace-row-history">История строки</a>
           <div class="nav-sub-item" title="<?= $escape(implode(', ',$currentUser['roles'])) ?>"><?= $escape($currentUser['login']) ?> <span data-workspace-live data-live-status aria-live="polite"></span></div>
           <button class="nav-sub-item" type="button" id="workspace-logout">Выйти</button>
         </div>
@@ -78,7 +78,7 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
         <summary class="nav-item is-parent"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7V4h6l2 3h10v13H3z"/></svg><span class="nav-label">Справочники</span><svg class="vitrine-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
           <a class="nav-sub-item" id="vitrine-open-statuses" href="#statuses"><span>Статусы</span></a>
-          <a class="nav-sub-item" href="/workspace?section=catalogs&table=<?= $escape($currentTable['slug']) ?>">Все справочники</a>
+          <a class="nav-sub-item" href="<?= htmlspecialchars(app_url_path('/workspace?section=catalogs&table='),ENT_QUOTES,'UTF-8') ?><?= $escape($currentTable['slug']) ?>">Все справочники</a>
         </div>
       </details>
     </nav>

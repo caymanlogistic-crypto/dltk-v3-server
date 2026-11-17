@@ -22,7 +22,7 @@
     if(inFlight||!Object.keys(pendingChanges).length)return;
     const changes=pendingChanges;pendingChanges={};inFlight=true;
     try{
-      const response=await fetch('/api/workspace/preferences?table='+encodeURIComponent(tableSlug),{method:'POST',credentials:'same-origin',keepalive,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({changes})});
+      const response=await fetch(window.DltkPaths.path('/api/workspace/preferences?table='+encodeURIComponent(tableSlug)),{method:'POST',credentials:'same-origin',keepalive,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({changes})});
       const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось сохранить личные настройки.');
       queueRemote(result);
     }catch(error){

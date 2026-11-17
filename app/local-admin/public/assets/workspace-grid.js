@@ -6,12 +6,12 @@
   const delayed=new Map();
   const error=message=>window.PlanexNotifications.show({tone:'danger',message});
   const selected=()=>document.querySelector('.vitrine-table td.is-current-cell')||document.querySelector('.vitrine-table td[tabindex="0"]');
-  const historyUrl=row=>'/workspace?section=history&table='+encodeURIComponent(slug)+(row?'&row='+encodeURIComponent(row):'');
+  const historyUrl=row=>window.DltkPaths.path('/workspace?section=history&table='+encodeURIComponent(slug)+(row?'&row='+encodeURIComponent(row):''));
   document.getElementById('workspace-row-history')?.addEventListener('click',event=>{
-    event.preventDefault();location.href=historyUrl(selected()?.dataset.row);
+    event.preventDefault();location.href=window.DltkPaths.path(historyUrl(selected()?.dataset.row));
   });
   async function post(path,body){
-    const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(body)});
+    const response=await fetch(window.DltkPaths.path(path),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(body)});
     const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось выполнить действие.');return result;
   }
   document.getElementById('workspace-new-row')?.addEventListener('click',async event=>{
@@ -22,7 +22,7 @@
   });
   document.getElementById('workspace-logout')?.addEventListener('click',async()=>{
     if(window.VitrineGrid?.editing()){error('Сначала сохраните правку или нажмите «Отмена».');return;}
-    try{await post('/logout',{});for(let i=localStorage.length-1;i>=0;i--){const key=localStorage.key(i);if(key?.startsWith('dltk-v3.vitrine.display.v2.'+document.body.dataset.workspaceUser+'.'))localStorage.removeItem(key);}location.href='/login';}catch(e){error(e.message);}
+    try{await post('/logout',{});for(let i=localStorage.length-1;i>=0;i--){const key=localStorage.key(i);if(key?.startsWith('dltk-v3.vitrine.display.v2.'+document.body.dataset.workspaceUser+'.'))localStorage.removeItem(key);}location.href=window.DltkPaths.path('/login');}catch(e){error(e.message);}
   });
   window.addEventListener('workspace:event',event=>{
     const envelope=event.detail,patch=envelope?.data;
@@ -38,7 +38,7 @@
     if(envelope.event==='catalog.changed'){
       window.VitrineRows?.catalogPatch(patch);
       if(patch.tableSlug&&patch.tableSlug!==slug)return;
-      fetch('/api/vitrine/statuses?table='+encodeURIComponent(slug),{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(data=>{if(data?.statuses){window.vitrineStatusCatalog=data;window.dispatchEvent(new CustomEvent('vitrine-statuses-updated',{detail:data}));}}).catch(()=>{});
+      fetch(window.DltkPaths.path('/api/vitrine/statuses?table='+encodeURIComponent(slug)),{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(data=>{if(data?.statuses){window.vitrineStatusCatalog=data;window.dispatchEvent(new CustomEvent('vitrine-statuses-updated',{detail:data}));}}).catch(()=>{});
     }
   });
   window.addEventListener('vitrine-editor-closed',()=>{
