@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "checks": [
+    "five tables: four demo and one real, real never written",
+    "presence starts before save; authenticated name; late subscriber snapshot",
+    "presence stop removes editor",
+    "demo save; other WebSocket actor; second account read; exact audit before/after",
+    "disconnect removes editor",
+    "demo value restored; audit retained"
+  ],
+  "restored": true,
+  "real_table_writes": 0,
+  "audit_retained": true,
+  "save_to_observer_ms": 102.81
+}

@@ -36,3 +36,8 @@ Loopback идёт напрямую, внешние адреса учитываю
 Отчёт не содержит содержимого ячеек, имён заказчиков, IDs строк, cookies, tickets или пароля. Он не измеряет FPS/paint, задержку обработки мыши, доставку изменённой ячейки, длительную стабильность или восстановление после сбоя. Эти проверки остаются отдельными. Короткий успешный прогон не означает готовность production или выполнение SLA; результаты сравнивать при одинаковых сетевых условиях, числе клиентов и составе данных.
 
 Для WebSocket требуется установленная серверная зависимость `websockets==15.0.1`; HTTP-сценарии используют стандартную библиотеку Python.
+
+
+## 17 November 2026: actual shared-server run
+
+See [sanitized report](evidence/2026-11-17-benchmark.json) and [two-user E2E](evidence/2026-11-17-server-e2e.json). Run executed inside the server, not across the external network. 15 sessions,3rounds,100rows/portion,6000manifest. Initial full-response p50/p95=1862.675/3334.844ms;portion p50/p95=2556.280/3459.135ms;WS ready230.609/334.756ms. These are bounded measurements, not an SLA. External TCP8443 currently times out; retest externally after the hosting firewall is opened.

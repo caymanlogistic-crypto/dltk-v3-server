@@ -1,0 +1,134 @@
+{
+  "status": "ok",
+  "atUtc": "2026-11-17T12:56:55.822828+00:00",
+  "baseUrl": "https://89.208.213.14:8443",
+  "workers": 15,
+  "independent_cookie_sessions": 15,
+  "rounds": 3,
+  "account_count": 6,
+  "proxy_mode": "environment",
+  "authentication_setup_ms": {
+    "min": 405.45,
+    "p50": 728.362,
+    "p95": 1169.798,
+    "max": 1169.798,
+    "mean": 829.824
+  },
+  "initial_grid": {
+    "requests": 15,
+    "time_to_headers_ms": {
+      "min": 1292.638,
+      "p50": 1692.567,
+      "p95": 3040.898,
+      "max": 3040.898,
+      "mean": 2118.755
+    },
+    "total_body_read_ms": {
+      "min": 1415.043,
+      "p50": 1862.675,
+      "p95": 3334.844,
+      "max": 3334.844,
+      "mean": 2351.328
+    },
+    "wire_body_bytes": {
+      "sum": 4294541,
+      "min": 286204,
+      "max": 286588
+    },
+    "decoded_body_bytes": {
+      "sum": 64666439,
+      "min": 4310804,
+      "max": 4312242
+    },
+    "gzip_responses": 15
+  },
+  "bootstrap": {
+    "requests": 45,
+    "time_to_headers_ms": {
+      "min": 80.582,
+      "p50": 287.654,
+      "p95": 416.889,
+      "max": 419.822,
+      "mean": 269.556
+    },
+    "total_body_read_ms": {
+      "min": 80.77,
+      "p50": 287.886,
+      "p95": 417.033,
+      "max": 419.923,
+      "mean": 269.762
+    },
+    "wire_body_bytes": {
+      "sum": 32139,
+      "min": 710,
+      "max": 721
+    },
+    "decoded_body_bytes": {
+      "sum": 102714,
+      "min": 2271,
+      "max": 2298
+    },
+    "gzip_responses": 45
+  },
+  "row_portion": {
+    "requests": 45,
+    "time_to_headers_ms": {
+      "min": 1571.442,
+      "p50": 2390.929,
+      "p95": 3420.073,
+      "max": 3500.123,
+      "mean": 2525.316
+    },
+    "total_body_read_ms": {
+      "min": 1682.814,
+      "p50": 2556.28,
+      "p95": 3459.135,
+      "max": 3502.535,
+      "mean": 2612.836
+    },
+    "wire_body_bytes": {
+      "sum": 13052385,
+      "min": 290053,
+      "max": 290053
+    },
+    "decoded_body_bytes": {
+      "sum": 208909485,
+      "min": 4642433,
+      "max": 4642433
+    },
+    "gzip_responses": 45,
+    "rows_per_request": {
+      "requested_min": 100,
+      "requested_max": 100,
+      "returned_min": 100,
+      "returned_max": 100
+    }
+  },
+  "manifest_row_count": {
+    "min": 6000,
+    "max": 6000
+  },
+  "websocket": {
+    "connections": 15,
+    "authenticated_ready_ms": {
+      "min": 155.437,
+      "p50": 230.609,
+      "p95": 334.756,
+      "max": 334.756,
+      "mean": 238.005
+    },
+    "simultaneous_hold_seconds": 2,
+    "business_edits_sent": 0
+  },
+  "scope": {
+    "business_data_writes": false,
+    "browser_paint_measured": false,
+    "sla_certification": false,
+    "notes": [
+      "Authentication creates normal sessions/login bookkeeping; optional WS creates short-lived tickets only.",
+      "urllib HTTP/1.1 clients, not a browser or HTTP/2 benchmark.",
+      "Time to complete response headers is a TTFB proxy; body-read duration excludes local decompression/JSON parsing.",
+      "p95 uses nearest rank; small samples and a bounded burst are not long-duration load certification."
+    ]
+  }
+}
