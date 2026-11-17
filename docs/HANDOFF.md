@@ -20,6 +20,10 @@ PRIVATE GitHub https://github.com/caymanlogistic-crypto/dltk-v3-server, лока
 
 Серверныйпарольшестидемоаккаунтовтольковshared/private/demo-access.txt;локальнодляпользователяC:/Users/Vladimir/AppData/Local/DltkV3/server-demo-access.txt (адресвфайлеобновлён). Не выводить/коммититьсекреты. RuntimeINIroot:app640,private700;SQLиSSHсекретыотдельноотGit. Шестьролейравноправны,Googleвыключен,локальныйстенднеизменялся.7425исходныхстрокВывоза,6000manifest,4демотаблицы.
 
+## Автодеплой
+
+По поручению пользователя включается автоматическая выкладка main после успешного check. См. AUTODEPLOY.md: отдельный restricted SSH key, root-owned receiver вне releases, SHA/проверки/атомарное переключение/health/откат, без импорта или изменений данных. Настоящий текущий commit проверять по assets/deployment-version.json и Actions; указанный выше928c495 — исходная ручная версия до автодеплоя. Runtime/секреты сохраняются.
+
 ## Обновление
 
 Не запускать first-install поверхсуществующейБД. НовыйGitHubCIartifactSHA->новыйreleases/<sha>->атомарныйcurrent, сохраняяshared/БД;gracefulPHPиrestartтолькосвоегоWSпринеобходимости. Приватныйbackupпрефиксногообновления shared/private/prefix-upgrade-backup содержитстарыйruntimeиreceipt; mountbackup prefix-mount-* содержитисходныйvhost. Ниодногоимпорта/сбросаБДприэтомобновлениинебыло. APP_BASE_PATHподдержанвPHP/HTML/JS/benchmark/E2E;неподменятьнаURLrootбезэтойнастройки. ВсеUIошибкиPlanexNotifications,селектыcs-*.

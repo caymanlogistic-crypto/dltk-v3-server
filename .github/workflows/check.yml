@@ -1,4 +1,4 @@
-name: Check and package server project
+name: Check and deploy server project
 on:
   push:
     branches: [main]
@@ -45,3 +45,27 @@ jobs:
           path: artifacts/dltk-v3-*
           if-no-files-found: error
           retention-days: 7
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: dltk-v3-server-deploy
+      cancel-in-progress: false
+    environment:
+      name: demo
+      url: https://89.208.213.14/dltk-v3/
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: dltk-v3-release-${{ github.sha }}
+          path: artifacts
+      - name: Deploy checked source and verify public version
+        env:
+          DLTK_DEPLOY_SSH_KEY: ${{ secrets.DLTK_DEPLOY_SSH_KEY }}
+          DLTK_DEPLOY_KNOWN_HOSTS: ${{ secrets.DLTK_DEPLOY_KNOWN_HOSTS }}
+        run: python3 deploy/send_release.py
