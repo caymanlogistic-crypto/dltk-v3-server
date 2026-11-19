@@ -36,7 +36,7 @@ php tests/runtime_config_check.php
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p 'test_server_*.py'
 ```
 
-При изменении PHP/JS запустите `php -l <файл>` и `node --check <файл>` для изменённых файлов. Полный набор синтаксических и регрессионных проверок указан в [GitHub Actions](../.github/workflows/check.yml). Он выполняется с проверочной конфигурацией и без рабочей БД. Обычный workflow запускается на `main`; вручную в рабочей ветке запускается проверка без выкладки.
+При изменении PHP/JS запустите `php -l <файл>` и `node --check <файл>` для изменённых файлов. Полный набор синтаксических и регрессионных проверок указан в [GitHub Actions](../.github/workflows/check.yml). Он выполняется с проверочной конфигурацией и без рабочей БД. Для проверки рабочей ветки используйте `gh workflow run check.yml --ref codex/task-short-name` со своим именем ветки. Для этого запуска GitHub пропускает deploy.
 
 ## Изолированный HTTP, WebSocket и браузер
 

@@ -18,10 +18,10 @@
 
 | Маршрут | Код и действие |
 | --- | --- |
-| `GET /api/health` | [router.php](../app/local-admin/router.php) проверяет подключение и marker рабочей БД сервера. |
+| `GET /api/health` | [router.php](../app/local-admin/router.php) выполняет SELECT 1 в рабочей БД и возвращает marker приложения. |
 | `GET/POST /login`, `POST /logout` | `workspace_auth_route` в [Workspace.php](../app/local-admin/src/Workspace.php). PHP-сессия, активный аккаунт, проверка пароля и версии авторизации. `bootstrap.php` проверяет Host, CSRF и Origin для записи. |
 | `GET /`, `GET /vitrine?table=vyvoz` | [Vitrine.php](../app/local-admin/src/Vitrine.php) и [WorkspaceVitrine.php](../app/local-admin/src/WorkspaceVitrine.php) выбирают таблицу, строят manifest и начальный HTML. `workspace-grid.js` и `vitrine-rows.js` виртуализируют сетку, порции загружаются через `GET /api/vitrine/rows`. |
-| `GET /api/vitrine/statuses`, `POST /api/vitrine/cell`, `POST /api/vitrine/paste-check` | `vitrine_statuses_endpoint`, `vitrine_save_cell` и `vitrine_paste_check`. Форматы в [VitrineClipboard.php](../app/local-admin/src/VitrineClipboard.php). `vitrine_store` записывает ячейку и аудит, сохраняет ревизию и возвращает результат повторного запроса по `requestId`. |
+| `GET/POST /api/vitrine/statuses`, `POST /api/vitrine/cell`, `POST /api/vitrine/paste-check` | `vitrine_statuses_endpoint`, `vitrine_save_cell` и `vitrine_paste_check`. Первый обработчик читает и сохраняет справочник статусов. Форматы в [VitrineClipboard.php](../app/local-admin/src/VitrineClipboard.php). `vitrine_store` записывает ячейку и аудит, сохраняет ревизию и возвращает результат повторного запроса по `requestId`. |
 | `GET /workspace?section=history\|catalogs\|users\|reports` | [views/workspace.php](../app/local-admin/views/workspace.php) и `workspace.js` показывают журнал, справочники, сотрудников и сводку. Фильтр `table` и `row` даёт историю строки. |
 | `/api/workspace/{bootstrap,manifest,preferences,history,users,catalogs,reports,row}` | `workspace_api` в `Workspace.php` выдаёт профиль, таблицы и справочники, сохраняет настройки, показывает аудит и счётчики. `POST row` создаёт, архивирует и восстанавливает запись. Отдельного экрана архива пока нет. |
 | `POST /api/workspace/ws-ticket`, `GET /api/workspace/events?after=…`, `/ws` | PHP выдаёт одноразовый билет на 30 секунд. [workspace_realtime.py](../tools/workspace_realtime.py) авторизует сокет, доставляет outbox и держит присутствие редакторов в памяти. `workspace-live.js` переподключается с cursor и использует HTTP fallback для изменений. |
