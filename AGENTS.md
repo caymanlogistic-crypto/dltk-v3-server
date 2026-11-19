@@ -1,9 +1,8 @@
-# DLTK server test project
+# ЛК-ДЛТК V3 · серверный репозиторий
 
-Read README.md and docs/HANDOFF.md first. This repository is a separate server copy of the local ЛК-ДЛТК V3 app. Never modify or restart other server projects, including /srv/ip_ya. Only /srv/dltk-v3-test and its own database/services belong to this test deployment. Google integration is disabled and must not be included. Six roles have equal access until the user requests restrictions. All errors/warnings use PlanexNotifications; selects use VitrineSelect/cs-*. Maintain docs/HANDOFF.md and deployment receipts. Never commit runtime config, SQL backups, real customer data, passwords, tokens, SSH private keys or cookies. Server data transfer is separate from Git. Keep known hosts pinned.
-
-17 November 2026, latest user decision: use the existing shared Apache, PHP-FPM and MySQL services. This authorizes adding a dedicated Apache site/listener, a dedicated PHP-FPM pool, required PHP modules and graceful configuration reloads of Apache/PHP-FPM. Preserve every existing site/pool/database and do not restart MySQL. Use a separate dltk_v3_test schema and narrowly scoped database account through the existing Unix socket. WebSocket remains a dedicated service. The earlier proposed separate MySQL/Apache processes are superseded; do not execute provision_native.py for this deployment.
-
-17 November 2026, public access completed at https://89.208.213.14/dltk-v3/. User declined port/firewall changes. One reviewed IncludeOptional mounts only this prefix in the existing HTTPS443 vhost; preserve all other routes. APP_BASE_PATH=/dltk-v3 is required; the old8443 address and request to open its port are superseded. See current docs/HANDOFF.md before changes.
-
-17 November 2026: user requested GitHub automatic deployment. Push to main now deploys after checks through the restricted root-owned receiver. Read docs/AUTODEPLOY.md first; do not reset/import the DB or modify runtime config during release. Root receiver outside releases is not self-updated from an archive. Record actual running SHA from the public version marker and Actions.
+1. Прочитай поручение, свою карточку в [Notion](https://app.notion.com/p/41da64edce32819e82add67138cf52bd?pvs=204) и связанные с ней документы. По коду начни с [быстрого старта](README.md).
+2. Одна задача — один ответственный агент. Параллельные задачи веди в отдельных worktree с изолированными данными и процессами. См. [порядок работы](docs/AGENT_WORKFLOW.md) и [локальную проверку](docs/LOCAL_QA.md).
+3. Перед UI-правкой открой [Витрину](app/local-admin/VITRINE.md) в браузере. Используй общие компоненты, `VitrineSelect/cs-*` и верхний `PlanexNotifications`. Новый компонент и пример идут в одном PR.
+4. В том же PR обнови затронутые инструкции, контракты и реализованные правила. В Notion обнови карточку и подтверждённые решения со ссылками на Git.
+5. Слияние или push в `main` запускает [автодеплой](docs/AUTODEPLOY.md). Жди команды «выкладывай». Получив её, сам доведи проверки, очередь и проверку сайта до результата и закрой текущий цикл карточки.
+6. Google отключён, шесть ролей имеют равный доступ. Сохраняй БД, пользователей, настройки, аудит и соседние сайты. Секреты, дампы и реальные данные держи вне Git, Notion и отчётов.

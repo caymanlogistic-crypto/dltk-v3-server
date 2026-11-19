@@ -25,3 +25,18 @@ Runner deploy/send_release.py отправляет stdin JSON(commit,sha256,size
 GitHub Actions -> Check and deploy server project -> check/deploy. Успешный job печатает только commit/status/URL. Приватные receipts: shared/private/autodeploy/<timestamp>.json, <commit>.json, latest.json; также shared/private/deployment-latest.json. Receipts содержат хеши/статусы/предыдущий commit, без паролей и значений ячеек. Публичная версия позволяет сравнить работающий SHA с GitHub.
 
 Проверены19unit-сценариев broker, включая неправильные/лишние байты протокола, опасные архивы, лимиты, устаревшие runs, неизменность зависимостей и возврат старого current при отказе refresh. Реальный ключ допускает только receiver: команда id с пустым stdin отвергнута, shell не исполнился. Фактический первый автодеплой GitHub Actions44106360729 завершил check и deploy успешно: b839b0aa44987b2876dd7eec22c1c61e82aee3bc, receipt runNumber7/status success. Публичный version marker совпал. После выкладки внешний E2E двух пользователей проверил presence/save/WS/audit, демозначение восстановлено, реальные данные не менялись. Apache/MySQL/старыйERP PID сохранились. Санитизированный отчёт: evidence/2026-11-17-autodeploy-e2e.json. При новых push версия меняется автоматически; актуальный SHA всегда сверять с marker и последним Actions run.
+
+## Цикл агента
+
+Выкладку запускают после команды «выкладывай». Push или merge в `main` запускает её автоматически. Ветка задачи может прогнать проверку вручную с явным `--ref` и без deploy. Workflow текущей версии стартует на push в `main` и по `workflow_dispatch`.
+
+Ответственный агент проверяет текущие запуски в [GitHub Actions](https://github.com/caymanlogistic-crypto/dltk-v3-server/actions/workflows/check.yml) и находит запуск своего SHA. Рабочий deploy job сериализован, но GitHub может заменить ожидающий запуск более новым. Следите за своим SHA и фактической версией, включая случай, когда прошла выкладка более свежего коммита. Повторная отправка старого SHA не подтверждает новую попытку задачи.
+
+```powershell
+gh run list --workflow check.yml --commit <SHA>
+gh run watch <RUN_ID> --exit-status
+curl.exe -fsS https://89.208.213.14/dltk-v3/api/health
+curl.exe -fsS https://89.208.213.14/dltk-v3/assets/deployment-version.json
+```
+
+После `check` и `deploy` сверьте публичный SHA, откройте страницу изменённой функции и проверьте её поведение. Для UI приложите результат браузерной сверки и ссылку на пример. В текущем цикле карточки укажите ссылку на PR или запуск, SHA и проверку на сайте. При откате или непрошедшей проверке карточка остаётся открытой. [Жизненный цикл карточки](AGENT_WORKFLOW.md#выкладка-и-закрытие).
