@@ -1,7 +1,18 @@
-# Server copy of DLTK V3 vitrine
+# Витрина ЛК-ДЛТК V3
 
-PHP-FPM public root: app/local-admin/public. Requests route through public/index.php; Nginx serves assets directly. Only the working DB is used. Runtime config is in a private [workspace] INI file selected by DLTK_CONFIG_FILE. Keep config/runtime.ini, data exports, passwords and backups out of Git. UI components/styles and current keyboard/editing/live-presence behavior are preserved from the local project.
+## Эталон и рабочий интерфейс
 
-Runtime contract: [workspace] INI, APP_URL/WS_URL/DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD/PRIVATE_DIR. DLTK_CONFIG_FILE selects the private file. APP_URL is a root origin (a separate virtual host/port), not a subdirectory. Preserve the incoming Host header at Nginx. Cookie name is dltk_v3_server and Secure is enabled for HTTPS APP_URL. /api/health returns dltk-v3-server-v1 and checks only the working DB. Unknown legacy source/admin routes return404.
+Принятый эталон компонентов находится в локальной папке проекта «ЛК-ДЛТК V3». Откройте в браузере файл `design/demo/index.html`, затем нужный пример. Правила композиции находятся в `design/demo/layout-rules.html`. Копия Витрины принята 16 ноября 2026 года. Её происхождение и состав зафиксированы в `design/README.md` и `design/COPY-MANIFEST.json`. Сценарии аренды в примерах относятся к исходному демостенду. Для ЛК-ДЛТК V3 применяются только компоненты и оформление. Инструкции сборки 1С из скопированного демо к этому репозиторию не относятся.
 
-Portable QA: all PHP and JavaScript syntax checks,66 format checks and9 HTTP integration checks passed locally using a dedicated temporary server process. The latter exercised health, distinct cookie, account login,6000-row grid,5 tables/6 roles, configured WebSocket URL, Host/Origin rejection and removed legacy route. No business values were written. Actual Linux deployment/performance remain separate acceptance steps.
+- Рабочая сетка открывается после входа по маршруту `/vitrine?table=vyvoz`. Локальная точка входа — [Windows-стенд](http://127.0.0.1:33385/login). Внешний адрес — [серверный стенд](https://89.208.213.14/dltk-v3/).
+- Шаблоны находятся в `views/vitrine.php` и `views/vitrine-rows.php`. Общие стили и скрипты находятся в `public/assets/`.
+- Выбор, фильтры и селекты реализуются через `VitrineSelect` и `custom-select/cs-*` в `vitrine-select.js/css`. Стрелки перемещают курсор, Enter выбирает, Esc закрывает список. Нативные `select` и `datalist` для этих элементов запрещены.
+- Ошибки и предупреждения показываются через верхний `PlanexNotifications` из `vitrine-notifications.js`. Текст поля и черновик сохраняются. Нижний toast, browser alert и собственный popup для таких сообщений запрещены.
+- Ввод и навигация живут в `vitrine-editor.js`, форматная проверка на сервере — в `src/VitrineClipboard.php`. Витрина читает и сохраняет данные в рабочей MySQL. Настройки отображения принадлежат пользователю и таблице. Онлайн-изменения и присутствие коллег доставляет WS.
+- Историю сетки, схемы и поведения смотрите в основной технической карте. Для UI имеет значение единичный маркер активной ячейки, клавиатурный фокус, сохранение черновика и подсветка чужих изменений. Подробности по конкретным доработкам хранятся в локальном хабе.
+
+## Сверка перед выкладкой
+
+Откройте принятый пример в браузере до начала правки. Для существующего элемента используйте его код и состояния. Новый компонент, его подключение и доступный пример идут в одной задаче и одном PR. Если эталон в соседней папке, пример нового компонента можно добавить как синтетическое интерактивное демо в ветке рядом с кодом компонента и связать с каталогом Витрины.
+
+В карточке и PR приложите адрес примера или путь в Git с инструкцией открытия и результат сравнения в браузере. Укажите проверенные состояния и размеры окна, для ввода проверьте клавиатуру и ошибку с сохранением черновика. При изменении рабочего интерфейса повторите затронутый сценарий на стенде после выкладки.
