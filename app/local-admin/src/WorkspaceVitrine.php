@@ -85,7 +85,7 @@ function vitrine_store(array $body): array {
         $dependentPatch=null;
         if($link&&($reference||$value!==$before)){
             $entries=vitrine_catalog_values($link);
-            $previousEntry=vitrine_find_catalog_entry($binding,$before);
+            $previousEntry=vitrine_find_catalog_entry($binding,$before,$link['kind']==='clients');
             $previous=$entries[$previousEntry['id']??0]??'';
             $dependentPatch=vitrine_update_catalog_value($t,$r,$values,$link['target'],$entries[$reference]??'',$previous,$u,$action,$request,$operation);
         }

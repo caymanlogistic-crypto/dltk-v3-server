@@ -28,13 +28,18 @@ function vitrine_catalog_key(string $name): string {
 }
 
 function vitrine_catalog_values(array $link): array {
+    if($link['kind']==='clients')return workspace_client_manager_values($link['id']);
     $map=json_decode((string)wquery('SELECT value FROM workspace_meta WHERE `key`=?',[$link['meta'].$link['id']])->fetchColumn(),true);
     return is_array($map)?$map:[];
 }
 
-function vitrine_find_catalog_entry(int $catalog,string $name): array|false {
+function vitrine_find_catalog_entry(int $catalog,string $name,bool $includeArchived=false): array|false {
     if($name==='')return false;
-    return wquery('SELECT id,name FROM catalog_entries WHERE catalog_id=? AND normalized=? AND active=TRUE',[$catalog,vitrine_catalog_key($name)])->fetch();
+    $normalized=vitrine_catalog_key($name);
+    $entry=wquery('SELECT id,name FROM catalog_entries WHERE catalog_id=? AND normalized=? AND (active=TRUE OR ?=TRUE)',[$catalog,$normalized,(int)$includeArchived])->fetch();
+    if($entry||!$includeArchived)return $entry;
+    $alias=workspace_client_catalog_aliases($catalog)[$normalized]??0;
+    return $alias?wquery('SELECT id,name FROM catalog_entries WHERE catalog_id=? AND id=?',[$catalog,$alias])->fetch():false;
 }
 
 function vitrine_require_manual_field(array $table,string $column): void {
@@ -47,16 +52,17 @@ function vitrine_catalog_options(array $t,array $links): array {
     $boundChoices=[];$boundCatalogs=[];$catalogVisibility=[];$entriesByName=[];
     $catalogIds=array_column($links,'id')?:[0];
     $catalogSlots=implode(',',array_fill(0,count($catalogIds),'?'));
-    foreach(wquery("SELECT b.field_key,c.id AS catalog_id,e.id AS entry_id,e.name,e.normalized FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id LEFT JOIN catalog_entries e ON e.catalog_id=c.id AND e.active=TRUE WHERE b.table_id=? AND b.field_key NOT IN ('','A') AND (?=TRUE OR c.id IN ($catalogSlots)) ORDER BY e.id",[$t['id'],(int)$t['is_demo'],...$catalogIds])->fetchAll() as $option){
+    foreach(wquery("SELECT b.field_key,c.id AS catalog_id,e.id AS entry_id,e.name,e.normalized,e.active FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id LEFT JOIN catalog_entries e ON e.catalog_id=c.id AND (e.active=TRUE OR c.kind='clients') WHERE b.table_id=? AND b.field_key NOT IN ('','A') AND (?=TRUE OR c.id IN ($catalogSlots)) ORDER BY e.id",[$t['id'],(int)$t['is_demo'],...$catalogIds])->fetchAll() as $option){
         $key=$option['field_key'];$catalogId=(int)$option['catalog_id'];
         $linked=($links[$key]['id']??0)===$catalogId;
         if($linked&&$option['entry_id']!==null)$entriesByName[$key][$option['normalized']]=(int)$option['entry_id'];
         if($linked&&!($catalogVisibility[$catalogId]??=workspace_can('catalog',(string)$catalogId,'view',$t['id'])))continue;
-        if(!$linked&&(!$t['is_demo']||$option['name']===null))continue;
+        if(!$linked&&(!$t['is_demo']||!$option['active']))continue;
         $boundCatalogs[$key]=$catalogId;
         $boundChoices[$key]??=[];
-        if($option['name']!==null)$boundChoices[$key][]=$option['name'];
+        if($option['active'])$boundChoices[$key][]=$option['name'];
     }
+    if(isset($links['B']))$entriesByName['B']=($entriesByName['B']??[])+workspace_client_catalog_aliases($links['B']['id']);
     return [$boundChoices,$boundCatalogs,$entriesByName];
 }
 

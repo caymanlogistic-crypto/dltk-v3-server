@@ -1,6 +1,8 @@
 'use strict';
 (() => {
   let active = null;
+  const catalog = document.body.dataset.vitrineCatalog;
+  const scope = catalog ? 'catalog=' + encodeURIComponent(catalog) : 'table=' + encodeURIComponent(document.body.dataset.workspaceTable || 'vyvoz');
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   function report(text, tone = 'warning') {
     window.PlanexNotifications.show({ tone, message:text });
@@ -97,10 +99,13 @@
     cell.textContent = result.value;
     cell.dataset.original = result.original ?? '';
     cell.dataset.revision = String(result.revision);
+    if (catalog) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
+      sibling.dataset.revision = String(result.revision);
+    }
     if(Object.hasOwn(result,'referenceId'))cell.dataset.referenceId=String(result.referenceId||'');
     if(Object.hasOwn(result,'catalogId'))cell.dataset.catalogId=String(result.catalogId||'');
     cell.dataset.base = result.baseHash;
-    if (cell.dataset.column === 'A') {
+    if (cell.dataset.kind === 'status') {
       cell.dataset.statusId = result.statusId ?? '';
       cell.dataset.statusColor = result.statusColor ?? '';
       cell.classList.toggle('has-status-color', Boolean(result.statusColor));
@@ -120,7 +125,7 @@
     if (cell.dataset.kind === 'time') cell.title = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' + result.value;
   }
   async function writeCell(cell, value, reset = false, paste = null, editAction = null) {
-    const response = await fetch(window.DltkPaths.path('/api/vitrine/cell?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')), {
+    const response = await fetch(window.DltkPaths.path('/api/vitrine/cell?'+scope), {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
       body:JSON.stringify({row:Number(cell.dataset.row),column:cell.dataset.column,value,
@@ -169,7 +174,7 @@
     panel.addEventListener('keydown',event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); save(false,{row:1,column:0}); }
-      if (event.key === 'Tab') { event.preventDefault(); save(false,{row:0,column:event.shiftKey ? -1 : 1}); }
+      if (event.key === 'Tab') event.preventDefault();
     });
     position(); field.focus(); field.setSelectionRange(field.value.length,field.value.length);
   }
@@ -206,6 +211,10 @@
     }
   }
   function open(cell) {
+    if (cell.dataset.readonlyCell) {
+      report('Запись доступна только для просмотра.', 'info');
+      return;
+    }
     if (cell.dataset.derivedSource) {
       notifyDerivedCell();
       return;
@@ -222,7 +231,7 @@
     panel.setAttribute('role', 'dialog');
     const catalogEditor = ['B', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz';
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
-    if (catalogEditor) {
+    if (catalogEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
     } else {
       const title = element('h2', 'vitrine-editor-title', dialogName);
@@ -234,7 +243,7 @@
     let choices = [];
     try { choices = JSON.parse(cell.dataset.choices || '[]'); } catch {}
     if (!Array.isArray(choices)) choices = [];
-    const isStatus = cell.dataset.column === 'A';
+    const isStatus = cell.dataset.kind === 'status';
     const useCustom = isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0;
     let control = null;
     if (useCustom) {
@@ -250,7 +259,8 @@
     field.setAttribute('aria-label', 'Значение ячейки');
     field.autocomplete = 'off'; field.maxLength = 20000; field.value = cell.textContent;
     if (useCustom) field.dataset.customSelect = 'true';
-    panel.append(control?.element || field, element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить и вниз · Tab — сохранить и вправо · Shift+Enter — новая строка'));
+    panel.append(control?.element || field);
+    if (!catalog) panel.append(element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить и вниз · Shift+Enter — новая строка'));
     const error = element('p', 'vitrine-editor-error');
     error.setAttribute('role', 'alert'); error.hidden = true; panel.append(error);
     const actions = element('div', 'vitrine-editor-actions');
@@ -284,7 +294,6 @@
     panel.addEventListener('keydown', event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
       if (event.key === 'Enter' && event.target === field && !event.shiftKey && !event.isComposing) { event.preventDefault(); save(false,{row:1,column:0}); }
-      if (event.key === 'Tab' && event.target === field) { event.preventDefault(); save(false,{row:0,column:event.shiftKey ? -1 : 1}); return; }
       if (event.key === 'Tab') {
         const focusable = [field, ...buttons].filter(node => !node.disabled);
         const first = focusable[0], last = focusable[focusable.length - 1];
@@ -345,7 +354,7 @@
   document.addEventListener('click', event => {
     const cell = event.target.closest('td[data-edit-cell]');
     if (!cell) return;
-    if (cell.dataset.kind === 'time' || cell.dataset.derivedSource) {
+    if (cell.dataset.kind === 'time' || cell.dataset.derivedSource || cell.dataset.readonlyCell) {
       select(cell);
       cell.focus({preventScroll:true});
       if (cell.dataset.derivedSource) notifyDerivedCell();
@@ -459,6 +468,7 @@
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
     if (target.dataset.derivedSource) { notifyDerivedCell(); return; }
+    if (target.dataset.readonlyCell) { report('Запись доступна только для просмотра.', 'info'); return; }
     if (pendingCells.has(target) || active?.saving) { report('Дождитесь сохранения ячейки.'); return; }
     const value = event.clipboardData.getData('text/plain');
     let source = null;
@@ -469,7 +479,7 @@
     if (inEditor) {
       const editor = active;
       try {
-        const response = await fetch(window.DltkPaths.path('/api/vitrine/paste-check?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
+        const response = await fetch(window.DltkPaths.path('/api/vitrine/paste-check?'+scope),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
         const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'Не удалось проверить формат.');
         if (active !== editor) return;
         if (active.field.dataset.customSelect) active.field.value = value;

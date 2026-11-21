@@ -5,6 +5,7 @@ require_once __DIR__.'/Format.php';
 require_once __DIR__.'/VitrineClipboard.php';
 
 require_once __DIR__.'/WorkspaceVitrine.php';
+require_once __DIR__.'/WorkspaceClientCatalogGrid.php';
 
 function vitrine_status_key(string $name): string { return mb_strtolower(trim(preg_replace('/\s+/u',' ',$name))); }
 
@@ -57,6 +58,7 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
 }
 
 function vitrine_paste_check(): never {
+    if (vitrine_client_catalog_requested()) workspace_client_grid_endpoint(true);
     if ($_SERVER['REQUEST_METHOD']!=='POST') throw new ApiError('method','Метод не поддерживается.',405);
     $body=json_decode((string)file_get_contents('php://input',false,null,0,100000),true);
     if (!is_array($body) || !is_int($body['row']??null) || !is_string($body['column']??null) || !is_string($body['value']??null)) throw new ApiError('invalid_clipboard','Некорректные данные для вставки.');
@@ -68,6 +70,7 @@ function vitrine_paste_check(): never {
 }
 
 function vitrine_save_cell(): never {
+    if (vitrine_client_catalog_requested()) workspace_client_grid_endpoint();
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method','Метод не поддерживается.',405);
     $raw = file_get_contents('php://input', false, null, 0, 100000);
     $body = json_decode((string)$raw, true);
@@ -103,9 +106,10 @@ function render_vitrine(): void {
     $eventCursor=(int)wquery('SELECT COALESCE(MAX(id),0) FROM outbox_events')->fetchColumn();
     $error = null;
     $data = ['columns'=>[], 'rows'=>[], 'lastSuccess'=>null, 'sheetTitle'=>'ВЫВОЗ'];
-    try { $data = vitrine_data(); }
+    $clientCatalog = vitrine_client_catalog_requested();
+    try { $data = $clientCatalog ? workspace_client_grid_data() : vitrine_data(); }
     catch (Throwable $e) {
-        http_response_code(503);
+        http_response_code($clientCatalog && $e instanceof ApiError ? $e->httpStatus : 503);
         $error = $e instanceof ApiError ? $e->publicMessage : 'Не удалось прочитать данные. Проверьте доступность локальной базы и обновите страницу.';
     }
     header('Content-Type: text/html; charset=utf-8');
