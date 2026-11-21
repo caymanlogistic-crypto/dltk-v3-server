@@ -155,7 +155,9 @@
   function applyLines() {
     table.dataset.linePreset=state.lines;
     const preset=linePresets.find(item=>item.id===state.lines);
-    if(preset.color)table.style.setProperty('--vitrine-grid-line',preset.color);else table.style.removeProperty('--vitrine-grid-line');
+    const scroll=table.parentElement;
+    if(preset.color)scroll.style.setProperty('--vitrine-grid-line',preset.color);
+    else scroll.style.removeProperty('--vitrine-grid-line');
   }
   function commitWidth(letter,width) {
     const next={...state,widths:{...state.widths}};
