@@ -6,6 +6,16 @@
 .vitrine .vitrine-table tbody tr > td { background:var(--table-row); transition:none; }
 .vitrine .vitrine-table tbody tr.is-current-row > :is(td, th) { background:var(--table-row-hover); }
 .vitrine .vitrine-table tbody tr > td[data-edit-cell].is-current-cell { background:var(--table-row-selected); box-shadow:inset 0 0 0 2px var(--accent); }
+.vitrine .vitrine-table tbody tr > td[data-derived-source]:not(.is-current-cell) { background:color-mix(in srgb,var(--table-row) 92%,var(--text-muted)); }
+.vitrine .vitrine-table tbody tr.is-current-row > td[data-derived-source]:not(.is-current-cell) { background:color-mix(in srgb,var(--table-row-hover) 92%,var(--text-muted)); }
+.vitrine td[data-derived-source]:empty::before { content:"—"; color:var(--text-muted); }
+.vitrine .vitrine-derived-icon { position:relative; display:inline-flex; align-items:center; margin-inline-start:3px; vertical-align:middle; color:var(--text-muted); }
+.vitrine .vitrine-derived-icon svg { width:12px; height:12px; }
+.vitrine .vitrine-derived-icon:is(:hover,:focus-visible)::after {
+  content:attr(data-source-label); position:absolute; z-index:1; top:100%; inset-inline-start:0;
+  padding:3px 6px; border:1px solid var(--line); border-radius:2px; white-space:nowrap;
+  background:var(--surface-strong); color:var(--text-main); font:500 11px var(--font); pointer-events:none;
+}
 .vitrine td[data-edit-cell].just-saved, .vitrine td[data-edit-cell].just-remote { animation:vitrine-cell-saved 700ms ease-out; }
 .vitrine td[data-edit-cell].just-remote { --vitrine-save-flash:var(--p-error); }
 @keyframes vitrine-cell-saved {

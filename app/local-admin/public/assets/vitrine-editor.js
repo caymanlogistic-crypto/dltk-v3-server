@@ -1,9 +1,14 @@
 'use strict';
 (() => {
   let active = null;
+  const catalog = document.body.dataset.vitrineCatalog;
+  const scope = catalog ? 'catalog=' + encodeURIComponent(catalog) : 'table=' + encodeURIComponent(document.body.dataset.workspaceTable || 'vyvoz');
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   function report(text, tone = 'warning') {
     window.PlanexNotifications.show({ tone, message:text });
+  }
+  function notifyDerivedCell() {
+    report('Данные берутся из справочника. Эту ячейку нельзя редактировать.', 'info');
   }
   const loadError = document.querySelector('meta[name="vitrine-load-error"]')?.content;
   if (loadError) report(loadError,'danger');
@@ -64,7 +69,7 @@
   const pasteUndo = [];
   let undoing = false;
   function snapshot(cell) {
-    return {cell, value:cell.textContent, edited:cell.classList.contains('local-edited'), beforeRevision:Number(cell.dataset.revision)};
+    return {cell, value:cell.textContent, edited:cell.classList.contains('local-edited'), beforeRevision:Number(cell.dataset.revision), beforeHash:cell.dataset.base};
   }
   function rememberPaste(before, result) {
     pasteUndo.push({...before, revision:result.revision, baseHash:result.baseHash});
@@ -74,7 +79,7 @@
     const entry = pasteUndo.at(-1);
     if (!entry) return;
     const cell = window.VitrineRows?.resolveCell(entry.cell) || entry.cell;
-    if (Number(cell.dataset.revision) !== entry.revision) {
+    if (Number(cell.dataset.revision) !== entry.revision || (catalog === 'employees' && cell.dataset.base !== entry.baseHash)) {
       report('Ячейка изменилась после вставки. Отмена не выполнена.', 'danger'); return;
     }
     undoing = true; pendingCells.add(cell); cell.setAttribute('aria-busy','true');
@@ -82,7 +87,11 @@
       const result = await writeCell(cell,entry.value,!entry.edited,null,'undo');
       applyResult(cell,result); pasteUndo.pop();
       const previous = pasteUndo.findLast(item => item.cell === cell);
-      if (previous && previous.revision === entry.beforeRevision) previous.revision = result.revision;
+      if (previous && previous.revision === entry.beforeRevision &&
+          (catalog !== 'employees' || previous.baseHash === entry.beforeHash)) {
+        previous.revision = result.revision;
+        previous.baseHash = result.baseHash;
+      }
       const shown=window.VitrineRows&&!cell.isConnected?await window.VitrineRows.activate(cell):cell;
       if(shown){flash(shown);table?.classList.add('keyboard-navigation');select(shown);shown.focus({preventScroll:true});reveal(shown);}
     } catch(error) {
@@ -94,10 +103,14 @@
     cell.textContent = result.value;
     cell.dataset.original = result.original ?? '';
     cell.dataset.revision = String(result.revision);
+    if (catalog) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
+      sibling.dataset.revision = String(result.revision);
+      if (catalog === 'employees') sibling.dataset.base = result.baseHash;
+    }
     if(Object.hasOwn(result,'referenceId'))cell.dataset.referenceId=String(result.referenceId||'');
     if(Object.hasOwn(result,'catalogId'))cell.dataset.catalogId=String(result.catalogId||'');
     cell.dataset.base = result.baseHash;
-    if (cell.dataset.column === 'A') {
+    if (cell.dataset.kind === 'status') {
       cell.dataset.statusId = result.statusId ?? '';
       cell.dataset.statusColor = result.statusColor ?? '';
       cell.classList.toggle('has-status-color', Boolean(result.statusColor));
@@ -107,11 +120,17 @@
     cell.classList.toggle('local-edited', Boolean(result.edited));
     cell.classList.toggle('conflict', Boolean(result.conflict));
     window.VitrineDisplay?.paintCell(cell);
+    if (cell.dataset.derivedSource) {
+      cell.title = cell.dataset.derivedSource + '. ' + (result.value || cell.dataset.emptyLabel + '.');
+      if (result.value) cell.removeAttribute('aria-label');
+      else cell.setAttribute('aria-label', cell.dataset.emptyLabel);
+      return;
+    }
     cell.title = (result.edited ? 'Изменено в БД. ' : '') + 'Щелчок — изменить. ' + result.value;
     if (cell.dataset.kind === 'time') cell.title = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' + result.value;
   }
   async function writeCell(cell, value, reset = false, paste = null, editAction = null) {
-    const response = await fetch(window.DltkPaths.path('/api/vitrine/cell?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')), {
+    const response = await fetch(window.DltkPaths.path('/api/vitrine/cell?'+scope), {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
       body:JSON.stringify({row:Number(cell.dataset.row),column:cell.dataset.column,value,
@@ -120,6 +139,8 @@
     const result = await response.json();
     if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось сохранить ячейку.');
     if (typeof result.value !== 'string' || !Number.isInteger(result.revision) || typeof result.baseHash !== 'string') throw new Error('Неполный ответ сервера. Обновите страницу.');
+    if (result.dependentCell) window.VitrineRows?.patch(result.dependentCell);
+    if (result.reauthenticate) location.assign(window.DltkPaths?.path('/login') ?? '/login');
     return result;
   }
   function flash(cell, remote = false) {
@@ -128,9 +149,15 @@
   }
   function applyRemote(cell, result) {
     const changed = Number(result.revision) > Number(cell.dataset.revision || 0);
+    const valueChanged = cell.textContent !== result.value;
     applyResult(cell,result);
+    if (!changed || !cell.isConnected) return;
+    if (cell.dataset.derivedSource) {
+      if (valueChanged) flash(cell);
+      return;
+    }
     const actorId = Number(result.actorId);
-    if (changed && cell.isConnected && Number.isSafeInteger(actorId) && actorId > 0 && actorId !== Number(document.body.dataset.workspaceUser)) {
+    if (Number.isSafeInteger(actorId) && actorId > 0 && actorId !== Number(document.body.dataset.workspaceUser)) {
       flash(cell,true);
       window.dispatchEvent(new CustomEvent('vitrine-remote-change',{detail:{...result,cell}}));
     }
@@ -153,7 +180,7 @@
     panel.addEventListener('keydown',event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); save(false,{row:1,column:0}); }
-      if (event.key === 'Tab') { event.preventDefault(); save(false,{row:0,column:event.shiftKey ? -1 : 1}); }
+      if (event.key === 'Tab') event.preventDefault();
     });
     position(); field.focus(); field.setSelectionRange(field.value.length,field.value.length);
   }
@@ -190,6 +217,14 @@
     }
   }
   function open(cell) {
+    if (cell.hasAttribute('data-readonly-cell')) {
+      report(cell.dataset.readonlyCell, 'info');
+      return;
+    }
+    if (cell.dataset.derivedSource) {
+      notifyDerivedCell();
+      return;
+    }
     if (pendingCells.has(cell)) { report('Дождитесь сохранения ячейки.'); return; }
     if (active) {
       if (active.cell === cell) { active.field.focus(); return; }
@@ -200,21 +235,28 @@
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder => { folder.open = false; });
     const panel = element('section', 'vitrine-editor');
     panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-labelledby', 'vitrine-editor-title');
-    const title = element('h2', 'vitrine-editor-title', cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : ''));
-    title.id = 'vitrine-editor-title';
-    panel.append(title, element('p', 'vitrine-editor-note', 'Изменения сохраняются в БД'));
+    const catalogEditor = ['B', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz';
+    const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
+    if (catalogEditor || catalog) {
+      panel.setAttribute('aria-label', dialogName);
+    } else {
+      const title = element('h2', 'vitrine-editor-title', dialogName);
+      title.id = 'vitrine-editor-title';
+      panel.setAttribute('aria-labelledby', title.id);
+      panel.append(title, element('p', 'vitrine-editor-note', 'Изменения сохраняются в БД'));
+    }
 
     let choices = [];
     try { choices = JSON.parse(cell.dataset.choices || '[]'); } catch {}
     if (!Array.isArray(choices)) choices = [];
-    const isStatus = cell.dataset.column === 'A';
-    const useCustom = isStatus || choices.length > 0;
+    const isStatus = cell.dataset.kind === 'status';
+    const useCustom = isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0;
     let control = null;
     if (useCustom) {
-      const options = [{value:'',label:'Не выбран'}];
+      const required = cell.hasAttribute('data-required-choice');
+      const options = required ? [] : [{value:'',label:'Не выбран'}];
       const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(value => ({value:String(value),label:String(value)}));
-      if (cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
+      if (!required && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent);
     }
@@ -224,7 +266,8 @@
     field.setAttribute('aria-label', 'Значение ячейки');
     field.autocomplete = 'off'; field.maxLength = 20000; field.value = cell.textContent;
     if (useCustom) field.dataset.customSelect = 'true';
-    panel.append(control?.element || field, element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить и вниз · Tab — сохранить и вправо · Shift+Enter — новая строка'));
+    panel.append(control?.element || field);
+    if (!catalog) panel.append(element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить и вниз · Shift+Enter — новая строка'));
     const error = element('p', 'vitrine-editor-error');
     error.setAttribute('role', 'alert'); error.hidden = true; panel.append(error);
     const actions = element('div', 'vitrine-editor-actions');
@@ -258,7 +301,6 @@
     panel.addEventListener('keydown', event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
       if (event.key === 'Enter' && event.target === field && !event.shiftKey && !event.isComposing) { event.preventDefault(); save(false,{row:1,column:0}); }
-      if (event.key === 'Tab' && event.target === field) { event.preventDefault(); save(false,{row:0,column:event.shiftKey ? -1 : 1}); return; }
       if (event.key === 'Tab') {
         const focusable = [field, ...buttons].filter(node => !node.disabled);
         const first = focusable[0], last = focusable[focusable.length - 1];
@@ -312,14 +354,18 @@
     }
     event.preventDefault();
     event.stopImmediatePropagation();
-    report(active.saving ? 'Дождитесь сохранения ячейки.' : 'Сначала сохраните правку или нажмите «Отмена»');
+    if (event.target.closest('td[data-derived-source]')) notifyDerivedCell();
+    else report(active.saving ? 'Дождитесь сохранения ячейки.' : 'Сначала сохраните правку или нажмите «Отмена»');
     active.field.focus();
   }, true);
   document.addEventListener('click', event => {
     const cell = event.target.closest('td[data-edit-cell]');
     if (!cell) return;
-    if (cell.dataset.kind === 'time') { select(cell); cell.focus({preventScroll:true}); }
-    else open(cell);
+    if (cell.dataset.kind === 'time' || cell.dataset.derivedSource || cell.hasAttribute('data-readonly-cell')) {
+      select(cell);
+      cell.focus({preventScroll:true});
+      if (cell.dataset.derivedSource) notifyDerivedCell();
+    } else open(cell);
   });
   let cells = Array.from(document.querySelectorAll('td[data-edit-cell]'));
   const visibleRows = () => Array.from(document.querySelectorAll('[data-vitrine-row]')).map(row => Array.from(row.querySelectorAll('td[data-edit-cell]:not([hidden])')));
@@ -347,6 +393,7 @@
     window.dispatchEvent(new CustomEvent('vitrine-cell-selected'));
   }
   function eventCell(event) {
+    if (event.target.closest('.vitrine-derived-icon')) return null;
     return event.target === document.body || event.target.closest('.vitrine-table-scroll') ? selected : null;
   }
   select(selected);
@@ -427,6 +474,8 @@
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
+    if (target.dataset.derivedSource) { notifyDerivedCell(); return; }
+    if (target.hasAttribute('data-readonly-cell')) { report(target.dataset.readonlyCell, 'info'); return; }
     if (pendingCells.has(target) || active?.saving) { report('Дождитесь сохранения ячейки.'); return; }
     const value = event.clipboardData.getData('text/plain');
     let source = null;
@@ -437,7 +486,7 @@
     if (inEditor) {
       const editor = active;
       try {
-        const response = await fetch(window.DltkPaths.path('/api/vitrine/paste-check?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
+        const response = await fetch(window.DltkPaths.path('/api/vitrine/paste-check?'+scope),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
         const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'Не удалось проверить формат.');
         if (active !== editor) return;
         if (active.field.dataset.customSelect) active.field.value = value;

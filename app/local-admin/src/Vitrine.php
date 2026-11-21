@@ -5,6 +5,7 @@ require_once __DIR__.'/Format.php';
 require_once __DIR__.'/VitrineClipboard.php';
 
 require_once __DIR__.'/WorkspaceVitrine.php';
+require_once __DIR__.'/WorkspaceClientCatalogGrid.php';
 
 function vitrine_status_key(string $name): string { return mb_strtolower(trim(preg_replace('/\s+/u',' ',$name))); }
 
@@ -29,7 +30,9 @@ function vitrine_rows_endpoint(): never {
     $value = $_GET['ids'] ?? '';
     if (!is_string($value) || !preg_match('/^\d+(?:,\d+){0,99}$/D',$value)) throw new ApiError('invalid_rows','Запрашивайте от 1 до 100 строк.');
     $ids = array_map('intval',explode(',',$value));
-    $data = vitrine_data($ids);
+    $directory = vitrine_directory_requested();
+    $data = $directory ? workspace_directory_grid_data($directory,$ids) : vitrine_data($ids);
+    $catalogGrid = $data['catalogGrid'] ?? null;
     $columns=$data['columns']; $rows=$data['rows'];
     $escape=static fn(mixed $value): string => htmlspecialchars((string)$value,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
     $columnClass=static fn(array $column): string => mb_strtolower(trim($column['label']))==='время'?' vitrine-time-column':'';
@@ -38,6 +41,7 @@ function vitrine_rows_endpoint(): never {
 }
 
 function vitrine_validate_paste(array $body, array $data, array $target): void {
+    vitrine_require_manual_field($data['table'],$body['column']);
     $paste = $body['paste'] ?? null;
     if (!is_array($paste) || !array_key_exists('source',$paste)) throw new ApiError('invalid_clipboard','Не удалось определить содержимое буфера обмена.');
     $kind = $target['kinds'][$body['column']] ?? 'text';
@@ -56,6 +60,10 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
 }
 
 function vitrine_paste_check(): never {
+    $directory = vitrine_directory_requested();
+    if ($directory === 'clients') workspace_client_grid_endpoint(true);
+    if ($directory === 'employees') workspace_employee_grid_endpoint(true);
+    if ($directory !== null) throw new ApiError('readonly','Запись доступна только для просмотра.',403);
     if ($_SERVER['REQUEST_METHOD']!=='POST') throw new ApiError('method','Метод не поддерживается.',405);
     $body=json_decode((string)file_get_contents('php://input',false,null,0,100000),true);
     if (!is_array($body) || !is_int($body['row']??null) || !is_string($body['column']??null) || !is_string($body['value']??null)) throw new ApiError('invalid_clipboard','Некорректные данные для вставки.');
@@ -67,6 +75,10 @@ function vitrine_paste_check(): never {
 }
 
 function vitrine_save_cell(): never {
+    $directory = vitrine_directory_requested();
+    if ($directory === 'clients') workspace_client_grid_endpoint();
+    if ($directory === 'employees') workspace_employee_grid_endpoint();
+    if ($directory !== null) throw new ApiError('readonly','Запись доступна только для просмотра.',403);
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method','Метод не поддерживается.',405);
     $raw = file_get_contents('php://input', false, null, 0, 100000);
     $body = json_decode((string)$raw, true);
@@ -102,9 +114,10 @@ function render_vitrine(): void {
     $eventCursor=(int)wquery('SELECT COALESCE(MAX(id),0) FROM outbox_events')->fetchColumn();
     $error = null;
     $data = ['columns'=>[], 'rows'=>[], 'lastSuccess'=>null, 'sheetTitle'=>'ВЫВОЗ'];
-    try { $data = vitrine_data(); }
+    $directory = vitrine_directory_requested();
+    try { $data = $directory ? workspace_directory_grid_data($directory) : vitrine_data(); }
     catch (Throwable $e) {
-        http_response_code(503);
+        http_response_code($directory && $e instanceof ApiError ? $e->httpStatus : 503);
         $error = $e instanceof ApiError ? $e->publicMessage : 'Не удалось прочитать данные. Проверьте доступность локальной базы и обновите страницу.';
     }
     header('Content-Type: text/html; charset=utf-8');

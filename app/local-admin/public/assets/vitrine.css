@@ -3,6 +3,13 @@
 .vitrine .page-head { flex-shrink:0; }
 .vitrine .page-title { margin:0; }
 .vitrine .vitrine-summary { flex-shrink:0; flex-wrap:wrap; }
+.vitrine .vitrine-grid-region {
+  display:flex; flex:1; flex-direction:column;
+  min-block-size:0; min-inline-size:0; inline-size:100%; max-inline-size:100%;
+}
+.vitrine .vitrine-grid-region[data-grid-width="compact"] {
+  max-inline-size:min(100%, var(--vitrine-compact-width, 960px));
+}
 .vitrine .vitrine-table-card { flex:1; min-height:0; grid-template-rows:minmax(0,1fr); }
 .vitrine .vitrine-table { width:max-content; min-width:0; border-collapse:separate; border-spacing:0; }
 .vitrine .vitrine-data-column { width:190px; }
@@ -10,7 +17,28 @@
 .vitrine .vitrine-table :is(td, th) { box-sizing:border-box; width:190px; min-width:190px; max-width:190px; }
 .vitrine .vitrine-table .vitrine-time-column { width:var(--time-column-width,64px); min-width:var(--time-column-width,64px); max-width:var(--time-column-width,64px); text-align:center; }
 .vitrine .vitrine-table th.vitrine-time-column .vitrine-column-label { display:inline-block; overflow:visible; white-space:nowrap; }
-.vitrine .vitrine-table thead th { height:56px; text-transform:none; letter-spacing:0; white-space:normal; vertical-align:middle; }
+.vitrine .vitrine-table-scroll {
+  --vitrine-header-height:56px;
+  --vitrine-header-fill:linear-gradient(180deg,var(--tone-e0dbd2),var(--tone-d4cfc5));
+}
+.vitrine .vitrine-table-scroll::before {
+  content:"";
+  display:block;
+  position:sticky;
+  inset-block-start:0;
+  z-index:3;
+  box-sizing:border-box;
+  block-size:var(--vitrine-header-height);
+  margin-block-end:calc(-1 * var(--vitrine-header-height));
+  background:var(--vitrine-header-fill);
+  border-block-end:1px solid var(--vitrine-grid-line,var(--tone-b0a89c));
+  pointer-events:none;
+}
+.vitrine .vitrine-table thead th {
+  height:var(--vitrine-header-height);
+  background:var(--vitrine-header-fill);
+  text-transform:none; letter-spacing:0; white-space:normal; vertical-align:middle;
+}
 .vitrine .vitrine-column-letter { display:block; font-size:10px; color:var(--text-faint); font-weight:500; margin-bottom:4px; }
 .vitrine .vitrine-column-label { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
 .vitrine .vitrine-table .vitrine-row-number { width:76px; min-width:76px; max-width:76px; position:sticky; left:0; z-index:2; }

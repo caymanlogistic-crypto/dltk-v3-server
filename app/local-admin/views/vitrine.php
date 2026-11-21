@@ -2,9 +2,16 @@
 declare(strict_types=1);
 $escape = static fn(mixed $value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 $currentUser=workspace_current_user();
-$currentTable=$data['table']??workspace_table();
+$directory = $directory ?? null;
+$clientCatalog = $directory === 'clients';
+$catalogGrid = $data['catalogGrid'] ?? null;
+$viewUrl = static fn(string $path): string => function_exists('app_url_path') ? app_url_path($path) : $path;
+$currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Сотрудники','roles'=>'Роли'][$directory]] : workspace_table());
+$managementTable = $directory ? 'vyvoz' : $currentTable['slug'];
 $workspaceTables=workspace_tables();
-$preferences=workspace_preferences($currentTable);
+$preferences=empty($error) ? workspace_preferences($currentTable) : [];
+$defaultGridWidth = $currentTable['defaultGridWidth'] ?? 'full';
+$gridWidth = $preferences['settings']['layoutWidth'] ?? $defaultGridWidth;
 $columns = $data['columns'] ?? [];
 $rows = $data['rows'] ?? [];
 $columnClass = static fn(array $column): string => mb_strtolower(trim($column['label'])) === 'время' ? ' vitrine-time-column' : '';
@@ -32,18 +39,31 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
   <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-statuses.css'),ENT_QUOTES,'UTF-8') ?>">
   <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.css'),ENT_QUOTES,'UTF-8') ?>">
   <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.css'),ENT_QUOTES,'UTF-8') ?>">
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-scope.js')) ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-paths.js'),ENT_QUOTES,'UTF-8') ?>"></script><script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-notifications.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <?php if (!$directory): ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-statuses.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-select.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-grid.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <?php if (!$directory): ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-presence.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <?php endif; ?>
+  <?php if ($directory): ?>
+  <link rel="stylesheet" href="<?= $escape($viewUrl('/assets/vitrine-catalog.css')) ?>">
+  <?php endif; ?>
+  <?php if ($clientCatalog): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-catalog.js')) ?>"></script>
+  <?php elseif ($directory === 'employees'): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-employees.js')) ?>"></script>
+  <?php endif; ?>
 </head>
-<body class="vitrine" data-workspace-user="<?= (int)$currentUser['id'] ?>" data-workspace-table="<?= $escape($currentTable['slug']) ?>">
+<body class="vitrine<?= $clientCatalog ? ' vitrine-catalog-page' : '' ?>"<?php if ($directory): ?> data-vitrine-catalog="<?= $escape($directory) ?>"<?php endif; ?> data-workspace-user="<?= (int)$currentUser['id'] ?>" data-workspace-table="<?= $escape($currentTable['slug']) ?>">
 <a class="vitrine-skip" href="#workspace">К таблице</a>
 <div class="app app--workspace">
   <header class="vitrine-topbar">
@@ -57,11 +77,14 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
       <details class="vitrine-folder">
         <summary class="nav-item is-parent"><span class="nav-label">Система</span></summary>
         <div class="vitrine-dropdown">
-          <a class="nav-sub-item" href="<?= htmlspecialchars(app_url_path('/workspace?section=history&table='),ENT_QUOTES,'UTF-8') ?><?= $escape($currentTable['slug']) ?>">Журнал изменений</a>
-          <a class="nav-sub-item" href="<?= htmlspecialchars(app_url_path('/workspace?section=reports'),ENT_QUOTES,'UTF-8') ?>">Сводные</a>
-          <a class="nav-sub-item" href="<?= htmlspecialchars(app_url_path('/workspace?section=users'),ENT_QUOTES,'UTF-8') ?>">Сотрудники и роли</a>
+          <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>">Журнал изменений</a>
+          <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=reports')) ?>">Сводные</a>
+          <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=catalogs&table='.$managementTable)) ?>">Управление справочниками</a>
+          <?php if (!$directory): ?>
+          <a class="nav-sub-item" id="vitrine-open-statuses" href="#statuses">Статусы</a>
           <button class="nav-sub-item" type="button" id="workspace-new-row">Добавить строку</button>
-          <a class="nav-sub-item" href="<?= htmlspecialchars(app_url_path('/workspace?section=history&table='),ENT_QUOTES,'UTF-8') ?><?= $escape($currentTable['slug']) ?>" id="workspace-row-history">История строки</a>
+          <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>" id="workspace-row-history">История строки</a>
+          <?php endif; ?>
           <div class="nav-sub-item" title="<?= $escape(implode(', ',$currentUser['roles'])) ?>"><?= $escape($currentUser['login']) ?> <span data-workspace-live data-live-status aria-live="polite"></span></div>
           <button class="nav-sub-item" type="button" id="workspace-logout">Выйти</button>
         </div>
@@ -72,13 +95,19 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
           <a class="nav-sub-item" href="#column-order" data-display-open="columns">Порядок столбцов</a>
           <a class="nav-sub-item" href="#color-presets" data-display-open="colors">Цветовые пресеты</a>
           <a class="nav-sub-item" href="#table-lines" data-display-open="lines">Линии таблицы</a>
+          <a class="nav-sub-item" href="#grid-width" data-display-open="width">Ширина блока</a>
         </div>
       </details>
       <details class="vitrine-folder" id="vitrine-catalogs">
         <summary class="nav-item is-parent"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7V4h6l2 3h10v13H3z"/></svg><span class="nav-label">Справочники</span><svg class="vitrine-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
-          <a class="nav-sub-item" id="vitrine-open-statuses" href="#statuses"><span>Статусы</span></a>
-          <a class="nav-sub-item" href="<?= htmlspecialchars(app_url_path('/workspace?section=catalogs&table='),ENT_QUOTES,'UTF-8') ?><?= $escape($currentTable['slug']) ?>">Все справочники</a>
+          <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Сотрудники', 'roles'=>'Роли']; ?>
+          <?php if (!workspace_client_grid_catalog()) unset($directoryLinks['clients']); ?>
+          <?php if (!workspace_can('system','users','view')) unset($directoryLinks['employees']); ?>
+          <?php if (!workspace_can('system','roles','view')) unset($directoryLinks['roles']); ?>
+          <?php foreach ($directoryLinks as $key => $label): ?>
+          <a class="nav-sub-item<?= $directory === $key ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog='.$key)) ?>"<?= $directory === $key ? ' aria-current="page"' : '' ?>><?= $escape($label) ?></a>
+          <?php endforeach; ?>
         </div>
       </details>
     </nav>
@@ -87,19 +116,33 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
     <?php if (!empty($error)): ?>
     <section class="vitrine-message" role="alert"><h2>Не удалось загрузить таблицу</h2><p><?= $escape($error) ?></p><p>Обновите страницу, чтобы повторить загрузку.</p></section>
     <?php else: ?>
-    <section class="table-card vitrine-table-card" aria-label="Последние строки Вывоза">
+    <?php if ($clientCatalog): require __DIR__.'/vitrine-client-toolbar.php';
+    elseif ($directory): require __DIR__.'/vitrine-directory-toolbar.php'; endif; ?>
+    <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
+    <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
       <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
         <table class="table vitrine-table">
-          <caption class="vitrine-sr-only">Последние непустые строки листа <?= $escape($data['sheetTitle'] ?? 'ВЫВОЗ') ?>. Все исходные столбцы.</caption>
+          <caption class="vitrine-sr-only"><?php if ($directory): ?>Справочник «<?= $escape($currentTable['title']) ?>»<?php else: ?>Последние непустые строки листа <?= $escape($data['sheetTitle'] ?? 'ВЫВОЗ') ?>. Все исходные столбцы.<?php endif; ?></caption>
           <colgroup><col class="vitrine-row-column"><?php foreach ($columns as $column): ?><col class="vitrine-data-column<?= $columnClass($column) ?>" data-column="<?= $escape($column['letter']) ?>"><?php endforeach; ?></colgroup>
-          <thead><tr><th scope="col" class="vitrine-row-number">Строка</th><?php foreach ($columns as $column): ?><th scope="col" data-column="<?= $escape($column['letter']) ?>" class="<?= trim($columnClass($column)) ?>" title="<?= $escape($column['label']) ?>"><span class="vitrine-column-letter"><?= $escape($column['letter']) ?></span><span class="vitrine-column-label"><?= $escape($column['label']) ?></span></th><?php endforeach; ?></tr></thead>
+          <thead><tr><th scope="col" class="vitrine-row-number">Строка</th>
+            <?php foreach ($columns as $column): ?>
+              <th scope="col" data-column="<?= $escape($column['letter']) ?>" class="<?= trim($columnClass($column)) ?>" title="<?= $escape($column['label']) ?>">
+                <span class="vitrine-column-letter"><?= $escape($column['letter']) ?><?php if (isset($column['derivedSource'])): ?>
+                  <span class="vitrine-derived-icon" role="img" tabindex="0" aria-label="<?= $escape($column['derivedSource']) ?>" data-source-label="<?= $escape($column['derivedSource']) ?>">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7L12 5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19"/></svg>
+                  </span><?php endif; ?></span>
+                <span class="vitrine-column-label"><?= $escape($column['label']) ?></span>
+              </th>
+            <?php endforeach; ?>
+          </tr></thead>
           <tbody id="vitrine-rows">
           <?php require __DIR__.'/vitrine-rows.php'; ?>
           </tbody>
         </table>
-        <div class="vitrine-message vitrine-empty" id="vitrine-empty" <?= count($rows) ? 'hidden' : '' ?> role="status"><?= count($rows) ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.' ?></div>
+        <div class="vitrine-message vitrine-empty" id="vitrine-empty" <?= count($rows) ? 'hidden' : '' ?> role="status"><?= ($catalogGrid ? $catalogGrid['search'] !== '' : count($rows) > 0) ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.' ?></div>
       </div>
     </section>
+    </div>
     <?php endif; ?>
   </main>
 </div>

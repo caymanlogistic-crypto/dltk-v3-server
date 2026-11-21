@@ -24,6 +24,7 @@
     if(window.VitrineGrid?.editing()){error('Сначала сохраните правку или нажмите «Отмена».');return;}
     try{await post('/logout',{});for(let i=localStorage.length-1;i>=0;i--){const key=localStorage.key(i);if(key?.startsWith('dltk-v3.vitrine.display.v2.'+document.body.dataset.workspaceUser+'.'))localStorage.removeItem(key);}location.href=window.DltkPaths.path('/login');}catch(e){error(e.message);}
   });
+  if (document.body.dataset.vitrineCatalog) return;
   window.addEventListener('workspace:event',event=>{
     const envelope=event.detail,patch=envelope?.data;
     if(!patch)return;
