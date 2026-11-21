@@ -62,7 +62,8 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
 function vitrine_paste_check(): never {
     $directory = vitrine_directory_requested();
     if ($directory === 'clients') workspace_client_grid_endpoint(true);
-    if ($directory !== null) throw new ApiError('readonly','Для записи откройте карточку сотрудника.',403);
+    if ($directory === 'employees') workspace_employee_grid_endpoint(true);
+    if ($directory !== null) throw new ApiError('readonly','Запись доступна только для просмотра.',403);
     if ($_SERVER['REQUEST_METHOD']!=='POST') throw new ApiError('method','Метод не поддерживается.',405);
     $body=json_decode((string)file_get_contents('php://input',false,null,0,100000),true);
     if (!is_array($body) || !is_int($body['row']??null) || !is_string($body['column']??null) || !is_string($body['value']??null)) throw new ApiError('invalid_clipboard','Некорректные данные для вставки.');
@@ -76,7 +77,8 @@ function vitrine_paste_check(): never {
 function vitrine_save_cell(): never {
     $directory = vitrine_directory_requested();
     if ($directory === 'clients') workspace_client_grid_endpoint();
-    if ($directory !== null) throw new ApiError('readonly','Для записи откройте карточку сотрудника.',403);
+    if ($directory === 'employees') workspace_employee_grid_endpoint();
+    if ($directory !== null) throw new ApiError('readonly','Запись доступна только для просмотра.',403);
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method','Метод не поддерживается.',405);
     $raw = file_get_contents('php://input', false, null, 0, 100000);
     $body = json_decode((string)$raw, true);

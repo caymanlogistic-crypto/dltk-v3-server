@@ -69,7 +69,7 @@
   const pasteUndo = [];
   let undoing = false;
   function snapshot(cell) {
-    return {cell, value:cell.textContent, edited:cell.classList.contains('local-edited'), beforeRevision:Number(cell.dataset.revision)};
+    return {cell, value:cell.textContent, edited:cell.classList.contains('local-edited'), beforeRevision:Number(cell.dataset.revision), beforeHash:cell.dataset.base};
   }
   function rememberPaste(before, result) {
     pasteUndo.push({...before, revision:result.revision, baseHash:result.baseHash});
@@ -79,7 +79,7 @@
     const entry = pasteUndo.at(-1);
     if (!entry) return;
     const cell = window.VitrineRows?.resolveCell(entry.cell) || entry.cell;
-    if (Number(cell.dataset.revision) !== entry.revision) {
+    if (Number(cell.dataset.revision) !== entry.revision || (catalog === 'employees' && cell.dataset.base !== entry.baseHash)) {
       report('Ячейка изменилась после вставки. Отмена не выполнена.', 'danger'); return;
     }
     undoing = true; pendingCells.add(cell); cell.setAttribute('aria-busy','true');
@@ -87,7 +87,11 @@
       const result = await writeCell(cell,entry.value,!entry.edited,null,'undo');
       applyResult(cell,result); pasteUndo.pop();
       const previous = pasteUndo.findLast(item => item.cell === cell);
-      if (previous && previous.revision === entry.beforeRevision) previous.revision = result.revision;
+      if (previous && previous.revision === entry.beforeRevision &&
+          (catalog !== 'employees' || previous.baseHash === entry.beforeHash)) {
+        previous.revision = result.revision;
+        previous.baseHash = result.baseHash;
+      }
       const shown=window.VitrineRows&&!cell.isConnected?await window.VitrineRows.activate(cell):cell;
       if(shown){flash(shown);table?.classList.add('keyboard-navigation');select(shown);shown.focus({preventScroll:true});reveal(shown);}
     } catch(error) {
@@ -101,6 +105,7 @@
     cell.dataset.revision = String(result.revision);
     if (catalog) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
       sibling.dataset.revision = String(result.revision);
+      if (catalog === 'employees') sibling.dataset.base = result.baseHash;
     }
     if(Object.hasOwn(result,'referenceId'))cell.dataset.referenceId=String(result.referenceId||'');
     if(Object.hasOwn(result,'catalogId'))cell.dataset.catalogId=String(result.catalogId||'');
@@ -135,6 +140,7 @@
     if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось сохранить ячейку.');
     if (typeof result.value !== 'string' || !Number.isInteger(result.revision) || typeof result.baseHash !== 'string') throw new Error('Неполный ответ сервера. Обновите страницу.');
     if (result.dependentCell) window.VitrineRows?.patch(result.dependentCell);
+    if (result.reauthenticate) location.assign(window.DltkPaths?.path('/login') ?? '/login');
     return result;
   }
   function flash(cell, remote = false) {
@@ -247,9 +253,10 @@
     const useCustom = isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0;
     let control = null;
     if (useCustom) {
-      const options = [{value:'',label:'Не выбран'}];
+      const required = cell.hasAttribute('data-required-choice');
+      const options = required ? [] : [{value:'',label:'Не выбран'}];
       const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(value => ({value:String(value),label:String(value)}));
-      if (cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
+      if (!required && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent);
     }

@@ -29,27 +29,36 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     $archive = $employees && ($_GET['archive'] ?? null) === '1';
     $search = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']),0,160) : '';
     $entries = $employees ? workspace_employee_records(active: !$archive) : workspace_employee_roles();
+    $scope = $employees ? workspace_employee_editor_scope() : null;
+    $roleChoices = $scope === null ? [] : array_column(workspace_employee_role_options($scope),'name');
     $rowIds = [];
     $rows = [];
     $requested = $requestedRows !== null ? array_fill_keys($requestedRows,true) : null;
     foreach ($entries as $entry) {
-        $values = ['A'=>$entry['name']];
-        if ($employees) $values += [
-            'B'=>$entry['login'], 'C'=>'Скрыт', 'D'=>$entry['email'],
-            'E'=>implode(', ',array_column($entry['roles'],'name')),
-        ];
+        $values = $employees ? workspace_employee_grid_values($entry) : ['A'=>$entry['name']];
         if ($search !== '' && mb_stripos(implode(' ',array_diff_key($values,['C'=>true])),$search) === false) continue;
         $id = $entry['id'];
         $rowIds[] = $id;
         if ($requested === null ? count($rows)>=100 : !isset($requested[$id])) continue;
-        $rows[] = [
+        $row = [
             'rowIndex'=>$id, 'rowLabel'=>count($rowIds), 'values'=>$values,
             'kinds'=>array_fill_keys(array_keys($values),'text'),
         ];
+        if ($employees) {
+            $row['baseHash'] = workspace_employee_revision($entry);
+            foreach (array_keys($values) as $column) {
+                $row['readOnly'][$column] = workspace_employee_grid_readonly($column,$scope,$entry);
+                $row['edits'][$column] = ['revision'=>$entry['authVersion']];
+            }
+            if ($row['readOnly']['E'] === null) {
+                $row['choices']['E'] = $roleChoices;
+                $row['requiredChoices']['E'] = true;
+            }
+        }
+        $rows[] = $row;
     }
     return [
         'table'=>$model, 'columns'=>$model['columns'], 'rows'=>$rows, 'rowIds'=>$rowIds,
-        'palette'=>workspace_palette(), 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>false,
-            'employeeEditable'=>$employees && workspace_employee_editor_scope() !== null],
+        'palette'=>workspace_palette(), 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$scope !== null],
     ];
 }

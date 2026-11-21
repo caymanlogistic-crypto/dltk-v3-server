@@ -93,22 +93,35 @@ function workspace_employees_endpoint(string $method): never {
     json_response(['user'=>workspace_employee_save(wbody())]);
 }
 
-function workspace_employee_save(array $input): array {
-    foreach (['name','login','email','password'] as $key) {
-        if (isset($input[$key]) && !is_string($input[$key])) throw new ApiError('invalid_user','Проверьте поля сотрудника.');
+function workspace_employee_profile_value(string $field, mixed $value): string {
+    if (!is_string($value)) throw new ApiError('invalid_user','Проверьте поля сотрудника.');
+    $value = trim($value);
+    if ($field === 'name' && ($value === '' || mb_strlen($value)>160 || preg_match('/[[:cntrl:]]/u',$value))) {
+        throw new ApiError('invalid_user','Укажите ФИО длиной до 160 символов.');
     }
-    $name = trim($input['name'] ?? '');
-    $login = strtolower(trim($input['login'] ?? ''));
-    $password = $input['password'] ?? '';
-    if ($name === '' || mb_strlen($name)>160 || !preg_match('/^[a-z0-9_.-]{2,60}$/D',$login)) {
-        throw new ApiError('invalid_user','Укажите ФИО и логин из 2–60 латинских букв, цифр, точек, дефисов или подчёркиваний.');
+    if ($field === 'login') {
+        $value = strtolower($value);
+        if (!preg_match('/^[a-z0-9_.-]{2,60}$/D',$value)) {
+            throw new ApiError('invalid_user','Укажите логин из 2–60 латинских букв, цифр, точек, дефисов или подчёркиваний.');
+        }
     }
-    if ($password !== '' && (mb_strlen($password)<8 || strlen($password)>72 || str_contains($password,"\0"))) {
-        throw new ApiError('invalid_password','Пароль должен содержать от 8 символов и занимать до 72 байт.');
-    }
-    $emailInput = isset($input['email']) ? trim($input['email']) : null;
-    if ($emailInput !== null && $emailInput !== '' && (strlen($emailInput)>254 || !filter_var($emailInput,FILTER_VALIDATE_EMAIL))) {
+    if ($field === 'email' && $value !== '' && (strlen($value)>254 || !filter_var($value,FILTER_VALIDATE_EMAIL))) {
         throw new ApiError('invalid_email','Укажите корректный email.');
+    }
+    return $value;
+}
+
+function workspace_employee_save(array $input, bool $cellEdit = false): array {
+    $profile = [];
+    foreach (['name','login','email'] as $field) {
+        if (isset($input[$field])) $profile[$field] = workspace_employee_profile_value($field,$input[$field]);
+    }
+    if (!$cellEdit && !isset($profile['name'],$profile['login'])) {
+        throw new ApiError('invalid_user','Укажите ФИО и логин.');
+    }
+    $password = $input['password'] ?? '';
+    if (!is_string($password) || ($password !== '' && (mb_strlen($password)<8 || strlen($password)>72 || str_contains($password,"\0")))) {
+        throw new ApiError('invalid_password','Пароль должен содержать от 8 символов и занимать до 72 байт.');
     }
     $id = $input['id'] ?? null;
     if ($id !== null && (!is_int($id) || $id<1)) throw new ApiError('invalid_user','Некорректный идентификатор сотрудника.');
@@ -118,6 +131,7 @@ function workspace_employee_save(array $input): array {
         throw new ApiError('invalid_role','Выберите одну роль из справочника.');
     }
     $newRole = $roleIds[0] ?? null;
+    if ($cellEdit && $id === null) throw new ApiError('invalid_user','Сотрудник не указан.');
     if ($id === null && ($password === '' || $newRole === null)) {
         throw new ApiError('required_fields','Для нового сотрудника укажите пароль и роль.');
     }
@@ -131,8 +145,12 @@ function workspace_employee_save(array $input): array {
         $old = $id === null ? null : (workspace_employee_records($id)[0] ?? null);
         if ($id !== null && !$old) throw new ApiError('not_found','Сотрудник не найден.',404);
         if ($old && !workspace_employee_can_edit($scope,$old)) throw new ApiError('forbidden','Для этой учётной записи нет доступа.',403);
-        if ($old && isset($input['revision']) && $input['revision'] !== workspace_employee_revision($old)) {
-            throw new ApiError('employee_conflict','Сотрудник уже изменён. Скопируйте черновик и откройте карточку заново.',409);
+        if ($cellEdit && !$old['active']) throw new ApiError('readonly','Сотрудник в архиве.',403);
+        if ($old && ($cellEdit || isset($input['revision'])) && ($input['revision'] ?? null) !== workspace_employee_revision($old)) {
+            $message = $cellEdit
+                ? 'Данные сотрудника изменились. Скопируйте черновик и обновите страницу.'
+                : 'Сотрудник уже изменён. Скопируйте черновик и откройте карточку заново.';
+            throw new ApiError('employee_conflict',$message,409);
         }
         $previousRoles = $old ? array_column($old['roles'],'id') : [];
         $nextRoles = $newRole === null ? $previousRoles : [$newRole];
@@ -144,7 +162,9 @@ function workspace_employee_save(array $input): array {
         if ($id === workspace_current_user()['id'] && (!$active || $roleChanged)) {
             throw new ApiError('own_account','Свою роль и активность изменить нельзя.');
         }
-        $email = $emailInput ?? ($old['email'] ?? '');
+        $name = $profile['name'] ?? $old['name'];
+        $login = $profile['login'] ?? $old['login'];
+        $email = $profile['email'] ?? ($old['email'] ?? '');
         if ($old) {
             $invalidate = $passwordHash !== null || $roleChanged || $active !== $old['active'] || $login !== $old['login'];
             wquery('UPDATE users SET login=?,name=?,active=?,auth_version=auth_version+?,password_hash=COALESCE(?,password_hash) WHERE id=?',
@@ -170,7 +190,7 @@ function workspace_employee_save(array $input): array {
             'action'=>$old ? 'edit' : 'create']);
         workspace_event('users.changed',['id'=>$id]);
         workspace_db()->commit();
-        return workspace_employee_form_data($after);
+        return $cellEdit ? $after : workspace_employee_form_data($after);
     } catch (Throwable $error) {
         if (workspace_db()->inTransaction()) workspace_db()->rollBack();
         if ($error instanceof PDOException && $error->getCode()==='23000') {
