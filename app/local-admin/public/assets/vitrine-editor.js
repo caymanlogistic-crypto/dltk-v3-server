@@ -211,8 +211,8 @@
     }
   }
   function open(cell) {
-    if (cell.dataset.readonlyCell) {
-      report('Запись доступна только для просмотра.', 'info');
+    if (cell.hasAttribute('data-readonly-cell')) {
+      report(cell.dataset.readonlyCell, 'info');
       return;
     }
     if (cell.dataset.derivedSource) {
@@ -354,7 +354,7 @@
   document.addEventListener('click', event => {
     const cell = event.target.closest('td[data-edit-cell]');
     if (!cell) return;
-    if (cell.dataset.kind === 'time' || cell.dataset.derivedSource || cell.dataset.readonlyCell) {
+    if (cell.dataset.kind === 'time' || cell.dataset.derivedSource || cell.hasAttribute('data-readonly-cell')) {
       select(cell);
       cell.focus({preventScroll:true});
       if (cell.dataset.derivedSource) notifyDerivedCell();
@@ -468,7 +468,7 @@
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
     if (target.dataset.derivedSource) { notifyDerivedCell(); return; }
-    if (target.dataset.readonlyCell) { report('Запись доступна только для просмотра.', 'info'); return; }
+    if (target.hasAttribute('data-readonly-cell')) { report(target.dataset.readonlyCell, 'info'); return; }
     if (pendingCells.has(target) || active?.saving) { report('Дождитесь сохранения ячейки.'); return; }
     const value = event.clipboardData.getData('text/plain');
     let source = null;

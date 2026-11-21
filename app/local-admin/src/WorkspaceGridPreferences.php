@@ -20,7 +20,7 @@ function workspace_merge_preferences(array $current, array $changes): array {
 }
 
 function workspace_read_preferences(array $grid, int $userId): array {
-    if (isset($grid['catalogId'])) {
+    if (isset($grid['catalogId']) || isset($grid['directoryKey'])) {
         $key = workspace_catalog_preferences_key($grid, $userId);
         $value = wquery('SELECT value FROM workspace_meta WHERE `key`=?', [$key])->fetchColumn();
         return $value === false ? ['settings'=>null, 'version'=>0] : json_decode($value, true);
@@ -30,6 +30,7 @@ function workspace_read_preferences(array $grid, int $userId): array {
 }
 
 function workspace_catalog_preferences_key(array $grid, int $userId): string {
+    if (isset($grid['directoryKey'])) return 'directory_preferences_'.$userId.'_'.$grid['directoryKey'];
     return 'catalog_preferences_'.$userId.'_'.$grid['catalogId'];
 }
 
@@ -74,7 +75,7 @@ function workspace_preferences(array $grid, ?array $body = null): array {
         $settings = $patch === null ? ($body['settings'] ?? null) : workspace_merge_preferences($previous['settings'] ?? $defaults, $patch);
         workspace_validate_preferences($settings, $columns);
         $result = ['settings'=>$settings, 'version'=>$version+1];
-        if (isset($grid['catalogId'])) {
+        if (isset($grid['catalogId']) || isset($grid['directoryKey'])) {
             wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [workspace_catalog_preferences_key($grid, $userId), wjson($result)]);
         } else {
             wquery('INSERT INTO user_view_preferences(user_id,table_id,settings,version) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE settings=VALUES(settings),version=VALUES(version)', [$userId, $grid['id'], wjson($settings), $result['version']]);

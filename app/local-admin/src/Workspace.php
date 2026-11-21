@@ -2,6 +2,8 @@
 declare(strict_types=1);
 require_once __DIR__.'/WorkspaceCatalogs.php';
 require_once __DIR__.'/WorkspaceClientCatalogGrid.php';
+require_once __DIR__.'/WorkspaceEmployees.php';
+require_once __DIR__.'/WorkspaceDirectoryGrid.php';
 require_once __DIR__.'/WorkspaceGridPreferences.php';
 
 function workspace_database_dsn(array $config): string {
@@ -98,8 +100,15 @@ function workspace_tables(): array {
 function workspace_api(string $path): never {
     $method=$_SERVER['REQUEST_METHOD'];if(!in_array($method,['GET','POST'],true))throw new ApiError('method','Метод не поддерживается.',405);
     if($path==='/api/workspace/bootstrap'&&$method==='GET')json_response(['user'=>workspace_current_user(),'tables'=>workspace_tables(),'catalogs'=>workspace_catalogs(),'roles'=>wquery('SELECT id,name FROM roles ORDER BY id')->fetchAll(),'policyMode'=>'open','googleSyncEnabled'=>false]);
-    if($path==='/api/workspace/manifest'&&$method==='GET')json_response(['rowIds'=>vitrine_client_catalog_requested() ? workspace_client_grid_data([])['rowIds'] : workspace_manifest(workspace_table())]);
-    if($path==='/api/workspace/preferences'){ $t=vitrine_client_catalog_requested() ? workspace_client_grid_model() : workspace_table();json_response(workspace_preferences($t,$method==='POST'?wbody():null)); }
+    if($path==='/api/workspace/manifest'&&$method==='GET'){
+        $directory=vitrine_directory_requested();
+        json_response(['rowIds'=>$directory ? workspace_directory_grid_data($directory,[])['rowIds'] : workspace_manifest(workspace_table())]);
+    }
+    if($path==='/api/workspace/preferences'){
+        $directory=vitrine_directory_requested();
+        $model=$directory ? workspace_directory_grid_model($directory) : workspace_table();
+        json_response(workspace_preferences($model,$method==='POST'?wbody():null));
+    }
     if($path==='/api/workspace/ws-ticket'&&$method==='POST'){
         $ticket=bin2hex(random_bytes(32));$u=workspace_current_user();wquery('DELETE FROM ws_tickets WHERE expires_at<UTC_TIMESTAMP()-INTERVAL 1 HOUR');wquery('INSERT INTO ws_tickets(token_hash,user_id,expires_at) VALUES(?,?,UTC_TIMESTAMP(6)+INTERVAL 30 SECOND)',[hash('sha256',$ticket),$u['id']]);
         json_response(['ticket'=>$ticket,'url'=>runtime_config()['WS_URL'],'cursor'=>(int)wquery('SELECT COALESCE(MAX(id),0) FROM outbox_events')->fetchColumn(),'userId'=>$u['id']]);
@@ -122,19 +131,7 @@ function workspace_api(string $path): never {
         foreach($rows as $r){if($r['table_id']&&!workspace_can('table',(string)$r['table_id'],'view',(int)$r['table_id']))continue;$events[]=['id'=>(int)$r['id'],'createdAt'=>utc_iso($r['created_at']),'actorName'=>$r['actor_name'],'actorId'=>$r['actor_id'],'tableTitle'=>$r['table_title']??'Система / справочники','rowNumber'=>$r['row_num'],'recordId'=>$r['record_id'],'columnLabel'=>$r['column_label'],'column'=>$r['field_key'],'beforeValue'=>json_decode($r['before_value']??'null',true),'afterValue'=>json_decode($r['after_value']??'null',true),'action'=>$r['action'],'category'=>$r['category'],'operationId'=>$r['operation_id']];}
         json_response(['events'=>$events,'nextCursor'=>$more&&$rows?(int)end($rows)['id']:null]);
     }
-    if($path==='/api/workspace/users'){
-        if($method==='GET'){$users=[];foreach(wquery('SELECT id FROM users ORDER BY id')->fetchAll(PDO::FETCH_COLUMN) as $id)$users[]=workspace_user((int)$id);json_response(['users'=>$users,'roles'=>wquery('SELECT id,name FROM roles ORDER BY id')->fetchAll()]);}
-        workspace_require('system','users','edit');$b=wbody();$login=mb_strtolower(trim((string)($b['login']??'')));$name=trim((string)($b['name']??''));$ids=$b['roleIds']??[];$password=(string)($b['password']??'');
-        if(!preg_match('/^[a-z0-9_.-]{2,60}$/D',$login)||$name===''||mb_strlen($name)>160||!is_array($ids)||!count($ids)||($password!==''&&(strlen($password)<8||strlen($password)>256)))throw new ApiError('invalid_user','Укажите имя, логин латиницей, роль и пароль от 8 символов для нового пользователя.');
-        $valid=array_map('intval',wquery('SELECT id FROM roles')->fetchAll(PDO::FETCH_COLUMN));$ids=array_values(array_unique(array_map('intval',$ids)));if(array_diff($ids,$valid))throw new ApiError('invalid_role','Неизвестная роль.');
-        workspace_begin();try{
-            $old=isset($b['id'])?workspace_user((int)$b['id']):null;if(isset($b['id'])&&!$old)throw new ApiError('not_found','Пользователь не найден.',404);$active=(bool)($b['active']??true);
-            if(!$old&&$password==='')throw new ApiError('password_required','Задайте пароль нового пользователя.');
-            if($old){wquery('UPDATE users SET login=?,name=?,active=?,auth_version=auth_version+? WHERE id=?',[$login,$name,(int)$active,($password!==''||!$active)?1:0,$old['id']]);$id=$old['id'];if($password!=='')wquery('UPDATE users SET password_hash=? WHERE id=?',[password_hash($password,PASSWORD_DEFAULT),$id]);wquery('DELETE FROM user_roles WHERE user_id=?',[$id]);}
-            else{wquery('INSERT INTO users(login,name,password_hash,active) VALUES(?,?,?,?)',[$login,$name,password_hash($password,PASSWORD_DEFAULT),(int)$active]);$id=(int)workspace_db()->lastInsertId();}
-            foreach($ids as $role)wquery('INSERT INTO user_roles VALUES(?,?)',[$id,$role]);workspace_audit(['category'=>'management','label'=>'Пользователь','before'=>$old?['id'=>$id,'login'=>$old['login'],'name'=>$old['name'],'active'=>$old['active'],'roles'=>$old['roles']]:null,'after'=>['id'=>$id,'login'=>$login,'name'=>$name,'active'=>$active,'roleIds'=>$ids,'passwordChanged'=>$password!==''],'action'=>$old?'edit':'create']);workspace_event('users.changed',['id'=>$id]);workspace_db()->commit();json_response(['user'=>workspace_user($id)]);
-        }catch(Throwable $e){if(workspace_db()->inTransaction())workspace_db()->rollBack();if($e instanceof PDOException&&$e->getCode()==='23000')throw new ApiError('duplicate_login','Этот логин уже используется.',409);throw $e;}
-    }
+    if($path==='/api/workspace/users')workspace_employees_endpoint($method);
     if($path==='/api/workspace/catalogs')workspace_catalogs_endpoint($method);
     if($path==='/api/workspace/reports'&&$method==='GET'){
         $tables=workspace_tables();json_response(['tables'=>$tables,'totals'=>['tables'=>count($tables),'rows'=>array_sum(array_column($tables,'rowCount')),'changes'=>(int)wquery('SELECT COUNT(*) FROM change_history')->fetchColumn()],'byUser'=>wquery("SELECT actor_name AS name,COUNT(*) AS count FROM change_history GROUP BY actor_name ORDER BY count DESC")->fetchAll(),'byTable'=>wquery('SELECT t.title,COUNT(h.id) AS count FROM table_definitions t LEFT JOIN change_history h ON h.table_id=t.id GROUP BY t.id ORDER BY t.id')->fetchAll()]);

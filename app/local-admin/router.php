@@ -14,6 +14,11 @@ try {
     }
     workspace_auth_route($path);
     if(str_starts_with($path,'/api/workspace/'))workspace_api($path);
+    if ($path === '/workspace' && ($_GET['section'] ?? null) === 'users') {
+        $url = '/vitrine?catalog=employees';
+        header('Location: '.(function_exists('app_url_path') ? app_url_path($url) : $url),true,302);
+        return;
+    }
     if($path==='/workspace'){$currentUser=workspace_current_user();require __DIR__.'/views/workspace.php';return;}
     if($path==='/'||$path==='/index.php'){header('Location: '.app_url_path('/vitrine?table=vyvoz'),true,302);return;}
     if(in_array($path,['/api/vitrine/rows','/api/vitrine/paste-check','/api/vitrine/statuses','/api/vitrine/cell','/vitrine','/vitrine/'],true)){

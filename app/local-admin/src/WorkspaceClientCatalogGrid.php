@@ -1,12 +1,6 @@
 <?php
 declare(strict_types=1);
 
-function vitrine_client_catalog_requested(): bool {
-    if (!isset($_GET['catalog'])) return false;
-    if ($_GET['catalog'] !== 'clients') throw new ApiError('not_found', 'Страница справочника не найдена.', 404);
-    return true;
-}
-
 function workspace_client_grid_catalog(): ?array {
     static $catalogs = [];
     if (!array_key_exists('clients', $catalogs)) {
