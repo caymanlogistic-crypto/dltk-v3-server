@@ -220,16 +220,22 @@
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder => { folder.open = false; });
     const panel = element('section', 'vitrine-editor');
     panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-labelledby', 'vitrine-editor-title');
-    const title = element('h2', 'vitrine-editor-title', cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : ''));
-    title.id = 'vitrine-editor-title';
-    panel.append(title, element('p', 'vitrine-editor-note', 'Изменения сохраняются в БД'));
+    const catalogEditor = ['B', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz';
+    const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
+    if (catalogEditor) {
+      panel.setAttribute('aria-label', dialogName);
+    } else {
+      const title = element('h2', 'vitrine-editor-title', dialogName);
+      title.id = 'vitrine-editor-title';
+      panel.setAttribute('aria-labelledby', title.id);
+      panel.append(title, element('p', 'vitrine-editor-note', 'Изменения сохраняются в БД'));
+    }
 
     let choices = [];
     try { choices = JSON.parse(cell.dataset.choices || '[]'); } catch {}
     if (!Array.isArray(choices)) choices = [];
     const isStatus = cell.dataset.column === 'A';
-    const useCustom = isStatus || choices.length > 0;
+    const useCustom = isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0;
     let control = null;
     if (useCustom) {
       const options = [{value:'',label:'Не выбран'}];
