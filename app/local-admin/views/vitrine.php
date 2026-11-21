@@ -7,7 +7,9 @@ $catalogGrid = $data['catalogGrid'] ?? null;
 $viewUrl = static fn(string $path): string => function_exists('app_url_path') ? app_url_path($path) : $path;
 $currentTable = $data['table'] ?? ($clientCatalog ? ['id'=>0,'slug'=>'catalog-clients','title'=>'Клиенты'] : workspace_table());
 $workspaceTables=workspace_tables();
-$preferences=$clientCatalog?[]:workspace_preferences($currentTable);
+$preferences=empty($error) ? workspace_preferences($currentTable) : [];
+$defaultGridWidth = $currentTable['defaultGridWidth'] ?? 'full';
+$gridWidth = $preferences['settings']['layoutWidth'] ?? $defaultGridWidth;
 $columns = $data['columns'] ?? [];
 $rows = $data['rows'] ?? [];
 $columnClass = static fn(array $column): string => mb_strtolower(trim($column['label'])) === 'время' ? ' vitrine-time-column' : '';
@@ -35,19 +37,16 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
   <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-statuses.css'),ENT_QUOTES,'UTF-8') ?>">
   <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.css'),ENT_QUOTES,'UTF-8') ?>">
   <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.css'),ENT_QUOTES,'UTF-8') ?>">
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-scope.js')) ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-paths.js'),ENT_QUOTES,'UTF-8') ?>"></script><script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-notifications.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine.js'),ENT_QUOTES,'UTF-8') ?>"></script>
-  <?php if (!$clientCatalog): ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.js'),ENT_QUOTES,'UTF-8') ?>"></script>
-  <?php endif; ?>
   <?php if (!$clientCatalog): ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-statuses.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-select.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js'),ENT_QUOTES,'UTF-8') ?>"></script>
-  <?php if (!$clientCatalog): ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js'),ENT_QUOTES,'UTF-8') ?>"></script>
-  <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-grid.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (!$clientCatalog): ?>
@@ -83,16 +82,15 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
           <button class="nav-sub-item" type="button" id="workspace-logout">Выйти</button>
         </div>
       </details>
-      <?php if (!$clientCatalog): ?>
       <details class="vitrine-folder" id="vitrine-display-menu">
         <summary class="nav-item is-parent"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7V4h6l2 3h10v13H3z"/></svg><span class="nav-label">Отображение данных</span><svg class="vitrine-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></summary>
         <div class="vitrine-dropdown" aria-label="Отображение данных">
           <a class="nav-sub-item" href="#column-order" data-display-open="columns">Порядок столбцов</a>
           <a class="nav-sub-item" href="#color-presets" data-display-open="colors">Цветовые пресеты</a>
           <a class="nav-sub-item" href="#table-lines" data-display-open="lines">Линии таблицы</a>
+          <a class="nav-sub-item" href="#grid-width" data-display-open="width">Ширина блока</a>
         </div>
       </details>
-      <?php endif; ?>
       <details class="vitrine-folder" id="vitrine-catalogs">
         <summary class="nav-item is-parent"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7V4h6l2 3h10v13H3z"/></svg><span class="nav-label">Справочники</span><svg class="vitrine-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
@@ -111,6 +109,7 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
     <?php if (!empty($error)): ?>
     <section class="vitrine-message" role="alert"><h2>Не удалось загрузить таблицу</h2><p><?= $escape($error) ?></p><p>Обновите страницу, чтобы повторить загрузку.</p></section>
     <?php else: ?>
+    <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <?php if ($catalogGrid): require __DIR__.'/vitrine-client-toolbar.php'; endif; ?>
     <section class="table-card vitrine-table-card" aria-label="<?= $clientCatalog ? 'Справочник «Клиенты»' : 'Последние строки Вывоза' ?>">
       <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
@@ -135,6 +134,7 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
         <div class="vitrine-message vitrine-empty" id="vitrine-empty" <?= count($rows) ? 'hidden' : '' ?> role="status"><?= ($catalogGrid ? $catalogGrid['search'] !== '' : count($rows) > 0) ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.' ?></div>
       </div>
     </section>
+    </div>
     <?php endif; ?>
   </main>
 </div>

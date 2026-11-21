@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/WorkspaceCatalogs.php';
+require_once __DIR__.'/WorkspaceClientCatalogGrid.php';
+require_once __DIR__.'/WorkspaceGridPreferences.php';
 
 function workspace_database_dsn(array $config): string {
     $endpoint=($config['DB_SOCKET']??'')!==''?'unix_socket='.$config['DB_SOCKET']:'host='.$config['DB_HOST'].';port='.$config['DB_PORT'];
@@ -93,41 +95,11 @@ function workspace_audit(array $e): int {
 function workspace_tables(): array {
     $out=[];foreach(wquery('SELECT t.id,t.slug,t.title,t.is_demo,COUNT(r.id) AS rowCount FROM table_definitions t LEFT JOIN records r ON r.table_id=t.id AND r.archived=FALSE GROUP BY t.id ORDER BY t.id')->fetchAll() as $t){if(workspace_can('table',(string)$t['id'],'view',(int)$t['id']))$out[]=['id'=>(int)$t['id'],'slug'=>$t['slug'],'title'=>$t['title'],'isDemo'=>(bool)$t['is_demo'],'rowCount'=>(int)$t['rowCount']];}return $out;
 }
-function workspace_merge_preferences(array $current,array $changes): array {
-    if(array_diff(array_keys($changes),['order','hidden','widths','preset','lines']))throw new ApiError('invalid_preferences','Неизвестный параметр отображения.');
-    foreach($changes as $key=>$value){
-        if($key==='widths'){
-            if(!is_array($value))throw new ApiError('invalid_preferences','Некорректные размеры столбцов.');
-            $current['widths']=$current['widths']??[];
-            foreach($value as $column=>$width){if($width===null)unset($current['widths'][$column]);else $current['widths'][$column]=$width;}
-        }else $current[$key]=$value;
-    }
-    return $current;
-}
-function workspace_preferences(array $t,?array $body=null): array {
-    $u=workspace_current_user();$p=wquery('SELECT settings,version FROM user_view_preferences WHERE user_id=? AND table_id=?',[$u['id'],$t['id']])->fetch();
-    if($body===null)return ['settings'=>$p?json_decode($p['settings'],true):null,'version'=>$p?(int)$p['version']:0];
-    $patch=$body['changes']??null;if($patch!==null&&!is_array($patch))throw new ApiError('invalid_preferences','Некорректные изменения настроек.');
-    $defaults=['order'=>array_column($t['columns'],'letter'),'hidden'=>[],'widths'=>[],'preset'=>'base','lines'=>'base'];
-    $settings=$patch!==null?workspace_merge_preferences($p?json_decode($p['settings'],true):$defaults,$patch):($body['settings']??null);if(!is_array($settings)||strlen(wjson($settings))>40000)throw new ApiError('invalid_preferences','Некорректные настройки отображения.');
-    $allowed=array_column($t['columns'],'letter');
-    foreach(['order','hidden'] as $key)if(isset($settings[$key])&&(!is_array($settings[$key])||array_diff($settings[$key],$allowed)))throw new ApiError('invalid_preferences','В настройках есть неизвестные столбцы.');
-    if(isset($settings['preset'])&&!in_array($settings['preset'],['base','saturated','acid'],true))throw new ApiError('invalid_preferences','Неизвестная палитра.');
-    if(isset($settings['lines'])&&!in_array($settings['lines'],['base','dark','black'],true))throw new ApiError('invalid_preferences','Неизвестный тип линий.');
-    foreach(($settings['widths']??[]) as $key=>$width)if(!in_array($key,$allowed,true)||!is_numeric($width)||$width<44||$width>1200)throw new ApiError('invalid_preferences','Допустимая ширина 44–1200 пикселей.');
-    workspace_begin();try{
-        $p=wquery('SELECT settings,version FROM user_view_preferences WHERE user_id=? AND table_id=? FOR UPDATE',[$u['id'],$t['id']])->fetch();$version=$p?(int)$p['version']:0;
-        if($patch!==null)$settings=workspace_merge_preferences($p?json_decode($p['settings'],true):$defaults,$patch);
-        if($patch===null&&isset($body['expectedVersion'])&&(int)$body['expectedVersion']!==$version)throw new ApiError('preference_conflict','Настройки изменены в другом окне. Повторите изменение.',409);
-        wquery('INSERT INTO user_view_preferences(user_id,table_id,settings,version) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE settings=VALUES(settings),version=VALUES(version)',[$u['id'],$t['id'],wjson($settings),$version+1]);
-        workspace_event('preferences.changed',['userId'=>$u['id'],'tableSlug'=>$t['slug'],'settings'=>$settings,'version'=>$version+1]);workspace_db()->commit();return ['settings'=>$settings,'version'=>$version+1];
-    }catch(Throwable $e){if(workspace_db()->inTransaction())workspace_db()->rollBack();throw $e;}
-}
 function workspace_api(string $path): never {
     $method=$_SERVER['REQUEST_METHOD'];if(!in_array($method,['GET','POST'],true))throw new ApiError('method','Метод не поддерживается.',405);
     if($path==='/api/workspace/bootstrap'&&$method==='GET')json_response(['user'=>workspace_current_user(),'tables'=>workspace_tables(),'catalogs'=>workspace_catalogs(),'roles'=>wquery('SELECT id,name FROM roles ORDER BY id')->fetchAll(),'policyMode'=>'open','googleSyncEnabled'=>false]);
-    if($path==='/api/workspace/manifest'&&$method==='GET')json_response(['rowIds'=>workspace_manifest(workspace_table())]);
-    if($path==='/api/workspace/preferences'){ $t=workspace_table();json_response(workspace_preferences($t,$method==='POST'?wbody():null)); }
+    if($path==='/api/workspace/manifest'&&$method==='GET')json_response(['rowIds'=>vitrine_client_catalog_requested() ? workspace_client_grid_data([])['rowIds'] : workspace_manifest(workspace_table())]);
+    if($path==='/api/workspace/preferences'){ $t=vitrine_client_catalog_requested() ? workspace_client_grid_model() : workspace_table();json_response(workspace_preferences($t,$method==='POST'?wbody():null)); }
     if($path==='/api/workspace/ws-ticket'&&$method==='POST'){
         $ticket=bin2hex(random_bytes(32));$u=workspace_current_user();wquery('DELETE FROM ws_tickets WHERE expires_at<UTC_TIMESTAMP()-INTERVAL 1 HOUR');wquery('INSERT INTO ws_tickets(token_hash,user_id,expires_at) VALUES(?,?,UTC_TIMESTAMP(6)+INTERVAL 30 SECOND)',[hash('sha256',$ticket),$u['id']]);
         json_response(['ticket'=>$ticket,'url'=>runtime_config()['WS_URL'],'cursor'=>(int)wquery('SELECT COALESCE(MAX(id),0) FROM outbox_events')->fetchColumn(),'userId'=>$u['id']]);

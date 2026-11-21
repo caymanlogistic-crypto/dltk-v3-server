@@ -20,10 +20,19 @@ function workspace_client_grid_catalog(): ?array {
     return $catalogs['clients'];
 }
 
-function workspace_client_grid_data(): array {
+function workspace_client_grid_model(): array {
     $catalog = workspace_client_grid_catalog();
     if (!$catalog) throw new ApiError('not_found', 'Справочник «Клиенты» не найден.', 404);
-    $catalogId = (int)$catalog['id'];
+    return [
+        'id'=>0, 'catalogId'=>(int)$catalog['id'], 'slug'=>'catalog-clients', 'title'=>'Клиенты',
+        'defaultGridWidth'=>'compact',
+        'columns'=>[['letter'=>'A', 'label'=>'Клиент'], ['letter'=>'B', 'label'=>'Менеджер']],
+    ];
+}
+
+function workspace_client_grid_data(?array $requestedRows = null): array {
+    $table = workspace_client_grid_model();
+    $catalogId = $table['catalogId'];
     $canEdit = workspace_can('catalog', (string)$catalogId, 'edit');
     $archive = ($_GET['archive'] ?? null) === '1';
     $search = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']), 0, 160) : '';
@@ -33,16 +42,20 @@ function workspace_client_grid_data(): array {
         [$catalogId, (int)!$archive],
     )->fetchAll();
     $rows = [];
+    $rowIds = [];
+    $requested = $requestedRows === null ? null : array_fill_keys($requestedRows, true);
     foreach ($entries as $entry) {
         $entryId = (int)$entry['id'];
         $manager = $managers[$entryId] ?? '';
         $name = $entry['name'];
         if ($search !== '' && mb_stripos($name, $search) === false && mb_stripos($manager, $search) === false) continue;
+        $rowIds[] = $entryId;
+        if ($requested === null ? count($rows) >= 100 : !isset($requested[$entryId])) continue;
         $values = ['A'=>$name, 'B'=>$manager];
         $kinds = ['A'=>'text', 'B'=>'text'];
         $version = ['revision'=>(int)$entry['revision']];
         $rows[] = [
-            'rowIndex'=>$entryId, 'rowLabel'=>count($rows)+1, 'values'=>$values,
+            'rowIndex'=>$entryId, 'rowLabel'=>count($rowIds), 'values'=>$values,
             'originalValues'=>$values, 'baseHash'=>workspace_client_grid_hash($entryId),
             'kinds'=>$kinds, 'edits'=>['A'=>$version, 'B'=>$version],
         ];
@@ -50,9 +63,11 @@ function workspace_client_grid_data(): array {
     $syncLabel = $canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($catalogId) : null;
     return [
         'catalogGrid'=>['id'=>$catalogId, 'archive'=>$archive, 'search'=>$search, 'canEdit'=>$canEdit, 'syncLabel'=>$syncLabel],
-        'table'=>['id'=>0, 'slug'=>'catalog-clients', 'title'=>'Клиенты'],
-        'sheetTitle'=>'Клиенты',
-        'columns'=>[['letter'=>'A', 'label'=>'Клиент'], ['letter'=>'B', 'label'=>'Менеджер']],
+        'table'=>$table,
+        'sheetTitle'=>$table['title'],
+        'columns'=>$table['columns'],
+        'palette'=>workspace_palette(),
+        'rowIds'=>$rowIds,
         'rows'=>$rows,
     ];
 }

@@ -25,7 +25,7 @@
       const version=manifestVersion;
       const wanted=ids.slice(number*pageSize,(number+1)*pageSize);
       if(!wanted.length)return;
-      const response=await fetch(window.DltkPaths.path('/api/vitrine/rows?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')+'&ids='+wanted.join(',')),{credentials:'same-origin'});
+      const response=await fetch(window.VitrineGridScope.url('/api/vitrine/rows',{rowFilters:true,ids:wanted}),{credentials:'same-origin'});
       const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось загрузить строки.');
       if(version!==manifestVersion){queue();return;}
       if(!Array.isArray(result.rowIds)||typeof result.html!=='string')throw new Error('Не удалось прочитать строки таблицы.');
@@ -47,7 +47,7 @@
   async function render(forceIndex=null){
     if(window.VitrineGrid?.editing())return;
     if(!ids.length){body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);first=last=0;table.removeAttribute('aria-busy');return;}
-    const visible=Math.ceil((scroll.clientHeight-headHeight)/height),viewportStart=forceIndex??Math.floor(scroll.scrollTop/height),viewportEnd=Math.min(ids.length,viewportStart+visible+1);
+    const visible=Math.max(1,Math.ceil((scroll.clientHeight-headHeight)/height)),viewportStart=forceIndex??Math.floor(scroll.scrollTop/height),viewportEnd=Math.min(ids.length,viewportStart+visible+1);
     if(first>=0&&(first===0||viewportStart>=first+5)&&(last===ids.length||viewportEnd<=last-5))return;
     const start=Math.max(0,Math.min(ids.length-1,viewportStart-20)),end=Math.min(ids.length,start+visible+40),ticket=++generation;
     table.setAttribute('aria-busy','true');
@@ -76,7 +76,13 @@
     finally{if(ticket===generation)table.removeAttribute('aria-busy');}
   }
   function queue(){if(!frame)frame=requestAnimationFrame(()=>{frame=0;render();});}
-  scroll.addEventListener('scroll',queue,{passive:true});window.addEventListener('resize',()=>{headHeight=table.querySelector('thead').getBoundingClientRect().height;first=-1;queue();});
+  scroll.addEventListener('scroll',queue,{passive:true});
+  const resize = () => {
+    headHeight=table.querySelector('thead').getBoundingClientRect().height;
+    first=-1;
+    queue();
+  };
+  new ResizeObserver(resize).observe(scroll);
   window.addEventListener('vitrine-editor-closed',queue);
   window.addEventListener('vitrine-statuses-updated',()=>loaded.clear());
   window.addEventListener('vitrine-cell-selected',()=>{navigation=null;});
@@ -148,7 +154,7 @@
     refreshTask=(async()=>{
       do{
         refreshAgain=false;
-        const response=await fetch(window.DltkPaths.path('/api/workspace/manifest?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')),{credentials:'same-origin'});
+        const response=await fetch(window.VitrineGridScope.url('/api/workspace/manifest',{rowFilters:true}),{credentials:'same-origin'});
         const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось обновить список строк.');
         if(!Array.isArray(result.rowIds)||result.rowIds.some(id=>!Number.isInteger(id)))throw new Error('Некорректный список строк.');
         if(window.VitrineGrid?.editing()){manifestDeferred=true;return;}

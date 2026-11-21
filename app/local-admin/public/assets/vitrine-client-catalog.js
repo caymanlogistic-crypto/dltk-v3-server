@@ -14,12 +14,8 @@
   const focusEntry = new URL(location.href).searchParams.get('focus');
 
   if (/^\d+$/.test(focusEntry || '')) {
-    const cell = table.querySelector('td[data-row="' + focusEntry + '"][data-column="A"]');
-    if (cell) {
-      window.VitrineGrid.select(cell);
-      cell.focus({preventScroll:true});
-      window.VitrineGrid.reveal(cell);
-    }
+    const column = table.querySelector('th[data-column]:not([hidden])')?.dataset.column;
+    if (column) window.VitrineRows.activate({dataset:{row:focusEntry,column}});
   }
   let feedback;
   try { feedback = sessionStorage.getItem(feedbackKey); sessionStorage.removeItem(feedbackKey); } catch {}

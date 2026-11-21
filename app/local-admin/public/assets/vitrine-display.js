@@ -1,6 +1,7 @@
 'use strict';
 (() => {
-  const tableSlug=document.body.dataset.workspaceTable||'vyvoz',userId=document.body.dataset.workspaceUser||'anonymous';
+  const {tableSlug,url}=window.VitrineGridScope;
+  const userId=document.body.dataset.workspaceUser||'anonymous';
   const key='dltk-v3.vitrine.display.v2.'+userId+'.'+tableSlug;
   let serverPreferences={};try{serverPreferences=JSON.parse(document.getElementById('workspace-preferences')?.content||'{}');}catch{}
   let preferenceVersion=Number(serverPreferences.version||0),saveTimer=0,inFlight=false,pendingChanges={},lastLocalSnapshot=null,bufferedRemote=null;
@@ -12,7 +13,7 @@
   }
   function persist(settings){
     const before=lastLocalSnapshot||settings,changes={};
-    for(const key of ['order','hidden','preset','lines'])if(JSON.stringify(before[key])!==JSON.stringify(settings[key]))changes[key]=copy(settings[key]);
+    for(const key of ['order','hidden','preset','lines','layoutWidth'])if(JSON.stringify(before[key])!==JSON.stringify(settings[key]))changes[key]=copy(settings[key]);
     for(const letter of new Set([...Object.keys(before.widths||{}),...Object.keys(settings.widths||{})]))if(before.widths?.[letter]!==settings.widths?.[letter]){changes.widths||={};changes.widths[letter]=settings.widths?.[letter]??null;}
     lastLocalSnapshot=copy(settings);mergeChanges(pendingChanges,changes);
     clearTimeout(saveTimer);saveTimer=setTimeout(()=>flushPreferences(),250);
@@ -22,7 +23,7 @@
     if(inFlight||!Object.keys(pendingChanges).length)return;
     const changes=pendingChanges;pendingChanges={};inFlight=true;
     try{
-      const response=await fetch(window.DltkPaths.path('/api/workspace/preferences?table='+encodeURIComponent(tableSlug)),{method:'POST',credentials:'same-origin',keepalive,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({changes})});
+      const response=await fetch(url('/api/workspace/preferences'),{method:'POST',credentials:'same-origin',keepalive,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({changes})});
       const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось сохранить личные настройки.');
       queueRemote(result);
     }catch(error){
@@ -42,9 +43,9 @@
     const incoming=bufferedRemote;bufferedRemote=null;
     if(Number(incoming.version)<preferenceVersion)return;
     preferenceVersion=Number(incoming.version);const saved=incoming.settings;
-    const next={order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:presets.some(p=>p.id===saved.preset)?saved.preset:'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base'};
+    const next={order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:presets.some(p=>p.id===saved.preset)?saved.preset:'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
     if(JSON.stringify(state)!==JSON.stringify(next)){
-      state=next;applyWidths(state.widths);applyLines();applyOrder(state.order);applyVisibility(state.hidden);paintAll();
+      state=next;applyWidths(state.widths);applyLines();applyLayoutWidth();applyOrder(state.order);applyVisibility(state.hidden);paintAll();
     }
     lastLocalSnapshot=copy(state);try{localStorage.setItem(key,JSON.stringify(state));}catch{}
   }
@@ -61,6 +62,8 @@
     window.VitrineDisplay = Object.freeze({paint:(node,fill)=>{node.style.backgroundColor=fill;},paintCell:()=>{}});
     return;
   }
+  const region = table.closest('.vitrine-grid-region');
+  const defaultWidth = region.dataset.gridDefaultWidth;
   const columns = Array.from(table.querySelectorAll('thead th[data-column]')).map(node => ({letter:node.dataset.column,label:node.querySelector('.vitrine-column-label').textContent}));
   const originalOrder = columns.map(column => column.letter);
   let catalog = {};
@@ -72,6 +75,16 @@
     {id:'acid',name:'Кислотный',note:'Яркие базовые RGB-цвета, как в примере',colors:['#FF0000','#FF8000','#FFFF00','#00FF00','#00FFFF','#0000FF','#8000FF','#FF00FF','#C0C0C0']}
   ];
   const linePresets=[{id:'base',name:'Текущие',color:null},{id:'dark',name:'Потемнее',color:'#A0988C'},{id:'black',name:'Чёрные',color:'#000000'}];
+  const widthModes = [
+    {id:'full',name:'По ширине области'},
+    {id:'compact',name:'Компактно, до 960 пикселей'},
+  ];
+  function validWidthMode(value) {
+    return widthModes.some(item=>item.id===value) ? value : defaultWidth;
+  }
+  function applyLayoutWidth() {
+    region.dataset.gridWidth=state.layoutWidth;
+  }
   function validOrder(value) {
     const known = new Set(originalOrder);
     const result = Array.isArray(value) ? [...new Set(value.filter(letter => known.has(letter)))] : [];
@@ -86,10 +99,10 @@
     if(value && typeof value==='object') for(const letter of originalOrder) if(Number.isFinite(value[letter])) widths[letter]=Math.max(44,Math.min(1200,Math.round(value[letter])));
     return widths;
   }
-  let state = {order:[...originalOrder],hidden:[],widths:{},preset:'base',lines:'base'};
+  let state = {order:[...originalOrder],hidden:[],widths:{},preset:'base',lines:'base',layoutWidth:defaultWidth};
   try {
     const saved = serverPreferences.settings && Object.keys(serverPreferences.settings).length ? serverPreferences.settings : JSON.parse(localStorage.getItem(key) || 'null');
-    if (saved) state = {order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:presets.some(p => p.id === saved.preset) ? saved.preset : 'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base'};
+    if (saved) state = {order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:presets.some(p => p.id === saved.preset) ? saved.preset : 'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
   } catch {}
   lastLocalSnapshot=copy(state);
   function color(fill) {
@@ -131,7 +144,7 @@
     window.dispatchEvent(new CustomEvent('vitrine-columns-updated'));
   }
   const widthRules=document.createElement('style');
-  widthRules.textContent=columns.map(column=>'.vitrine .vitrine-table [data-column="'+column.letter+'"] { --column-width:var(--vitrine-width-'+column.letter+','+(table.querySelector('th[data-column="'+column.letter+'"]').classList.contains('vitrine-time-column')?'var(--time-column-width,64px)':'190px')+'); width:var(--column-width); min-width:var(--column-width); max-width:var(--column-width); }').join('\n');
+  widthRules.textContent=columns.map(column=>'.vitrine .vitrine-table [data-column="'+column.letter+'"] { --column-width:var(--vitrine-width-'+column.letter+','+(table.querySelector('th[data-column="'+column.letter+'"]').classList.contains('vitrine-time-column')?'var(--time-column-width,64px)':'var(--vitrine-default-width-'+column.letter+',190px)')+'); width:var(--column-width); min-width:var(--column-width); max-width:var(--column-width); }').join('\n');
   document.head.append(widthRules);
   function applyWidths(widths) {
     for(const letter of originalOrder){
@@ -189,7 +202,7 @@
     }
   }
   window.VitrineDisplay = Object.freeze({color,paint,paintCell,prepareRows});
-  applyWidths(state.widths); applyOrder(state.order); applyVisibility(state.hidden); applyLines(); paintAll();
+  applyWidths(state.widths); applyOrder(state.order); applyVisibility(state.hidden); applyLines();applyLayoutWidth(); paintAll();
   let dialog,body,foot,title,opener,draft,mode,dragged;
   const el = (tag,cls,text) => { const node=document.createElement(tag); if(cls) node.className=cls; if(text!==undefined) node.textContent=text; return node; };
   function button(text,action,primary=false) { const node=el('button','btn '+(primary?'btn-primary':'btn-secondary'),text); node.type='button'; node.addEventListener('click',action); return node; }
@@ -263,29 +276,55 @@
     }
     body.append(list);
   }
+  function renderWidth() {
+    const list=el('div','display-preset-list');
+    for (const option of widthModes) {
+      const card=el('label','display-preset radio-item');
+      const name=el('span','display-preset-title');
+      const radio=el('input');
+      radio.type='radio';
+      radio.name='display-width';
+      radio.value=option.id;
+      radio.checked=draft.layoutWidth===option.id;
+      radio.addEventListener('change',()=>draft.layoutWidth=option.id);
+      const mark=el('span','radio-mark');
+      mark.setAttribute('aria-hidden','true');
+      name.append(radio,mark,el('span','radio-label',option.name));
+      card.append(name);
+      list.append(card);
+    }
+    body.replaceChildren(list);
+  }
   function save() {
     if(draft.hidden.length>=originalOrder.length){window.PlanexNotifications.show({tone:'danger',message:'Оставьте видимым хотя бы один столбец.'});return;}
     try { localStorage.setItem(key,JSON.stringify(draft)); }
     catch { window.PlanexNotifications.show({tone:'danger',message:'Не удалось сохранить настройки в этом браузере.'});return; }
     const orderChanged=state.order.join(',')!==draft.order.join(',');
-    state={order:[...draft.order],hidden:[...draft.hidden],widths:{...draft.widths},preset:draft.preset,lines:draft.lines};
+    state={order:[...draft.order],hidden:[...draft.hidden],widths:{...draft.widths},preset:draft.preset,lines:draft.lines,layoutWidth:draft.layoutWidth};
     applyWidths(state.widths);
-    applyLines();
+    applyLines();applyLayoutWidth();
     if(orderChanged) applyOrder(state.order);
     applyVisibility(state.hidden);
     paintAll();persist(state);close();
   }
+  const dialogModes={
+    columns:{title:'Столбцы: порядок и видимость',render:renderOrder,resetLabel:'Исходный порядок',reset:()=>{draft.order=[...originalOrder];}},
+    lines:{title:'Линии таблицы',render:renderLines,resetLabel:'Текущие линии',reset:()=>{draft.lines='base';}},
+    colors:{title:'Цветовые пресеты',render:renderColors,resetLabel:'Базовый пресет',reset:()=>{draft.preset='base';}},
+    width:{title:'Ширина блока',render:renderWidth,resetLabel:'По умолчанию',reset:()=>{draft.layoutWidth=defaultWidth;}},
+  };
   document.querySelectorAll('[data-display-open]').forEach(trigger=>trigger.addEventListener('click',event=>{
     event.preventDefault();
     if(document.querySelector('.vitrine-editor,.vitrine-time-inline')){window.PlanexNotifications.show({tone:'warning',message:'Сначала сохраните правку ячейки или нажмите «Отмена».'});return;}
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder=>folder.open=false);
-    createDialog();opener=trigger;mode=trigger.dataset.displayOpen;draft={order:[...state.order],hidden:[...state.hidden],widths:{...state.widths},preset:state.preset,lines:state.lines};
-    title.textContent=mode==='columns'?'Столбцы: порядок и видимость':mode==='lines'?'Линии таблицы':'Цветовые пресеты';foot.replaceChildren();
-    const reset=button(mode==='columns'?'Исходный порядок':mode==='lines'?'Текущие линии':'Базовый пресет',()=>{if(mode==='columns'){draft.order=[...originalOrder];renderOrder();}else if(mode==='lines'){draft.lines='base';renderLines();}else{draft.preset='base';renderColors();}});
+    createDialog();opener=trigger;mode=trigger.dataset.displayOpen;draft=copy(state);
+    const options=dialogModes[mode];
+    title.textContent=options.title;foot.replaceChildren();
+    const reset=button(options.resetLabel,()=>{options.reset();options.render();});
     const actions=el('div','modal-foot-actions display-actions');actions.append(button('Сохранить',save,true),button('Отмена',close));foot.append(reset);
     if(mode==='columns')foot.append(button('Показать все',()=>{draft.hidden=[];renderOrder();}));
     if(mode==='columns')foot.append(button('Сбросить ширину',()=>{draft.widths={};}));
     foot.append(actions);
-    if(mode==='columns')renderOrder();else if(mode==='lines')renderLines();else renderColors();dialog.showModal();
+    options.render();dialog.showModal();
   }));
 })();

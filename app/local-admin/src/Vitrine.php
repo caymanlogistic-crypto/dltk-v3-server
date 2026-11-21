@@ -30,7 +30,8 @@ function vitrine_rows_endpoint(): never {
     $value = $_GET['ids'] ?? '';
     if (!is_string($value) || !preg_match('/^\d+(?:,\d+){0,99}$/D',$value)) throw new ApiError('invalid_rows','Запрашивайте от 1 до 100 строк.');
     $ids = array_map('intval',explode(',',$value));
-    $data = vitrine_data($ids);
+    $data = vitrine_client_catalog_requested() ? workspace_client_grid_data($ids) : vitrine_data($ids);
+    $catalogGrid = $data['catalogGrid'] ?? null;
     $columns=$data['columns']; $rows=$data['rows'];
     $escape=static fn(mixed $value): string => htmlspecialchars((string)$value,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
     $columnClass=static fn(array $column): string => mb_strtolower(trim($column['label']))==='время'?' vitrine-time-column':'';
