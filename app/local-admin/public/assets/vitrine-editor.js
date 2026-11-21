@@ -5,6 +5,9 @@
   function report(text, tone = 'warning') {
     window.PlanexNotifications.show({ tone, message:text });
   }
+  function notifyDerivedCell() {
+    report('Данные берутся из справочника. Эту ячейку нельзя редактировать.', 'info');
+  }
   const loadError = document.querySelector('meta[name="vitrine-load-error"]')?.content;
   if (loadError) report(loadError,'danger');
   function element(tag, className, text) {
@@ -135,9 +138,15 @@
   }
   function applyRemote(cell, result) {
     const changed = Number(result.revision) > Number(cell.dataset.revision || 0);
+    const valueChanged = cell.textContent !== result.value;
     applyResult(cell,result);
+    if (!changed || !cell.isConnected) return;
+    if (cell.dataset.derivedSource) {
+      if (valueChanged) flash(cell);
+      return;
+    }
     const actorId = Number(result.actorId);
-    if (changed && cell.isConnected && Number.isSafeInteger(actorId) && actorId > 0 && actorId !== Number(document.body.dataset.workspaceUser)) {
+    if (Number.isSafeInteger(actorId) && actorId > 0 && actorId !== Number(document.body.dataset.workspaceUser)) {
       flash(cell,true);
       window.dispatchEvent(new CustomEvent('vitrine-remote-change',{detail:{...result,cell}}));
     }
@@ -198,7 +207,7 @@
   }
   function open(cell) {
     if (cell.dataset.derivedSource) {
-      report(cell.dataset.derivedSource + (cell.textContent ? '. Менеджер подставляется по клиенту в B.' : '. ' + cell.dataset.emptyLabel + '.'), 'info');
+      notifyDerivedCell();
       return;
     }
     if (pendingCells.has(cell)) { report('Дождитесь сохранения ячейки.'); return; }
@@ -323,14 +332,18 @@
     }
     event.preventDefault();
     event.stopImmediatePropagation();
-    report(active.saving ? 'Дождитесь сохранения ячейки.' : 'Сначала сохраните правку или нажмите «Отмена»');
+    if (event.target.closest('td[data-derived-source]')) notifyDerivedCell();
+    else report(active.saving ? 'Дождитесь сохранения ячейки.' : 'Сначала сохраните правку или нажмите «Отмена»');
     active.field.focus();
   }, true);
   document.addEventListener('click', event => {
     const cell = event.target.closest('td[data-edit-cell]');
     if (!cell) return;
-    if (cell.dataset.kind === 'time' || cell.dataset.derivedSource) { select(cell); cell.focus({preventScroll:true}); }
-    else open(cell);
+    if (cell.dataset.kind === 'time' || cell.dataset.derivedSource) {
+      select(cell);
+      cell.focus({preventScroll:true});
+      if (cell.dataset.derivedSource) notifyDerivedCell();
+    } else open(cell);
   });
   let cells = Array.from(document.querySelectorAll('td[data-edit-cell]'));
   const visibleRows = () => Array.from(document.querySelectorAll('[data-vitrine-row]')).map(row => Array.from(row.querySelectorAll('td[data-edit-cell]:not([hidden])')));
@@ -439,7 +452,7 @@
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
-    if (target.dataset.derivedSource) { report(target.dataset.derivedSource + '. Вставка сюда недоступна.', 'info'); return; }
+    if (target.dataset.derivedSource) { notifyDerivedCell(); return; }
     if (pendingCells.has(target) || active?.saving) { report('Дождитесь сохранения ячейки.'); return; }
     const value = event.clipboardData.getData('text/plain');
     let source = null;
