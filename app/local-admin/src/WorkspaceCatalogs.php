@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/WorkspaceClientManagers.php';
+require_once __DIR__.'/WorkspaceClientTransfer.php';
 
 function workspace_catalogs(): array {
     $out=[];foreach(wquery('SELECT * FROM catalogs ORDER BY id')->fetchAll() as $c){if(!workspace_can('catalog',(string)$c['id'],'view'))continue;$c['id']=(int)$c['id'];$c['tableIds']=array_map('intval',wquery('SELECT DISTINCT table_id FROM catalog_bindings WHERE catalog_id=?',[$c['id']])->fetchAll(PDO::FETCH_COLUMN));$out[]=$c;}return $out;
@@ -55,7 +56,10 @@ function workspace_catalog_save(array $b): array {
 
 function workspace_catalogs_endpoint(string $method): never {
     if(!in_array($method,['GET','POST'],true))throw new ApiError('method','Метод не поддерживается.',405);
-    if($method==='POST'){$b=wbody();if(($b['action']??'')==='create_catalog'){
+    if($method==='POST'){
+        $b=wbody();
+        if (($b['action'] ?? '') === 'import_client_directory') json_response(workspace_import_client_directory($b));
+        if(($b['action']??'')==='create_catalog'){
         $title=trim((string)($b['title']??''));$ids=array_values(array_unique(array_map('intval',$b['tableIds']??[])));$scope=$b['scope']??'local';$tables=array_column(workspace_tables(),'id');
         if($title===''||mb_strlen($title)>160||!$ids||array_diff($ids,$tables)||!in_array($scope,['local','shared'],true)||($scope==='local'&&count($ids)!==1))throw new ApiError('invalid_catalog','Укажите название и таблицы справочника.');
         workspace_begin();try{wquery('INSERT INTO catalogs(title,scope) VALUES(?,?)',[$title,$scope]);$id=(int)workspace_db()->lastInsertId();foreach($ids as $tid)wquery("INSERT INTO catalog_bindings VALUES(?,?,'')",[$id,$tid]);workspace_audit(['category'=>'catalog','label'=>'Справочник','after'=>['id'=>$id,'title'=>$title,'tableIds'=>$ids],'action'=>'create']);workspace_event('catalog.changed',['catalogId'=>$id]);workspace_db()->commit();json_response(['id'=>$id]);}catch(Throwable $e){if(workspace_db()->inTransaction())workspace_db()->rollBack();throw $e;}
