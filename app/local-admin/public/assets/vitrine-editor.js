@@ -120,6 +120,7 @@
     const result = await response.json();
     if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось сохранить ячейку.');
     if (typeof result.value !== 'string' || !Number.isInteger(result.revision) || typeof result.baseHash !== 'string') throw new Error('Неполный ответ сервера. Обновите страницу.');
+    if (result.dependentCell) window.VitrineRows?.patch(result.dependentCell);
     return result;
   }
   function flash(cell, remote = false) {
