@@ -25,7 +25,6 @@ function workspace_client_grid_model(): array {
     if (!$catalog) throw new ApiError('not_found', 'Справочник «Клиенты» не найден.', 404);
     return [
         'id'=>0, 'catalogId'=>(int)$catalog['id'], 'slug'=>'catalog-clients', 'title'=>'Клиенты',
-        'defaultGridWidth'=>'compact',
         'columns'=>[['letter'=>'A', 'label'=>'Клиент'], ['letter'=>'B', 'label'=>'Менеджер']],
     ];
 }
