@@ -3,22 +3,58 @@ declare(strict_types=1);
 require_once __DIR__.'/Workspace.php';
 
 function workspace_string(mixed $v): string {if(is_bool($v))return $v?'TRUE':'FALSE';return (string)(visible_value($v)??'');}
+
+function vitrine_client_catalog_id(array $table): int {
+    if($table['slug']!=='vyvoz')return 0;
+    static $catalogs=[];
+    return $catalogs[$table['id']]??=(int)wquery("SELECT c.id FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key='B' AND c.kind='clients' ORDER BY c.id LIMIT 1",[$table['id']])->fetchColumn();
+}
+
+function vitrine_client_key(string $name): string {
+    return mb_strtolower(trim(preg_replace('/\s+/u',' ',$name)));
+}
+
+function vitrine_client_managers(int $catalog): array {
+    $map=json_decode((string)wquery('SELECT value FROM workspace_meta WHERE `key`=?',['catalog_managers_'.$catalog])->fetchColumn(),true);
+    return is_array($map)?$map:[];
+}
+
+function vitrine_find_client(int $catalog,string $name): array|false {
+    if($name==='')return false;
+    return wquery('SELECT id,name FROM catalog_entries WHERE catalog_id=? AND normalized=? AND active=TRUE',[$catalog,vitrine_client_key($name)])->fetch();
+}
+
+function vitrine_require_manual_field(array $table,string $column): void {
+    if($column==='AL'&&vitrine_client_catalog_id($table)){
+        throw new ApiError('derived_field','Менеджер заполняется из справочника по выбранному клиенту.',403);
+    }
+}
+
 function vitrine_data(?array $requestedRows=null): array {
     $t=workspace_table();$columns=array_values(array_filter($t['columns'],fn($f)=>workspace_can('field',$f['letter'],'view',$t['id'])));
+    $clientCatalog=vitrine_client_catalog_id($t);
+    if($clientCatalog){
+        foreach($columns as &$column){
+            if($column['letter']==='AL')$column['derivedSource']='Из справочника клиентов';
+        }
+        unset($column);
+    }
     // Own stable IDs, not Google coordinates. Manifest remains capped for the established grid.
     $rowIds=workspace_manifest($t);
     $wanted=$requestedRows===null?array_slice($rowIds,0,100):array_values(array_unique(array_filter($requestedRows,fn($x)=>is_int($x)&&$x>1)));
     $records=$wanted?wquery('SELECT * FROM records WHERE table_id=? AND archived=FALSE AND row_num IN ('.implode(',',array_fill(0,count($wanted),'?')).') ORDER BY row_num DESC',[$t['id'],...$wanted])->fetchAll():[];
     $catalog=workspace_status_catalog($t);$byId=[];$byName=[];foreach($catalog['statuses'] as &$status){$status['id']=(int)$status['id'];$status['revision']=(int)$status['revision'];$byId[$status['id']]=$status;$byName[vitrine_status_key($status['name'])]=$status;}unset($status);
-    $boundChoices=[];$boundCatalogs=[];$catalogVisibility=[];
-    foreach(wquery("SELECT b.field_key,c.id AS catalog_id,c.kind,e.name FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id LEFT JOIN catalog_entries e ON e.catalog_id=c.id AND e.active=TRUE WHERE b.table_id=? AND b.field_key NOT IN ('','A') AND (?=TRUE OR (?='vyvoz' AND b.field_key='B' AND c.kind='clients')) ORDER BY e.id",[$t['id'],(int)$t['is_demo'],$t['slug']])->fetchAll() as $option){
+    $boundChoices=[];$boundCatalogs=[];$catalogVisibility=[];$clientsByName=[];
+    foreach(wquery("SELECT b.field_key,c.id AS catalog_id,c.kind,e.id AS entry_id,e.name,e.normalized FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id LEFT JOIN catalog_entries e ON e.catalog_id=c.id AND e.active=TRUE WHERE b.table_id=? AND b.field_key NOT IN ('','A') AND (?=TRUE OR (b.field_key='B' AND c.id=?)) ORDER BY e.id",[$t['id'],(int)$t['is_demo'],$clientCatalog])->fetchAll() as $option){
         $key=$option['field_key'];$catalogId=(int)$option['catalog_id'];
+        if($catalogId===$clientCatalog&&$option['entry_id']!==null)$clientsByName[$option['normalized']]=(int)$option['entry_id'];
         if($option['kind']==='clients'&&!($catalogVisibility[$catalogId]??=workspace_can('catalog',(string)$catalogId,'view',$t['id'])))continue;
         if($option['name']===null&&$option['kind']!=='clients')continue;
         $boundCatalogs[$key]=$catalogId;
         $boundChoices[$key]??=[];
         if($option['name']!==null)$boundChoices[$key][]=$option['name'];
     }
+    $managerByEntry=$clientCatalog?vitrine_client_managers($clientCatalog):[];
     $edits=[];if($records){$ids=array_column($records,'id');foreach(wquery('SELECT * FROM cell_versions WHERE record_id IN ('.implode(',',array_fill(0,count($ids),'?')).')',$ids)->fetchAll() as $e)$edits[(int)$e['record_id']][$e['field_key']]=$e;}
     $refs=[];if($records){$ids=array_column($records,'id');foreach(wquery('SELECT rr.record_id,rr.field_key,e.id,e.catalog_id,e.name FROM record_references rr JOIN catalog_entries e ON e.id=rr.entry_id WHERE rr.record_id IN ('.implode(',',array_fill(0,count($ids),'?')).')',$ids)->fetchAll() as $ref)$refs[(int)$ref['record_id']][$ref['field_key']]=['id'=>(int)$ref['id'],'catalogId'=>(int)$ref['catalog_id'],'name'=>$ref['name']];}
     $rows=[];foreach($records as $r){
@@ -31,6 +67,10 @@ function vitrine_data(?array $requestedRows=null): array {
         foreach($values as &$v)$v=workspace_string($v);unset($v);foreach($baseline as &$v)$v=workspace_string($v);unset($v);
         $rowEdits=[];foreach($edits[(int)$r['id']]??[] as $key=>$e){$values[$key]=$e['active']?$e['value']:($baseline[$key]??'');$rowEdits[$key]=['revision'=>(int)$e['revision'],'conflict'=>false,'value'=>$values[$key],'active'=>(bool)$e['active']];}
         foreach($refs[(int)$r['id']]??[] as $key=>$ref)$values[$key]=$ref['name'];
+        if($clientCatalog){
+            $clientId=$clientsByName[vitrine_client_key($values['B']??'')]??null;
+            $values['AL']=$managerByEntry[$clientId]??'';
+        }
         $choices=array_replace($choices,$boundChoices);
         $statusId=$edits[(int)$r['id']]['A']['status_id']??null;$status=$byId[$statusId]??($byName[vitrine_status_key($values['A']??'')]??null);
         if($status)$values['A']=$status['name'];$choices['A']=array_column($catalog['statuses'],'name');
@@ -46,6 +86,7 @@ function vitrine_store(array $body): array {
         $catalog=workspace_status_catalog($t);workspace_catalog_save($body+['catalogId'=>$catalog['id']]);return workspace_status_catalog($t);
     }
     if($body['action']!=='save')throw new ApiError('invalid_action','Неизвестное действие.');
+    vitrine_require_manual_field($t,$body['column']);
     workspace_require('table',(string)$t['id'],'edit',$t['id']);workspace_require('field',$body['column'],'edit',$t['id']);$u=workspace_current_user();$request=$body['requestId']??bin2hex(random_bytes(16));
     if(!is_string($request)||!preg_match('/^[a-zA-Z0-9_.:-]{8,100}$/D',$request))throw new ApiError('invalid_request','Некорректный идентификатор сохранения.');
     workspace_begin();try{
@@ -58,13 +99,12 @@ function vitrine_store(array $body): array {
         $value=$body['reset']?$body['original']:$body['value'];
         $reference=null;$binding=null;$clientCatalog=false;
         if($t['slug']==='vyvoz'&&$key==='B'){
-            $binding=wquery("SELECT c.id FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key='B' AND c.kind='clients'",[$t['id']])->fetchColumn();
+            $binding=vitrine_client_catalog_id($t);
             $clientCatalog=(bool)$binding;
             if($clientCatalog){
                 workspace_require('catalog',(string)$binding,'view',$t['id']);
                 if($value!==''){
-                    $normalized=mb_strtolower(trim(preg_replace('/\s+/u',' ',$value)));
-                    $client=wquery('SELECT id,name FROM catalog_entries WHERE catalog_id=? AND normalized=? AND active=TRUE',[$binding,$normalized])->fetch();
+                    $client=vitrine_find_client($binding,$value);
                     if($client){
                         $reference=(int)$client['id'];$value=$client['name'];
                     }elseif(!$body['reset']&&$value!==$before){
@@ -81,8 +121,10 @@ function vitrine_store(array $body): array {
         $operation=bin2hex(random_bytes(16));
         $managerPatch=null;
         if($clientCatalog&&($reference||$value!==$before)){
-            $managers=$reference?json_decode((string)wquery('SELECT value FROM workspace_meta WHERE `key`=?',['catalog_managers_'.$binding])->fetchColumn(),true):[];
-            $managerPatch=vitrine_update_client_manager($t,$r,$values,$managers[$reference]??'', $u,$action,$request,$operation);
+            $managers=vitrine_client_managers($binding);
+            $previousClient=vitrine_find_client($binding,$before);
+            $previousManager=$managers[$previousClient['id']??0]??'';
+            $managerPatch=vitrine_update_client_manager($t,$r,$values,$managers[$reference]??'',$previousManager,$u,$action,$request,$operation);
         }
         $derived=$managerPatch&&workspace_can('field','AL','view',$t['id'])?['dependentCell'=>$managerPatch]:[];
         if($before===$value){
@@ -108,20 +150,20 @@ function vitrine_store(array $body): array {
     }catch(Throwable $e){if(workspace_db()->inTransaction())workspace_db()->rollBack();throw $e;}
 }
 
-function vitrine_update_client_manager(array $table,array $record,array &$values,string $manager,array $user,string $action,string $request,string $operation): ?array {
+function vitrine_update_client_manager(array $table,array $record,array &$values,string $manager,string $previousManager,array $user,string $action,string $request,string $operation): ?array {
     $old=wquery("SELECT value,revision,active FROM cell_versions WHERE record_id=? AND field_key='AL' FOR UPDATE",[$record['id']])->fetch();
     $baseline=json_decode($record['baseline_json'],true);
     $metadata=$record['metadata_zlib']?blob_json($record['metadata_zlib']):[];
     $display=display_cell($metadata[column_number('AL')]??[]);
     $original=workspace_string($display??($baseline['AL']??''));
     $before=$old?($old['active']?$old['value']:$original):workspace_string($display??($values['AL']??''));
-    if($before===$manager)return null;
+    if($before===$manager&&$previousManager===$manager)return null;
     workspace_require('field','AL','edit',$table['id']);
     $revision=(int)($old['revision']??0)+1;
     $edited=$manager!==$original;
     $values['AL']=$manager;
     wquery("INSERT INTO cell_versions(record_id,field_key,value,revision,active) VALUES(?,'AL',?,?,?) ON DUPLICATE KEY UPDATE value=VALUES(value),revision=VALUES(revision),active=VALUES(active)",[$record['id'],$manager,$revision,(int)$edited]);
-    workspace_audit(['tableId'=>$table['id'],'recordId'=>(int)$record['id'],'row'=>(int)$record['row_num'],'column'=>'AL','label'=>next_label($table['columns'],'AL'),'before'=>$before,'after'=>$manager,'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
+    workspace_audit(['tableId'=>$table['id'],'recordId'=>(int)$record['id'],'row'=>(int)$record['row_num'],'column'=>'AL','label'=>next_label($table['columns'],'AL'),'before'=>$previousManager!==$manager?$previousManager:$before,'after'=>$manager,'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
     $patch=['tableSlug'=>$table['slug'],'row'=>(int)$record['row_num'],'column'=>'AL','value'=>$manager,'revision'=>$revision,'edited'=>$edited,'original'=>$original,'baseHash'=>hash('sha256',$record['baseline_json']),'actorId'=>$user['id'],'actorName'=>$user['name'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation];
     workspace_event('cell.changed',$patch);
     return $patch;

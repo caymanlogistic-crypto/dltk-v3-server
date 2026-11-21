@@ -38,6 +38,7 @@ function vitrine_rows_endpoint(): never {
 }
 
 function vitrine_validate_paste(array $body, array $data, array $target): void {
+    vitrine_require_manual_field($data['table'],$body['column']);
     $paste = $body['paste'] ?? null;
     if (!is_array($paste) || !array_key_exists('source',$paste)) throw new ApiError('invalid_clipboard','Не удалось определить содержимое буфера обмена.');
     $kind = $target['kinds'][$body['column']] ?? 'text';

@@ -92,7 +92,17 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
         <table class="table vitrine-table">
           <caption class="vitrine-sr-only">Последние непустые строки листа <?= $escape($data['sheetTitle'] ?? 'ВЫВОЗ') ?>. Все исходные столбцы.</caption>
           <colgroup><col class="vitrine-row-column"><?php foreach ($columns as $column): ?><col class="vitrine-data-column<?= $columnClass($column) ?>" data-column="<?= $escape($column['letter']) ?>"><?php endforeach; ?></colgroup>
-          <thead><tr><th scope="col" class="vitrine-row-number">Строка</th><?php foreach ($columns as $column): ?><th scope="col" data-column="<?= $escape($column['letter']) ?>" class="<?= trim($columnClass($column)) ?>" title="<?= $escape($column['label']) ?>"><span class="vitrine-column-letter"><?= $escape($column['letter']) ?></span><span class="vitrine-column-label"><?= $escape($column['label']) ?></span></th><?php endforeach; ?></tr></thead>
+          <thead><tr><th scope="col" class="vitrine-row-number">Строка</th>
+            <?php foreach ($columns as $column): ?>
+              <th scope="col" data-column="<?= $escape($column['letter']) ?>" class="<?= trim($columnClass($column)) ?>" title="<?= $escape($column['label']) ?>">
+                <span class="vitrine-column-letter"><?= $escape($column['letter']) ?><?php if (isset($column['derivedSource'])): ?>
+                  <span class="vitrine-derived-icon" role="img" tabindex="0" aria-label="<?= $escape($column['derivedSource']) ?>" data-source-label="<?= $escape($column['derivedSource']) ?>">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7L12 5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19"/></svg>
+                  </span><?php endif; ?></span>
+                <span class="vitrine-column-label"><?= $escape($column['label']) ?></span>
+              </th>
+            <?php endforeach; ?>
+          </tr></thead>
           <tbody id="vitrine-rows">
           <?php require __DIR__.'/vitrine-rows.php'; ?>
           </tbody>

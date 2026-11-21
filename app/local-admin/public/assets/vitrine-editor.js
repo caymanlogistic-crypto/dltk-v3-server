@@ -107,6 +107,12 @@
     cell.classList.toggle('local-edited', Boolean(result.edited));
     cell.classList.toggle('conflict', Boolean(result.conflict));
     window.VitrineDisplay?.paintCell(cell);
+    if (cell.dataset.derivedSource) {
+      cell.title = cell.dataset.derivedSource + '. ' + (result.value || cell.dataset.emptyLabel + '.');
+      if (result.value) cell.removeAttribute('aria-label');
+      else cell.setAttribute('aria-label', cell.dataset.emptyLabel);
+      return;
+    }
     cell.title = (result.edited ? 'Изменено в БД. ' : '') + 'Щелчок — изменить. ' + result.value;
     if (cell.dataset.kind === 'time') cell.title = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' + result.value;
   }
@@ -191,6 +197,10 @@
     }
   }
   function open(cell) {
+    if (cell.dataset.derivedSource) {
+      report(cell.dataset.derivedSource + (cell.textContent ? '. Менеджер подставляется по клиенту в B.' : '. ' + cell.dataset.emptyLabel + '.'), 'info');
+      return;
+    }
     if (pendingCells.has(cell)) { report('Дождитесь сохранения ячейки.'); return; }
     if (active) {
       if (active.cell === cell) { active.field.focus(); return; }
@@ -319,7 +329,7 @@
   document.addEventListener('click', event => {
     const cell = event.target.closest('td[data-edit-cell]');
     if (!cell) return;
-    if (cell.dataset.kind === 'time') { select(cell); cell.focus({preventScroll:true}); }
+    if (cell.dataset.kind === 'time' || cell.dataset.derivedSource) { select(cell); cell.focus({preventScroll:true}); }
     else open(cell);
   });
   let cells = Array.from(document.querySelectorAll('td[data-edit-cell]'));
@@ -348,6 +358,7 @@
     window.dispatchEvent(new CustomEvent('vitrine-cell-selected'));
   }
   function eventCell(event) {
+    if (event.target.closest('.vitrine-derived-icon')) return null;
     return event.target === document.body || event.target.closest('.vitrine-table-scroll') ? selected : null;
   }
   select(selected);
@@ -428,6 +439,7 @@
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
+    if (target.dataset.derivedSource) { report(target.dataset.derivedSource + '. Вставка сюда недоступна.', 'info'); return; }
     if (pendingCells.has(target) || active?.saving) { report('Дождитесь сохранения ячейки.'); return; }
     const value = event.clipboardData.getData('text/plain');
     let source = null;
