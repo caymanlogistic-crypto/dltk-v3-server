@@ -6,6 +6,12 @@ Runtime contract: [workspace] INI, APP_URL/WS_URL/DB_HOST/DB_PORT/DB_NAME/DB_USE
 
 Portable QA: all PHP and JavaScript syntax checks,66 format checks and9 HTTP integration checks passed locally using a dedicated temporary server process. The latter exercised health, distinct cookie, account login,6000-row grid,5 tables/6 roles, configured WebSocket URL, Host/Origin rejection and removed legacy route. No business values were written. Actual Linux deployment/performance remain separate acceptance steps.
 
+## Горизонтальное меню Витрины
+
+Верхняя навигация использует стандартные классы `nav-item`, `nav-label`, `nav-icon`, `nav-chevron` и `nav-sub-item`. Типографика и состояния берутся из общей Витрины. У пунктов первого уровня IBM Plex Sans, 12,5 px, 600 и высота 34 px. У вложенных пунктов 12 px и обычное начертание уровня меню. Раскладка отличается направлением: верхний уровень идёт в один ряд, подписи не переносятся, а на узкой ширине верхняя навигация прокручивается горизонтально.
+
+Пример сверки. Сравните горизонтальное меню страницы «Вывоз» с боковым меню `design/demo/index.html`. Откройте «Система», «Отображение данных» и «Справочники». Во встроенном браузере проверены совпадение размеров, веса и отступов, раскрытие всех трёх меню и переход в справочник при ширине окна 390 px.
+
 ## Клиент и менеджер в «Вывозе»
 
 Для включения сценария справочник с `kind='clients'` привязывается к полю B таблицы `vyvoz`. Связь с менеджером хранится в `workspace_meta` под ключом `catalog_managers_<id справочника>` как JSON-объект, где ключи — ID записей справочника, а значения — имена менеджеров. Список использует общий `VitrineSelect`.

@@ -15,6 +15,8 @@ $gridWidth = $preferences['settings']['layoutWidth'] ?? $defaultGridWidth;
 $columns = $data['columns'] ?? [];
 $rows = $data['rows'] ?? [];
 $columnClass = static fn(array $column): string => mb_strtolower(trim($column['label'])) === 'время' ? ' vitrine-time-column' : '';
+$navFolder = '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2H5a2 2 0 0 1 -2 -2V6a2 2 0 0 1 2 -2z"/></svg>';
+$navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6 -6 6"/></svg>';
 ?>
 <!doctype html>
 <html lang="ru">
@@ -71,11 +73,11 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
     <nav class="vitrine-topnav" aria-label="Основная навигация">
       <div class="vitrine-nav-start">
       <?php foreach($workspaceTables as $table): ?>
-        <a class="nav-item <?= $currentTable['id']===$table['id']?'is-active':'' ?>" href="<?= htmlspecialchars(app_url_path('/vitrine?table='),ENT_QUOTES,'UTF-8') ?><?= $escape($table['slug']) ?>" title="<?= $escape($table['title']) ?>"><span class="nav-label"><?= $escape($table['title']) ?></span></a>
+        <a class="nav-item <?= $currentTable['id']===$table['id']?'is-active':'' ?>" href="<?= htmlspecialchars(app_url_path('/vitrine?table='),ENT_QUOTES,'UTF-8') ?><?= $escape($table['slug']) ?>" title="<?= $escape($table['title']) ?>"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 10h18M10 3v18"/></svg><span class="nav-label"><?= $escape($table['title']) ?></span></a>
       <?php endforeach; ?>
       </div>
       <details class="vitrine-folder">
-        <summary class="nav-item is-parent"><span class="nav-label">Система</span></summary>
+        <summary class="nav-item is-parent"><?= $navFolder ?><span class="nav-label">Система</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown">
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>">Журнал изменений</a>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=reports')) ?>">Сводные</a>
@@ -90,7 +92,7 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
         </div>
       </details>
       <details class="vitrine-folder" id="vitrine-display-menu">
-        <summary class="nav-item is-parent"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7V4h6l2 3h10v13H3z"/></svg><span class="nav-label">Отображение данных</span><svg class="vitrine-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></summary>
+        <summary class="nav-item is-parent"><?= $navFolder ?><span class="nav-label">Отображение данных</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Отображение данных">
           <a class="nav-sub-item" href="#column-order" data-display-open="columns">Порядок столбцов</a>
           <a class="nav-sub-item" href="#color-presets" data-display-open="colors">Цветовые пресеты</a>
@@ -99,7 +101,7 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
         </div>
       </details>
       <details class="vitrine-folder" id="vitrine-catalogs">
-        <summary class="nav-item is-parent"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7V4h6l2 3h10v13H3z"/></svg><span class="nav-label">Справочники</span><svg class="vitrine-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></summary>
+        <summary class="nav-item is-parent<?= $directory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
           <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Сотрудники', 'roles'=>'Роли']; ?>
           <?php if (!workspace_client_grid_catalog()) unset($directoryLinks['clients']); ?>
