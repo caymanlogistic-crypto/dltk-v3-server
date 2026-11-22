@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
 ?>
-<div class="vitrine-catalog-actions" data-directory-row-actions aria-label="Действия со строками">
-  <button class="btn btn-secondary" type="button" data-directory-delete disabled>Удалить</button>
+<div id="directory-row-menu" class="ctx-menu vitrine-directory-row-menu" data-directory-row-actions role="menu" aria-label="Действия со строкой" hidden>
+  <button class="ctx-item is-danger" type="button" role="menuitem" data-directory-delete>Удалить строку</button>
 </div>

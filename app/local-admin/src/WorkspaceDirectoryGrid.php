@@ -92,6 +92,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
             }
         }
         if ($orderStatuses) {
+            $row['rowActions'] = $flightStatuses && $canEditStatuses;
             $row['orderFill'] = $entry['color'];
             $row['baseHash'] = $entry['baseHash'];
             $row['singleLine']['A'] = true;

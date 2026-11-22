@@ -1,5 +1,5 @@
           <?php foreach ($rows as $row): ?>
-            <tr data-vitrine-row<?php if (!empty($row['draftSlot'])): ?> data-draft-slot<?php endif; ?> data-row-number="<?= (int)$row['rowIndex'] ?>"><th scope="row" class="vitrine-row-number cell-mono"><?= $escape($row['rowLabel'] ?? $row['rowIndex']) ?></th>
+            <tr data-vitrine-row<?php if (!empty($row['draftSlot'])): ?> data-draft-slot<?php endif; ?> data-row-number="<?= (int)$row['rowIndex'] ?>"><th scope="row" class="vitrine-row-number cell-mono"><?= $escape($row['rowLabel'] ?? $row['rowIndex']) ?><?php if (!empty($row['rowActions'])): ?><button type="button" class="vitrine-row-menu-trigger" data-directory-row-menu aria-label="Действия со строкой <?= $escape($row['rowLabel']) ?>" aria-haspopup="menu" aria-expanded="false" aria-controls="directory-row-menu" tabindex="-1">⋯</button><?php endif; ?></th>
             <?php foreach ($columns as $column): ?>
             <?php
               $letter = $column['letter'];

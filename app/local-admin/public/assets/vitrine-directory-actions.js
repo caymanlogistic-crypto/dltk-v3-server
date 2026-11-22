@@ -8,21 +8,67 @@
   const palette = JSON.parse(document.getElementById('vitrine-status-data').content).palette;
   const endpoint = window.VitrineGridScope.url('/api/vitrine/cell');
   const table = document.querySelector('.vitrine-table');
-  const selection = () => table.querySelector('#vitrine-rows .is-current-cell');
-  table.addEventListener('click', event => {
-    const header = event.target.closest('th[scope="row"]');
-    const cell = header?.parentElement.querySelector('td[data-edit-cell]:not([hidden])');
-    if (cell && !window.VitrineGrid.editing()) window.VitrineGrid.select(cell);
-  });
+  const triggerSelector = '[data-directory-row-menu]';
   const feedbackKey = 'dltk-v3.directory-row-feedback';
-  let pending = false, target = null;
+  let pending = false, target = null, trigger = null, returnFocus = null;
 
   const notice = (message,tone) => window.PlanexNotifications.show({message,tone});
   const onError = error => notice(error.message,error.code === 'entry_in_use' ? 'info' : 'danger');
-  const update = () => { remove.disabled = pending || !selection(); };
-  window.addEventListener('vitrine-cell-selected',update);
-  window.addEventListener('vitrine-rows-updated',update);
-  update();
+
+  function closeMenu(restoreFocus = false) {
+    if (!trigger) return;
+    actions.hidden = true;
+    trigger.setAttribute('aria-expanded','false');
+    trigger = null;
+    if (restoreFocus && returnFocus?.isConnected) returnFocus.focus({preventScroll:true});
+    returnFocus = null;
+  }
+
+  function openMenu(button,cell) {
+    if (pending || window.VitrineGrid.editing()) return;
+    if (trigger === button) { closeMenu(true); return; }
+    closeMenu();
+    window.VitrineGrid.select(cell);
+    trigger = button;
+    returnFocus = cell;
+    button.setAttribute('aria-expanded','true');
+    actions.hidden = false;
+    const bounds = button.getBoundingClientRect();
+    const x = Math.min(bounds.left,innerWidth-actions.offsetWidth-8);
+    const y = bounds.bottom+actions.offsetHeight+8 <= innerHeight ? bounds.bottom : bounds.top-actions.offsetHeight;
+    actions.style.left = Math.max(8,x)+'px';
+    actions.style.top = Math.max(8,y)+'px';
+    remove.focus({preventScroll:true});
+  }
+
+  table.addEventListener('click', event => {
+    const header = event.target.closest('th[scope="row"]');
+    const cell = header?.parentElement.querySelector('td[data-edit-cell]:not([hidden])');
+    if (!cell || window.VitrineGrid.editing()) return;
+    const button = event.target.closest(triggerSelector);
+    if (button) openMenu(button,cell);
+    else window.VitrineGrid.select(cell);
+  });
+  table.addEventListener('keydown', event => {
+    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+    const cell = event.target.closest('td[data-edit-cell]');
+    const button = cell?.parentElement.querySelector(triggerSelector);
+    if (!button || window.VitrineGrid.editing()) return;
+    event.preventDefault();
+    openMenu(button,cell);
+  });
+  actions.addEventListener('keydown',event=>{
+    if (event.key !== 'Escape' && event.key !== 'Tab') return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeMenu(true);
+  });
+  document.addEventListener('pointerdown',event=>{
+    if (!actions.contains(event.target) && !event.target.closest(triggerSelector)) closeMenu();
+  });
+  table.closest('.vitrine-table-scroll').addEventListener('scroll',()=>closeMenu());
+  window.addEventListener('resize',()=>closeMenu());
+  window.addEventListener('vitrine-rows-updated',()=>{ if (trigger && !trigger.isConnected) closeMenu(); });
 
   try {
     const feedback = sessionStorage.getItem(feedbackKey);
@@ -133,19 +179,21 @@
   });
 
   remove.addEventListener('click', async () => {
-    const cell = selection();
+    const cell = trigger?.closest('tr').querySelector('td[data-edit-cell]');
     if (!cell || pending) return;
     const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision)};
-    pending = true; update();
+    closeMenu(true);
+    pending = true;
     try {
       const result = await request('check_delete',row);
+      if (window.VitrineGrid.editing()) return;
       target = row;
       deleteDialog.querySelector('[data-directory-delete-text]').textContent = 'Удалить «'+result.name+'»?';
       deleteDialog.showModal();
     } catch (error) {
       onError(error);
     } finally {
-      pending = false; update();
+      pending = false;
     }
   });
   bindForm(deleteDialog, async () => {
