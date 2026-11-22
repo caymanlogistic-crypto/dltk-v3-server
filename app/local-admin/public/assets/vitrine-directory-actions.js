@@ -157,6 +157,7 @@
       const column = cell.dataset.column;
       const value = values[column];
       const field = fields[column];
+      if (!field) continue;
       const display = field.type === 'password' && value ? 'Введён' : value;
       cell.textContent = display;
       cell.toggleAttribute('data-draft-allow-empty',Boolean(field.allowEmpty));
@@ -181,6 +182,7 @@
       if (draft.saving) throw new Error('Дождитесь сохранения строки.');
       const column = cell.dataset.column;
       const field = fields[column];
+      if (!field) throw new Error('Сначала добавьте запись в справочник.');
       if (field.type !== 'password') value = value.trim();
       else if (value && (Array.from(value).length < 8 || new TextEncoder().encode(value).length > 72)) {
         throw new Error('Пароль должен содержать от 8 символов и занимать до 72 байт.');

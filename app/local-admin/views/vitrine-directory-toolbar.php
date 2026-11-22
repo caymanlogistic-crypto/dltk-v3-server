@@ -31,9 +31,6 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
   <button class="btn" type="button" data-directory-details data-unkeyed>Строки без названия (<?= (int)$catalogGrid['unkeyedCount'] ?>)</button>
   <?php endif; ?>
   <?php endif; ?>
-  <?php if (!empty($catalogGrid['unloadPoints'])): ?>
-  <button class="btn btn-secondary" type="button" data-unload-contacts>Контакты точки</button>
-  <?php endif; ?>
   <?php if ($employeeScope): ?>
   <div class="vitrine-catalog-actions">
     <button class="btn btn-secondary" type="button" id="employee-edit" disabled>Изменить сотрудника</button>
@@ -67,7 +64,7 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
 <?php endif; ?>
 
 <?php if (!empty($catalogGrid['unloadPoints'])): ?>
-<dialog class="vitrine-catalog-dialog" id="unload-contacts-dialog" aria-labelledby="unload-contacts-title">
+<dialog class="vitrine-catalog-dialog" id="unload-contacts-dialog" data-catalog-id="<?= (int)$catalogGrid['id'] ?>" aria-labelledby="unload-contacts-title">
   <form>
     <header class="modal-head"><h2 class="modal-title" id="unload-contacts-title">Контакты точки</h2></header>
     <div class="modal-body">

@@ -19,6 +19,9 @@
   --vitrine-default-width-C:130px;
   --vitrine-default-width-D:260px;
 }
+.vitrine .vitrine-unload-points {
+  --vitrine-default-width-C:280px;
+}
 .vitrine .vitrine-catalog-dialog {
   width:min(440px,calc(100vw - 24px)); max-height:calc(100dvh - 24px); padding:0;
   border:1px solid var(--line); border-radius:2px; box-shadow:0 12px 40px rgb(0 0 0 / .3);

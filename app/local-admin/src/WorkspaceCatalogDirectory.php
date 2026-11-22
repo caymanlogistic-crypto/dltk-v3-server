@@ -12,11 +12,12 @@ function workspace_catalog_directory_model(): array {
         'status'=>['A'=>'Статус','B'=>'Цвет'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
         'container-types'=>['A'=>'Тип контейнера'],
-        'unload-points'=>['A'=>'Клиент','B'=>'Адрес'],
+        'unload-points'=>['A'=>'Клиент','B'=>'Адрес','C'=>'Контакты'],
         default=>['A'=>'Название'],
     };
     $columns = [];
     foreach ($labels as $letter=>$label) $columns[] = compact('letter','label');
+    if ($catalog['kind']==='unload-points') $columns[2]['kind']='unload-contacts';
     return ['id'=>0,'catalogId'=>(int)$id,'catalogKind'=>$catalog['kind'],'slug'=>'catalog-entries-'.$id,
         'title'=>$catalog['title'],'columns'=>$columns];
 }
@@ -46,6 +47,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         if ($unload && !$archive && $entry['review_required']) continue;
         $entryId = (int)$entry['id'];
         $values = $unload ? workspace_unload_point_values($entry) : ['A'=>$entry['name']];
+        if ($unload) $values['C']=workspace_unload_contact_summary(workspace_unload_primary($entry),(int)$entry['contact_count']);
         if (workspace_catalog_has_palette($kind)) $values['B'] = $palette[$entry['color']] ?? '';
         if (in_array($kind,['clients','carriers'],true)) $values['B'] = $valuesB[$entryId] ?? '';
         if ($search !== '' && mb_stripos(implode(' ',$values),$search) === false) continue;
@@ -97,6 +99,7 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     if (!$entry) throw new ApiError('not_found','Запись не найдена.',404);
     $kind = $model['catalogKind'];
     if ($kind==='unload-points') {
+        if ($column==='C') throw new ApiError('contact_editor','Откройте редактор контактов из ячейки «Контакты».');
         $point=workspace_unload_points($id)[$body['row']]??null;
         if (!$point) throw new ApiError('not_found','Точка выгрузки не найдена.',404);
         $values=workspace_unload_point_values($point);

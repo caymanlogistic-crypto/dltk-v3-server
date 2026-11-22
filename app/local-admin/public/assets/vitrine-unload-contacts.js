@@ -1,16 +1,15 @@
 'use strict';
 (() => {
-  const opener = document.querySelector('[data-unload-contacts]');
   const dialog = document.getElementById('unload-contacts-dialog');
-  if (!opener || !dialog) return;
-  const catalogId = Number(opener.closest('[data-catalog-id]').dataset.catalogId);
+  if (!dialog) return;
+  const catalogId = Number(dialog.dataset.catalogId);
   const form = dialog.querySelector('form');
   const list = dialog.querySelector('[data-unload-contact-list]');
   const add = dialog.querySelector('[data-unload-contact-add]');
   const save = dialog.querySelector('button[type="submit"]');
   const close = dialog.querySelector('[data-close]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
-  let entryId, revision;
+  let entryId, revision, opener, loading=false;
   const notice = (message,tone='danger') => window.PlanexNotifications.show({message,tone});
   const node = (tag, cls, text) => {
     const result = document.createElement(tag);
@@ -62,11 +61,13 @@
     if (!response.ok || result.error) throw new Error(result.error?.message||'Не удалось открыть контакты точки.');
     return result;
   }
-  opener.addEventListener('click',async ()=>{
-    const cell=document.querySelector('#vitrine-rows td.is-current-cell');
-    entryId=Number(cell?.dataset.row);
-    if (!entryId) { notice('Выберите сохранённую точку выгрузки.','info'); return; }
-    opener.disabled=true;
+  async function open(cell) {
+    if (loading || dialog.open) return;
+    entryId=Number(cell.dataset.row);
+    if (entryId<=0) { notice('Сначала заполните клиента и адрес.','info'); return; }
+    opener=cell;
+    loading=true;
+    cell.setAttribute('aria-busy','true');
     try {
       const data=await request('?id='+catalogId+'&unloadContacts='+entryId);
       revision=data.revision;
@@ -75,8 +76,9 @@
       if (!data.contacts.length && !save) list.append(node('p',null,'Контакты не указаны.'));
       dialog.showModal();
     } catch (error) { notice(error.message); }
-    finally { opener.disabled=false; }
-  });
+    finally { loading=false;cell.removeAttribute('aria-busy'); }
+  }
+  window.VitrineUnloadContacts=Object.freeze({open});
   add?.addEventListener('click',()=>{
     const section=row({});
     list.append(section);
@@ -84,6 +86,10 @@
     section.querySelector('[data-contact-field]').focus();
   });
   close.addEventListener('click',()=>dialog.close());
+  dialog.addEventListener('close',()=>{
+    const cell=window.VitrineRows?.resolveCell(opener)??opener;
+    if (cell?.isConnected) cell.focus({preventScroll:true});
+  });
   form.addEventListener('submit',async event=>{
     event.preventDefault();
     if (!save || save.disabled) return;
@@ -94,7 +100,16 @@
     save.disabled=true;
     try {
       const result=await request('',{action:'save_unload_contacts',catalogId,entryId,revision,contacts});
-      document.querySelectorAll('td[data-row="'+entryId+'"]').forEach(cell=>cell.dataset.revision=String(result.revision));
+      for (const cell of document.querySelectorAll('td[data-row="'+entryId+'"]')) {
+        cell.dataset.revision=String(result.revision);
+        if (cell.dataset.kind!=='unload-contacts') continue;
+        cell.textContent=result.summary;
+        cell.dataset.original=result.summary;
+        cell.title='Щелчок — открыть контакты. '+result.summary;
+        cell.classList.remove('just-saved');
+        void cell.offsetWidth;
+        cell.classList.add('just-saved');
+      }
       dialog.close();
       notice('Контакты сохранены.','success');
     } catch (error) { notice(error.message); }

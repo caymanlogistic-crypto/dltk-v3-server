@@ -4,7 +4,8 @@ declare(strict_types=1);
 function workspace_unload_points(int $catalogId): array {
     $rows = wquery("SELECT e.id,e.name,e.active,e.revision,p.client_id,
         COALESCE(client.name,p.client_label) AS client,p.address,p.schedule,p.instruction,
-        contact.name AS contact_name,contact.phone,contact.email,contact.original
+        contact.name AS contact_name,contact.phone,contact.email,contact.original,
+        (SELECT COUNT(*) FROM unload_point_contacts c WHERE c.entry_id=e.id) AS contact_count
         FROM catalog_entries e JOIN unload_points p ON p.entry_id=e.id
         LEFT JOIN catalog_entries client ON client.id=p.client_id
         LEFT JOIN unload_point_contacts contact ON contact.entry_id=e.id AND contact.is_primary=TRUE
@@ -31,6 +32,11 @@ function workspace_unload_row_options(array $options,?int $clientId,string $clie
 
 function workspace_unload_primary(array $point): string {
     return (string)($point['original'] ?: implode(' · ',array_filter([$point['contact_name'],$point['phone'],$point['email']])));
+}
+
+function workspace_unload_contact_summary(string $primary,int $count): string {
+    if ($count===0) return '—';
+    return $count===1 ? $primary : $primary.' · +'.($count-1);
 }
 
 function workspace_unload_client_key(?int $clientId,string $name): string {
@@ -159,8 +165,10 @@ function workspace_unload_contacts(int $catalogId,int $entryId,?array $body=null
         wquery('UPDATE catalog_entries SET revision=revision+1 WHERE id=?',[$entryId]);
         workspace_audit(['category'=>'catalog','label'=>'Контакты точки выгрузки','before'=>['id'=>$entryId,'contacts'=>$old],
             'after'=>['id'=>$entryId,'contacts'=>$normalized],'action'=>'edit']);
+        $saved=$read();
+        $primary=$saved ? workspace_unload_primary(['contact_name'=>$saved[0]['name']]+$saved[0]) : '';
         workspace_db()->commit();
-        return ['revision'=>(int)$entry['revision']+1];
+        return ['revision'=>(int)$entry['revision']+1,'summary'=>workspace_unload_contact_summary($primary,count($saved))];
     } catch (Throwable $error) {
         if ($body!==null && workspace_db()->inTransaction()) workspace_db()->rollBack();
         throw $error;

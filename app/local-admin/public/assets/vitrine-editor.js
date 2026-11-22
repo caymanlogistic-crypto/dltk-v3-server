@@ -275,7 +275,7 @@
     }
   }
   function open(cell, firstCharacter = null) {
-    if (cell.hasAttribute('data-readonly-cell')) {
+    if (cell.hasAttribute('data-readonly-cell') && cell.dataset.kind!=='unload-contacts') {
       report(cell.dataset.readonlyCell, 'info');
       return;
     }
@@ -288,6 +288,12 @@
       if (active.cell === cell) { active.field.focus(); return; }
       report('Сначала сохраните правку или нажмите «Отмена»');
       active.field.focus();
+      return;
+    }
+    if (cell.dataset.kind==='unload-contacts') {
+      select(cell);
+      cell.focus({preventScroll:true});
+      window.VitrineUnloadContacts?.open(cell);
       return;
     }
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder => { folder.open = false; });
@@ -317,7 +323,7 @@
     const useCustom = !mask && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
     const typeEditor = isContainerTypeCell(cell);
     const unloadEditor = isUnloadingCell(cell);
-    const unloadClient = catalog==='entries' && cell.dataset.column==='A' && document.querySelector('[data-unload-contacts]');
+    const unloadClient = catalog==='entries' && cell.dataset.column==='A' && document.getElementById('unload-contacts-dialog');
     const searchableCatalog = pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
@@ -515,6 +521,7 @@
   document.addEventListener('click', event => {
     const cell = event.target.closest('td[data-edit-cell]');
     if (!cell) return;
+    if (cell.dataset.kind==='unload-contacts') { open(cell); return; }
     if (cell.dataset.kind === 'time' || cell.dataset.derivedSource || cell.hasAttribute('data-readonly-cell')) {
       select(cell);
       cell.focus({preventScroll:true});
@@ -652,6 +659,7 @@
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
+    if (target.dataset.kind==='unload-contacts') { report('Откройте редактор контактов из ячейки.','info'); return; }
     if (!inEditor && target.dataset.draftType === 'password') {
       report('Откройте поле пароля для вставки.','info');
       return;
