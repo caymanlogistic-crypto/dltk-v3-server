@@ -2,8 +2,13 @@
 declare(strict_types=1);
 require_once __DIR__.'/WorkspaceClientManagers.php';
 require_once __DIR__.'/WorkspaceUnloadPoints.php';
+require_once __DIR__.'/WorkspaceClientUnloadPoints.php';
 require_once __DIR__.'/WorkspaceClientTransfer.php';
 require_once __DIR__.'/WorkspacePickupTransfer.php';
+
+function vitrine_catalog_key(string $name): string {
+    return mb_strtolower(trim(preg_replace('/\s+/u',' ',$name)));
+}
 
 function workspace_catalogs(): array {
     $out=[];foreach(wquery('SELECT * FROM catalogs ORDER BY id')->fetchAll() as $c){if(!workspace_can('catalog',(string)$c['id'],'view'))continue;$c['id']=(int)$c['id'];$c['tableIds']=array_map('intval',wquery('SELECT DISTINCT table_id FROM catalog_bindings WHERE catalog_id=?',[$c['id']])->fetchAll(PDO::FETCH_COLUMN));$out[]=$c;}return $out;
@@ -86,6 +91,10 @@ function workspace_catalogs_endpoint(string $method): never {
     if(!in_array($method,['GET','POST'],true))throw new ApiError('method','Метод не поддерживается.',405);
     if($method==='POST'){
         $b=wbody();
+        if (in_array($b['action']??null,['save_client_unload_point','delete_client_unload_point'],true)) {
+            if (!is_int($b['clientId']??null)) throw new ApiError('invalid_edit','Выберите клиента.');
+            json_response(workspace_client_unload_points($b['clientId'],$b));
+        }
         if (($b['action']??'')==='save_unload_contacts') {
             if (!is_int($b['catalogId']??null) || !is_int($b['entryId']??null)) throw new ApiError('invalid_contacts','Выберите точку выгрузки.');
             json_response(workspace_unload_contacts($b['catalogId'],$b['entryId'],$b));
@@ -106,6 +115,11 @@ function workspace_catalogs_endpoint(string $method): never {
         json_response(workspace_refresh_catalog_source($catalogId,(int)workspace_current_user()['id']));
     }
     json_response(workspace_catalog_save($b));}
+    if (isset($_GET['clientUnloadPoints'])) {
+        $clientId=filter_var($_GET['clientUnloadPoints'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+        if (!$clientId) throw new ApiError('invalid_edit','Выберите клиента.');
+        json_response(workspace_client_unload_points($clientId));
+    }
     $id=(int)($_GET['id']??0);$catalog=null;foreach(workspace_catalogs() as $c)if($c['id']===$id)$catalog=$c;if(!$catalog)throw new ApiError('not_found','Справочник не найден.',404);
     if (isset($_GET['unloadContacts'])) {
         json_response(workspace_unload_contacts($id,(int)$_GET['unloadContacts']));

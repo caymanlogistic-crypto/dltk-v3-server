@@ -67,8 +67,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         }
         if ($unload) {
             $row['singleLine']=['A'=>true];
-            $row['choices']['A']=$clientChoices;
-            $row['requiredChoices']['A']=true;
+            $row['readOnly']['A']='Клиент сохранённой точки закреплён.';
             if ($clientCatalog && $entry['client_id']) {
                 $row['relatedUrl']='/vitrine?catalog=clients&client='.(int)$entry['client_id'].($entry['client_active']?'':'&archive=1');
                 $row['rowActions']=true;
@@ -110,11 +109,11 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     if (!$entry) throw new ApiError('not_found','Запись не найдена.',404);
     $kind = $model['catalogKind'];
     if ($kind==='unload-points') {
+        if ($column==='A') throw new ApiError('fixed_unload_client','У сохранённой точки нельзя изменить клиента.',409);
         if ($column==='C') throw new ApiError('contact_editor','Откройте редактор контактов из ячейки «Контакты».');
         $point=workspace_unload_points($id)[$body['row']]??null;
         if (!$point) throw new ApiError('not_found','Точка выгрузки не найдена.',404);
-        $values=workspace_unload_point_values($point);
-        $values[$column]=$body['value'];
+        $values=['B'=>$body['value']];
         $baseHash=workspace_catalog_directory_hash($id,$body['row']);
         if ($pasteCheck) {
             workspace_unload_validate_point($values,$point);

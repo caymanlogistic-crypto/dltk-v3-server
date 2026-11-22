@@ -7,7 +7,13 @@ function workspace_unload_catalog_id(): int {
         WHERE t.slug='vyvoz' AND b.field_key='K' AND c.kind='unload-points' ORDER BY c.id LIMIT 1")->fetchColumn();
 }
 
-function workspace_unload_points(int $catalogId): array {
+function workspace_unload_review_ids(int $catalogId): array {
+    return array_fill_keys(workspace_client_catalog_metadata('unload_points_review_'.$catalogId),true);
+}
+
+function workspace_unload_points(int $catalogId,?int $clientId=null): array {
+    $filter=$clientId===null ? '' : ' AND p.client_id=?';
+    $args=$clientId===null ? [$catalogId] : [$catalogId,$clientId];
     $rows = wquery("SELECT e.id,e.name,e.active,e.revision,p.client_id,
         COALESCE(client.name,p.client_label) AS client,client.active AS client_active,p.address,p.schedule,p.instruction,
         contact.name AS contact_name,contact.phone,contact.email,contact.original,
@@ -15,8 +21,8 @@ function workspace_unload_points(int $catalogId): array {
         FROM catalog_entries e JOIN unload_points p ON p.entry_id=e.id
         LEFT JOIN catalog_entries client ON client.id=p.client_id
         LEFT JOIN unload_point_contacts contact ON contact.entry_id=e.id AND contact.is_primary=TRUE
-        WHERE e.catalog_id=? ORDER BY COALESCE(client.name,p.client_label),p.address,e.id",[$catalogId])->fetchAll();
-    $review=array_fill_keys(workspace_client_catalog_metadata('unload_points_review_'.$catalogId),true);
+        WHERE e.catalog_id=?".$filter." ORDER BY COALESCE(client.name,p.client_label),p.address,e.id",$args)->fetchAll();
+    $review=workspace_unload_review_ids($catalogId);
     foreach ($rows as &$row) $row['review_required']=isset($review[$row['id']]);
     unset($row);
     return array_column($rows,null,'id');
@@ -79,39 +85,46 @@ function workspace_unload_text(mixed $value,int $limit,bool $multiline=false): s
 function workspace_unload_validate_point(array $values,?array $old=null): array {
     $address=workspace_unload_text($values['B']??'',6000,true);
     if ($address==='') throw new ApiError('invalid_unload_address','Укажите адрес выгрузки.');
-    $name=workspace_unload_text($values['A']??'',160);
-    if ($old && $name===$old['client'] && $name!=='') {
-        return ['client'=>$name,'client_id'=>$old['client_id'],'address'=>$address];
+    if ($old) {
+        if (array_key_exists('A',$values) && $values['A']!==$old['client']) {
+            throw new ApiError('fixed_unload_client','У сохранённой точки нельзя изменить клиента.',409);
+        }
+        return ['client'=>$old['client'],'client_id'=>$old['client_id'],'address'=>$address];
     }
+    $name=workspace_unload_text($values['A']??'',160);
     foreach (workspace_unload_client_entries() as $client) {
         if ($name===$client['name']) return ['client'=>$name,'client_id'=>(int)$client['id'],'address'=>$address];
     }
     throw new ApiError('invalid_unload_client','Выберите клиента из справочника.');
 }
 
-function workspace_unload_save_point(int $catalogId,array $values,?int $entryId=null,?int $revision=null): array {
+function workspace_unload_save_point(int $catalogId,array $values,?int $entryId=null,?int $revision=null,?int $clientId=null): array {
     workspace_require('catalog',(string)$catalogId,'edit');
     workspace_begin();
     try {
-        $old=$entryId ? (workspace_unload_points($catalogId)[$entryId]??null) : null;
+        if ($entryId) wquery('SELECT id FROM catalog_entries WHERE catalog_id=? AND id=? FOR UPDATE',[$catalogId,$entryId]);
+        $old=$entryId ? (workspace_unload_points($catalogId,$clientId)[$entryId]??null) : null;
         if ($entryId && (!$old || !$old['active'])) throw new ApiError('not_found','Точка выгрузки не найдена.',404);
         if ($old && (int)$old['revision']!==$revision) workspace_directory_conflict();
-        $point=workspace_unload_validate_point($values,$old);
+        if (!$old && $clientId!==null) {
+            $clientCatalog=(int)(workspace_client_grid_catalog()['id']??0);
+            $clientRow=wquery('SELECT name FROM catalog_entries WHERE catalog_id=? AND id=? AND active=TRUE FOR SHARE',
+                [$clientCatalog,$clientId])->fetch();
+            if (!$clientRow) throw new ApiError('invalid_unload_client','Выберите действующего клиента.');
+            $point=workspace_unload_validate_point($values,['client'=>$clientRow['name'],'client_id'=>$clientId]);
+        } else {
+            $point=workspace_unload_validate_point($values,$old);
+        }
         $client=$point['client_id']===null ? null : (int)$point['client_id'];
-        if ($client!==null && (!$old || $client!==(int)$old['client_id'])) {
+        if ($client!==null && !$old && $clientId===null) {
             $active=wquery('SELECT active FROM catalog_entries WHERE id=? FOR SHARE',[$client])->fetchColumn();
             if (!$active) throw new ApiError('invalid_unload_client','Выберите действующего клиента.');
-        }
-        if ($old && workspace_unload_client_key($client,$point['client'])!==
-            workspace_unload_client_key($old['client_id']===null?null:(int)$old['client_id'],$old['client'])) {
-            workspace_assert_unload_point_unused($entryId,$old['address']);
         }
         $key=workspace_unload_address_key($client,$point['client'],$point['address']);
         $revision=$old ? (int)$old['revision']+1 : 1;
         if ($old) {
             wquery('UPDATE catalog_entries SET normalized=?,revision=? WHERE id=?',[$key,$revision,$entryId]);
-            wquery('UPDATE unload_points SET client_id=?,client_label=?,address=? WHERE entry_id=?',
-                [$client,$point['client'],$point['address'],$entryId]);
+            wquery('UPDATE unload_points SET address=? WHERE entry_id=?',[$point['address'],$entryId]);
         } else {
             wquery('INSERT INTO catalog_entries(catalog_id,name,normalized) VALUES(?,?,?)',[$catalogId,$point['client'],$key]);
             $entryId=(int)workspace_db()->lastInsertId();

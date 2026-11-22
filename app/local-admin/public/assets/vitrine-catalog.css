@@ -30,6 +30,12 @@
 .vitrine .vitrine-catalog-dialog::backdrop { background:rgb(0 0 0 / .25); }
 .vitrine .vitrine-catalog-dialog .modal-body { display:grid; gap:12px; padding:16px; }
 .vitrine .vitrine-catalog-dialog .modal-body p { margin:0; color:var(--text-muted); }
+.vitrine.vitrine-catalog-page .vitrine-table { --vitrine-default-width-C:180px; }
+.vitrine .vitrine-client-unload-dialog { width:min(620px,calc(100vw - 24px)); }
+.vitrine .vitrine-client-unload-dialog [hidden] { display:none; }
+.vitrine .vitrine-client-unload-point { display:grid; gap:6px; padding-block-end:12px; border-bottom:1px solid var(--line); }
+.vitrine .vitrine-client-unload-point strong { white-space:pre-wrap; overflow-wrap:anywhere; }
+.vitrine .vitrine-client-unload-actions { display:flex; flex-wrap:wrap; gap:8px; }
 @media(max-width:700px) {
   .vitrine .vitrine-catalog-search { margin-inline-start:0; }
 }

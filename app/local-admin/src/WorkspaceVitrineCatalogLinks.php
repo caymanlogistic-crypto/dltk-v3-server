@@ -42,10 +42,6 @@ function vitrine_bound_catalog_menu(array $tables): array {
     return [];
 }
 
-function vitrine_catalog_key(string $name): string {
-    return mb_strtolower(trim(preg_replace('/\s+/u',' ',$name)));
-}
-
 function vitrine_catalog_values(array $link): array {
     if($link['kind']==='clients')return workspace_client_manager_values($link['id']);
     $map=json_decode((string)wquery('SELECT value FROM workspace_meta WHERE `key`=?',[$link['meta'].$link['id']])->fetchColumn(),true);
@@ -72,7 +68,7 @@ function vitrine_find_unload_point(array $table,array $record,array $values,int 
         if (!$point['active'] || $point['review_required'] || $point['client']==='') continue;
         if ($input!==vitrine_catalog_key($point['address'])) continue;
         $key=workspace_unload_client_key($point['client_id']===null?null:(int)$point['client_id'],$point['client']);
-        if ($key===$clientKey) return $point;
+        if ($key===$clientKey && wquery('SELECT active FROM catalog_entries WHERE id=? FOR SHARE',[$point['id']])->fetchColumn()) return $point;
     }
     return null;
 }

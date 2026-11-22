@@ -275,7 +275,8 @@
     }
   }
   function open(cell, firstCharacter = null) {
-    if (cell.hasAttribute('data-readonly-cell') && cell.dataset.kind!=='unload-contacts') {
+    const card = {'unload-contacts':window.VitrineUnloadContacts,'client-unload-points':window.VitrineClientUnloadPoints}[cell.dataset.kind];
+    if (cell.hasAttribute('data-readonly-cell') && !card) {
       report(cell.dataset.readonlyCell, 'info');
       return;
     }
@@ -290,10 +291,10 @@
       active.field.focus();
       return;
     }
-    if (cell.dataset.kind==='unload-contacts') {
+    if (card) {
       select(cell);
       cell.focus({preventScroll:true});
-      window.VitrineUnloadContacts?.open(cell);
+      card.open(cell);
       return;
     }
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder => { folder.open = false; });
@@ -521,7 +522,7 @@
   document.addEventListener('click', event => {
     const cell = event.target.closest('td[data-edit-cell]');
     if (!cell) return;
-    if (cell.dataset.kind==='unload-contacts') { open(cell); return; }
+    if (['unload-contacts','client-unload-points'].includes(cell.dataset.kind)) { open(cell); return; }
     if (cell.dataset.kind === 'time' || cell.dataset.derivedSource || cell.hasAttribute('data-readonly-cell')) {
       select(cell);
       cell.focus({preventScroll:true});
@@ -659,6 +660,7 @@
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
+    if (target.dataset.kind==='client-unload-points') { report('Откройте точки выгрузки из ячейки.','info'); return; }
     if (target.dataset.kind==='unload-contacts') { report('Откройте редактор контактов из ячейки.','info'); return; }
     if (!inEditor && target.dataset.draftType === 'password') {
       report('Откройте поле пароля для вставки.','info');

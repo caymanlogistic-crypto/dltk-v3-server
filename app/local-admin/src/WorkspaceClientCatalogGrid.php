@@ -17,9 +17,13 @@ function workspace_client_grid_catalog(): ?array {
 function workspace_client_grid_model(): array {
     $catalog = workspace_client_grid_catalog();
     if (!$catalog) throw new ApiError('not_found', 'Справочник «Клиенты» не найден.', 404);
+    $unloadCatalog=workspace_unload_catalog_id();
+    $canViewUnload=$unloadCatalog && workspace_can('catalog',(string)$unloadCatalog,'view');
+    $columns=[['letter'=>'A','label'=>'Клиент'],['letter'=>'B','label'=>'Менеджер']];
+    if ($canViewUnload) $columns[]=['letter'=>'C','label'=>'Точки выгрузки','kind'=>'client-unload-points'];
     return [
         'id'=>0, 'catalogId'=>(int)$catalog['id'], 'slug'=>'catalog-clients', 'title'=>'Клиенты',
-        'columns'=>[['letter'=>'A', 'label'=>'Клиент'], ['letter'=>'B', 'label'=>'Менеджер']],
+        'columns'=>$columns,'unloadCatalogId'=>$canViewUnload ? $unloadCatalog : null,
     ];
 }
 
@@ -37,8 +41,9 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
     $canEdit = workspace_can('catalog', (string)$catalogId, 'edit');
     $archive = ($_GET['archive'] ?? null) === '1';
     $clientFilter=workspace_directory_client_filter($catalogId);
-    $unloadCatalog=workspace_unload_catalog_id();
-    $canViewUnload=$unloadCatalog && workspace_can('catalog',(string)$unloadCatalog,'view');
+    $unloadCatalog=$table['unloadCatalogId'];
+    $canViewUnload=$unloadCatalog!==null;
+    $pointCounts=$canViewUnload ? workspace_client_unload_counts($unloadCatalog) : [];
     $search = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']), 0, 160) : '';
     $managers = workspace_client_manager_values($catalogId);
     $entries = wquery(
@@ -57,6 +62,7 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
         $rowIds[] = $entryId;
         if ($requested === null ? count($rows) >= 100 : !isset($requested[$entryId])) continue;
         $values = ['A'=>$name, 'B'=>$manager];
+        if ($canViewUnload) $values['C']=workspace_client_unload_count_label($pointCounts[$entryId]??0);
         $kinds = ['A'=>'text', 'B'=>'text'];
         $version = ['revision'=>(int)$entry['revision']];
         $relatedUrl=$canViewUnload ? '/vitrine?catalog=entries&id='.$unloadCatalog.'&client='.$entryId : null;
@@ -71,6 +77,8 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
     return [
         'catalogGrid'=>['id'=>$catalogId, 'archive'=>$archive, 'search'=>$search, 'canEdit'=>$canEdit, 'syncLabel'=>$syncLabel,
             'relatedLabel'=>$canViewUnload ? 'Точки выгрузки' : null,'clientFilter'=>$clientFilter,
+            'clientUnloadCatalog'=>$canViewUnload ? $unloadCatalog : null,
+            'canManageUnload'=>$canViewUnload && !$archive && workspace_can('catalog',(string)$unloadCatalog,'edit'),
             'draftFields'=>workspace_directory_draft_fields('clients')],
         'table'=>$table,
         'sheetTitle'=>$table['title'],

@@ -9,7 +9,7 @@
   const save = dialog.querySelector('button[type="submit"]');
   const close = dialog.querySelector('[data-close]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
-  let entryId, revision, opener, loading=false;
+  let entryId, revision, opener, afterSave, loading=false;
   const notice = (message,tone='danger') => window.PlanexNotifications.show({message,tone});
   const node = (tag, cls, text) => {
     const result = document.createElement(tag);
@@ -61,13 +61,17 @@
     if (!response.ok || result.error) throw new Error(result.error?.message||'Не удалось открыть контакты точки.');
     return result;
   }
-  async function open(cell) {
+  function open(cell) {
+    return openPoint(Number(cell.dataset.row),cell);
+  }
+  async function openPoint(id,trigger,onSaved=null) {
     if (loading || dialog.open) return;
-    entryId=Number(cell.dataset.row);
-    if (entryId<=0) { notice('Сначала заполните клиента и адрес.','info'); return; }
-    opener=cell;
+    if (id<=0) { notice('Сначала заполните клиента и адрес.','info'); return; }
+    entryId=id;
+    opener=trigger;
+    afterSave=onSaved;
     loading=true;
-    cell.setAttribute('aria-busy','true');
+    opener.setAttribute('aria-busy','true');
     try {
       const data=await request('?id='+catalogId+'&unloadContacts='+entryId);
       revision=data.revision;
@@ -76,9 +80,9 @@
       if (!data.contacts.length && !save) list.append(node('p',null,'Контакты не указаны.'));
       dialog.showModal();
     } catch (error) { notice(error.message); }
-    finally { loading=false;cell.removeAttribute('aria-busy'); }
+    finally { loading=false;opener.removeAttribute('aria-busy'); }
   }
-  window.VitrineUnloadContacts=Object.freeze({open});
+  window.VitrineUnloadContacts=Object.freeze({open,openPoint});
   add?.addEventListener('click',()=>{
     const section=row({});
     list.append(section);
@@ -86,6 +90,7 @@
     section.querySelector('[data-contact-field]').focus();
   });
   close.addEventListener('click',()=>dialog.close());
+  dialog.addEventListener('cancel',event=>{ if (save?.disabled) event.preventDefault(); });
   dialog.addEventListener('close',()=>{
     const cell=window.VitrineRows?.resolveCell(opener)??opener;
     if (cell?.isConnected) cell.focus({preventScroll:true});
@@ -97,10 +102,11 @@
       const values=Object.fromEntries(Array.from(section.querySelectorAll('[data-contact-field]'),input=>[input.dataset.contactField,input.value]));
       return {id:Number(section.dataset.contactId)||null,primary:section.querySelector('input[type="radio"]').checked,...values};
     });
-    save.disabled=true;
+    save.disabled=close.disabled=true;
     try {
       const result=await request('',{action:'save_unload_contacts',catalogId,entryId,revision,contacts});
-      for (const cell of document.querySelectorAll('td[data-row="'+entryId+'"]')) {
+      if (afterSave) afterSave(result);
+      else for (const cell of document.querySelectorAll('td[data-row="'+entryId+'"]')) {
         cell.dataset.revision=String(result.revision);
         if (cell.dataset.kind!=='unload-contacts') continue;
         cell.textContent=result.summary;
@@ -113,6 +119,6 @@
       dialog.close();
       notice('Контакты сохранены.','success');
     } catch (error) { notice(error.message); }
-    finally { save.disabled=false; }
+    finally { save.disabled=close.disabled=false; }
   });
 })();
