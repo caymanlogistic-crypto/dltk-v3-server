@@ -12,7 +12,7 @@ function workspace_catalog_directory_model(): array {
         'status'=>['A'=>'Статус','B'=>'Цвет'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
         'container-types'=>['A'=>'Тип контейнера'],
-        'unload-points'=>['A'=>'Название','B'=>'Адрес'],
+        'unload-points'=>['A'=>'Клиент','B'=>'Адрес'],
         default=>['A'=>'Название'],
     };
     $columns = [];
@@ -35,6 +35,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         default=>[],
     };
     $unload = $kind==='unload-points';
+    $clientChoices=$unload ? array_column(workspace_unload_client_entries(),'name') : [];
     $entries = $unload ? workspace_unload_points($id)
         : wquery('SELECT id,name,color,revision,active FROM catalog_entries WHERE catalog_id=? AND active=? ORDER BY name,id',[$id,(int)!$archive])->fetchAll();
     $palette = array_column(workspace_palette(),'name','fill');
@@ -42,6 +43,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $requested = $requestedRows === null ? null : array_fill_keys($requestedRows,true);
     foreach ($entries as $entry) {
         if ((bool)$entry['active']===$archive) continue;
+        if ($unload && !$archive && $entry['review_required']) continue;
         $entryId = (int)$entry['id'];
         $values = $unload ? workspace_unload_point_values($entry) : ['A'=>$entry['name']];
         if (workspace_catalog_has_palette($kind)) $values['B'] = $palette[$entry['color']] ?? '';
@@ -57,7 +59,11 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $row['choices']['B']=$choices;
             $row['requiredChoices']['B']=true;
         }
-        if ($unload) $row['singleLine']=['A'=>true];
+        if ($unload) {
+            $row['singleLine']=['A'=>true];
+            $row['choices']['A']=$clientChoices;
+            $row['requiredChoices']['A']=true;
+        }
         $rows[] = $row;
     }
     $details = wquery("SELECT COALESCE(JSON_LENGTH(JSON_EXTRACT(value,'$.unkeyed')),0) AS unkeyedCount
@@ -67,8 +73,8 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             'syncLabel'=>$canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($id) : null,
             'hasDetails'=>(bool)$details,'unkeyedCount'=>(int)($details['unkeyedCount'] ?? 0),
             'unloadPoints'=>$unload,
-            'draftVersion'=>$unload ? 'name-address' : '',
-            'draftFields'=>$unload ? workspace_unload_draft_fields()
+            'draftVersion'=>$unload ? 'client-address' : '',
+            'draftFields'=>$unload ? workspace_unload_draft_fields($clientChoices)
                 : workspace_directory_draft_fields('entries',catalogKind:$kind)]];
 }
 
@@ -97,7 +103,7 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         $values[$column]=$body['value'];
         $baseHash=workspace_catalog_directory_hash($id,$body['row']);
         if ($pasteCheck) {
-            workspace_unload_validate_point($values);
+            workspace_unload_validate_point($values,$point);
             json_response(['accepted'=>true]);
         }
         if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();

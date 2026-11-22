@@ -177,6 +177,7 @@
     if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось сохранить ячейку.');
     if (typeof result.value !== 'string' || !Number.isInteger(result.revision) || typeof result.baseHash !== 'string') throw new Error('Неполный ответ сервера. Обновите страницу.');
     if (result.dependentCell) window.VitrineRows?.patch(result.dependentCell);
+    for (const patch of result.unloadCells ?? []) window.VitrineRows?.patch(patch);
     if (result.reauthenticate) location.assign(window.DltkPaths?.path('/login') ?? '/login');
     return result;
   }
@@ -316,13 +317,14 @@
     const useCustom = !mask && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
     const typeEditor = isContainerTypeCell(cell);
     const unloadEditor = isUnloadingCell(cell);
-    const searchableCatalog = pickupEditor || typeEditor || unloadEditor || cell.hasAttribute('data-order-status');
+    const unloadClient = catalog==='entries' && cell.dataset.column==='A' && document.querySelector('[data-unload-contacts]');
+    const searchableCatalog = pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');
       const options = required ? [] : [{value:'',label:'Не выбран'}];
       const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(option => option && typeof option === 'object' ? option : {value:String(option),label:String(option)});
-      if (!required && !typeEditor && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
+      if (!required && !typeEditor && !unloadEditor && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableCatalog});
     }

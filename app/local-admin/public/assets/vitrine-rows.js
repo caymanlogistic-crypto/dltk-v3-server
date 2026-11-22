@@ -151,6 +151,20 @@
     const cell=row?.querySelector('td[data-column="'+patch.column+'"]');
     if(cell && Number(cell.dataset.revision||0)<Number(patch.revision))window.VitrineGrid?.applyRemote(cell,patch);
   }
+  async function refreshUnloadChoices(row,patch) {
+    const client=row?.querySelector('td[data-column="B"]');
+    const address=row?.querySelector('td[data-column="K"][data-catalog-id]');
+    if (!address || Number(client?.dataset.revision)!==Number(patch.revision)) return;
+    address.dataset.choices='[]';
+    const response=await fetch(window.VitrineGridScope.url('/api/vitrine/rows',{ids:[Number(patch.row)]}),{credentials:'same-origin'});
+    const data=await response.json();
+    if (!response.ok || typeof data.html!=='string') return;
+    const template=document.createElement('template');
+    template.innerHTML='<table><tbody>'+data.html+'</tbody></table>';
+    const fresh=template.content.querySelector('td[data-column="K"]');
+    const freshClient=template.content.querySelector('td[data-column="B"]');
+    if (fresh && freshClient?.dataset.revision===client.dataset.revision) address.dataset.choices=fresh.dataset.choices??'[]';
+  }
   const normalizedCatalogName = name => (name ?? '').trim().toLowerCase().replace(/\s+/gu,' ');
   function applyCatalogPatch(row,patch){
     if(!row)return;
@@ -159,7 +173,7 @@
       if(String(cell.dataset.catalogId)!==String(patch.catalogId)||cell===active)continue;
       const bindings=patch.bindings||[];
       if(bindings.length&&!bindings.some(binding=>binding.tableSlug===(document.body.dataset.workspaceTable||'vyvoz')&&binding.fieldKey===cell.dataset.column))continue;
-      if(cell.dataset.column==='A')continue;
+      if(cell.dataset.column==='A'||(cell.dataset.column==='K'&&document.body.dataset.workspaceTable==='vyvoz'))continue;
       let choices=[];try{choices=JSON.parse(cell.dataset.choices||'[]');}catch{}
       choices=choices.filter(value=>!(patch.aliases||[patch.beforeName,patch.name]).includes(value));
       if(patch.active!==false&&patch.active!==0)choices.push(patch.name);
@@ -243,7 +257,14 @@
       patch={...patch,aliases:[...new Set([...(old?.aliases||[]),patch.beforeName,patch.name])]};
       catalogPatches.set(key,patch);for(const row of cache.values())applyCatalogPatch(row,patch);
     },
-    patch(patch){const key=patch.row+':'+patch.column,old=remotePatches.get(key);if(!old||Number(old.revision)<Number(patch.revision))remotePatches.set(key,patch);const row=cache.get(Number(patch.row));applyPatch(row,patch);for(const item of catalogPatches.values())applyCatalogPatch(row,item);},
+    patch(patch){
+      const key=patch.row+':'+patch.column,old=remotePatches.get(key);
+      if(!old||Number(old.revision)<Number(patch.revision))remotePatches.set(key,patch);
+      const row=cache.get(Number(patch.row));
+      applyPatch(row,patch);
+      if(patch.column==='B'&&document.body.dataset.workspaceTable==='vyvoz')refreshUnloadChoices(row,patch).catch(report);
+      for(const item of catalogPatches.values())applyCatalogPatch(row,item);
+    },
     activate:(cell,action)=>activate(cell,action).catch(report),
     resolveCell:cell=>cache.get(Number(cell.dataset.row))?.querySelector('td[data-column="'+cell.dataset.column+'"]')||cell,
     move(cell,dr,dc,wrap){const columns=visibleColumns();let r=(navigation?.r??rowIndex(cell))+dr,c=(navigation?.c??columns.indexOf(cell.dataset.column))+dc;if(wrap&&c<0){r--;c=columns.length-1;}if(wrap&&c>=columns.length){r++;c=0;}return go(cell,r,c);},
