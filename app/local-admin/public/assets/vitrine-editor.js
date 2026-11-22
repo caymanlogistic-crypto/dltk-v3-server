@@ -115,7 +115,11 @@
     if(Object.hasOwn(result,'referenceId'))cell.dataset.referenceId=String(result.referenceId||'');
     if(Object.hasOwn(result,'catalogId'))cell.dataset.catalogId=String(result.catalogId||'');
     cell.dataset.base = result.baseHash;
-    if (Object.hasOwn(result,'orderStatus')) cell.dataset.orderStatus = result.orderStatus;
+    if (Object.hasOwn(result,'orderStatus')) {
+      cell.dataset.orderStatus = result.orderStatus;
+      cell.style.setProperty('--order-status-fill',orderStatuses[result.orderStatus]?.color || '');
+    }
+    if (result.orderFill) cell.style.setProperty('--order-status-fill',result.orderFill);
     if (cell.dataset.kind === 'status') {
       cell.dataset.statusId = result.statusId ?? '';
       cell.dataset.statusColor = result.statusColor ?? '';
@@ -271,7 +275,7 @@
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');
       const options = required ? [] : [{value:'',label:'Не выбран'}];
-      const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(value => ({value:String(value),label:String(value)}));
+      const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(option => option && typeof option === 'object' ? option : {value:String(option),label:String(option)});
       if (!required && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableClient});

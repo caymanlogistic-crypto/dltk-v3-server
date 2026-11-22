@@ -14,7 +14,7 @@ function workspace_directory_grid_model(string $directory): array {
     if ($directory === 'client-order-statuses') {
         workspace_require('system','client-order-statuses','view');
         return ['id'=>0,'directoryKey'=>$directory,'slug'=>'catalog-'.$directory,'title'=>'Статусы клиентов',
-            'columns'=>[['letter'=>'A','label'=>'Статус заказа']]];
+            'columns'=>[['letter'=>'A','label'=>'Статус заказа'],['letter'=>'B','label'=>'Цвет']]];
     }
     $employees = $directory === 'employees';
     workspace_require('system',$employees ? 'users' : 'roles','view');
@@ -35,10 +35,13 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     $search = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']),0,160) : '';
     $orderStatuses = $directory === 'client-order-statuses';
     $entries = $employees ? workspace_employee_records(active: !$archive) : workspace_employee_roles();
+    $palette = workspace_palette();
     if ($orderStatuses) {
+        $colorOptions = array_map(static fn(array $color): array=>['value'=>$color['name'],'label'=>$color['name'],'color'=>$color['fill']],$palette);
+        $colorNames = array_column($palette,'name','fill');
         $entries = [];
         foreach (workspace_client_order_statuses() as $code=>$status) {
-            $entries[] = ['id'=>$status['id'],'name'=>$status['label'],'orderStatus'=>$code];
+            $entries[] = ['id'=>$status['id'],'name'=>$status['label'],'orderStatus'=>$code,'color'=>$status['color'],'revision'=>$status['revision']];
         }
     }
     $scope = $employees ? workspace_employee_editor_scope() : null;
@@ -48,6 +51,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     $requested = $requestedRows !== null ? array_fill_keys($requestedRows,true) : null;
     foreach ($entries as $entry) {
         $values = $employees ? workspace_employee_grid_values($entry) : ['A'=>$entry['name']];
+        if ($orderStatuses) $values['B']=$colorNames[$entry['color']] ?? '';
         if ($search !== '' && mb_stripos(implode(' ',array_diff_key($values,['C'=>true])),$search) === false) continue;
         $id = $entry['id'];
         $rowIds[] = $id;
@@ -67,11 +71,17 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
                 $row['requiredChoices']['E'] = true;
             }
         }
-        if ($orderStatuses) $row['orderStatus'] = $entry['orderStatus'];
+        if ($orderStatuses) {
+            $row['orderFill'] = $entry['color'];
+            $row['baseHash'] = hash('sha256','client-order-status:'.$entry['orderStatus']);
+            $row['edits'] = array_fill_keys(['A','B'],['revision'=>$entry['revision']]);
+            $row['choices']['B'] = $colorOptions;
+            $row['requiredChoices']['B'] = true;
+        }
         $rows[] = $row;
     }
     return [
         'table'=>$model, 'columns'=>$model['columns'], 'rows'=>$rows, 'rowIds'=>$rowIds,
-        'palette'=>workspace_palette(), 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$scope !== null],
+        'palette'=>$palette, 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$scope !== null || ($orderStatuses && workspace_can('system','client-order-statuses','edit'))],
     ];
 }
