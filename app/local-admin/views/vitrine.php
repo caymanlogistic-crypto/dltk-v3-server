@@ -16,8 +16,7 @@ $directoryUrl = $catalogGrid ? '/vitrine?catalog='.$directory.match ($directory)
     default => '',
 } : null;
 $workspaceTables=workspace_tables();
-$pickupCatalog=vitrine_pickup_catalog_menu($workspaceTables);
-$pickupCurrent=$directory==='entries'&&($catalogGrid['id']??0)===($pickupCatalog['id']??null);
+$boundCatalogMenu=vitrine_bound_catalog_menu($workspaceTables);
 $canOpenStatuses = !$directory || in_array('vyvoz',array_column($workspaceTables,'slug'),true);
 $canViewClientColors = workspace_can('system','client-order-statuses','view');
 $preferences=empty($error) ? workspace_preferences($currentTable) : [];
@@ -142,9 +141,11 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <?php foreach ($directoryLinks as $key => $label): ?>
           <a class="nav-sub-item<?= $directory === $key ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog='.$key)) ?>"<?= $directory === $key ? ' aria-current="page"' : '' ?>><?= $escape($label) ?></a>
           <?php endforeach; ?>
-          <?php if ($pickupCatalog): ?>
-          <a class="nav-sub-item<?= $pickupCurrent ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$pickupCatalog['id'])) ?>"<?= $pickupCurrent ? ' aria-current="page"' : '' ?>><?= $escape($pickupCatalog['title']) ?></a>
-          <?php endif; ?>
+          <?php foreach ($boundCatalogMenu as $item):
+            $current=$directory==='entries'&&($catalogGrid['id']??0)===$item['id'];
+          ?>
+          <a class="nav-sub-item<?= $current ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$item['id'])) ?>"<?= $current ? ' aria-current="page"' : '' ?>><?= $escape($item['title']) ?></a>
+          <?php endforeach; ?>
         </div>
       </details>
     </nav>

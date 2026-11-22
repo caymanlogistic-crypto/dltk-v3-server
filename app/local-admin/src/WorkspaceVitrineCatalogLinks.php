@@ -11,10 +11,11 @@ function vitrine_catalog_links(array $table): array {
     $definitions=[
         'B'=>['kind'=>'clients','target'=>'AL','meta'=>'catalog_managers_','source'=>'Из справочника клиентов','empty'=>'У клиента не указан менеджер','invalid'=>'Выберите клиента из справочника.'],
         'E'=>['kind'=>'terminals-main','invalid'=>'Выберите терминал постановки из справочника.'],
+        'I'=>['kind'=>'container-types','invalid'=>'Выберите тип контейнера из справочника.'],
         'S'=>['kind'=>'carriers','target'=>'AM','meta'=>'catalog_logists_','source'=>'Из справочника перевозчиков','empty'=>'У перевозчика не указан логист','invalid'=>'Выберите перевозчика из справочника.'],
     ];
     $links=[];
-    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','S') ORDER BY c.id",[$table['id']])->fetchAll();
+    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','I','S') ORDER BY c.id",[$table['id']])->fetchAll();
     foreach($bindings as $binding){
         $field=$binding['field_key'];$definition=$definitions[$field];
         if($definition['kind']===$binding['kind']&&!isset($links[$field])){
@@ -24,15 +25,20 @@ function vitrine_catalog_links(array $table): array {
     return $byTable[$table['id']]=$links;
 }
 
-function vitrine_pickup_catalog_menu(array $tables): ?array {
+function vitrine_bound_catalog_menu(array $tables): array {
     foreach($tables as $table){
         if($table['slug']!=='vyvoz')continue;
-        $link=vitrine_catalog_links($table)['E']??null;
-        if(!$link||!workspace_can('catalog',(string)$link['id'],'view',$table['id']))return null;
-        $title=wquery('SELECT title FROM catalogs WHERE id=?',[$link['id']])->fetchColumn();
-        return ['id'=>$link['id'],'title'=>$title];
+        $links=vitrine_catalog_links($table);
+        $items=[];
+        foreach(['E','I'] as $field){
+            $link=$links[$field]??null;
+            if(!$link||!workspace_can('catalog',(string)$link['id'],'view',$table['id']))continue;
+            $title=wquery('SELECT title FROM catalogs WHERE id=?',[$link['id']])->fetchColumn();
+            $items[]=['id'=>$link['id'],'title'=>$title];
+        }
+        return $items;
     }
-    return null;
+    return [];
 }
 
 function vitrine_catalog_key(string $name): string {

@@ -54,7 +54,7 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
     $kind = $target['kinds'][$body['column']] ?? 'text';
     $compact = isset($target['compactInputs'][$body['column']]);
     if (!$compact && $kind === 'time') $body['value'] = vitrine_time_input($body['value']) ?? $body['value'];
-    $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','slot'=>'Слот','boolean'=>'TRUE/FALSE'];
+    $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','slot'=>'Слот','container'=>'Номер КТК','weight'=>'Вес','boolean'=>'TRUE/FALSE'];
     if ($paste['source'] !== null) {
         $source = $paste['source'];
         if (!is_array($source) || !is_int($source['row']??null) || !is_string($source['column']??null) || !is_int($source['revision']??null) || !is_string($source['baseHash']??null) || !is_string($source['value']??null)) throw new ApiError('invalid_clipboard','Некорректный формат скопированной ячейки.');
@@ -111,9 +111,14 @@ function vitrine_save_cell(): never {
     $compactKind = $current['compactInputs'][$body['column']] ?? null;
     if (!$body['reset'] && $compactKind !== null) {
         $normalized = vitrine_compact_input($body['value'],$compactKind);
-        if ($normalized === null && $body['value'] !== ($current['values'][$body['column']] ?? '')) {
-            $message = $compactKind === 'date' ? 'Введите действительную дату в формате ДДММГГ.'
-                : 'Введите время в формате ЧЧММ. Часы 00–23, минуты 00–59.';
+        if ($normalized === null && (in_array($compactKind,['container','weight'],true)
+            || $body['value'] !== ($current['values'][$body['column']] ?? ''))) {
+            $message = match ($compactKind) {
+                'container'=>'Введите номер ISO 6346: три латинские буквы, U и семь цифр. Проверьте последнюю цифру.',
+                'weight'=>'Введите вес целым числом, только цифрами.',
+                'date'=>'Введите действительную дату в формате ДДММГГ.',
+                'time'=>'Введите время в формате ЧЧММ. Часы 00–23, минуты 00–59.',
+            };
             throw new ApiError('invalid_'.$compactKind,$message);
         }
         if ($normalized !== null) $body['value'] = $normalized;
@@ -150,7 +155,11 @@ function vitrine_save_cell(): never {
         }
         $orderEdit=['orderStatus'=>$code];
     }
-    $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'']+$orderEdit);
+    $comparison = [];
+    if ($compactKind==='weight') $comparison['comparisonOriginal']=$body['reset']
+        ? $original : (vitrine_compact_input($original,'weight')??$original);
+    $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'']+$orderEdit+$comparison);
+    if ($compactKind==='weight') $result['value']=vitrine_compact_input($result['value'],'weight')??$result['value'];
     if (($current['kinds'][$body['column']] ?? '') === 'slot') {
         $result['value'] = vitrine_slot_input($result['value']) ?? $result['value'];
     }

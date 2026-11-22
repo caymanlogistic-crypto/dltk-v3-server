@@ -9,6 +9,8 @@ function vitrine_data(?array $requestedRows=null): array {
         $labels=array_column($columns,'label','letter');
         if(mb_strtolower(trim($labels['F']??''))==='дата')$compactInputs['F']='date';
         if(mb_strtolower(trim($labels['G']??''))==='время')$compactInputs['G']='time';
+        if(mb_strtolower(trim($labels['H']??''))==='номер ктк')$compactInputs['H']='container';
+        if(mb_strtolower(trim($labels['J']??''))==='вес')$compactInputs['J']='weight';
     }
     $slots=array_column(array_filter($columns,static fn(array $column): bool=>mb_strtolower(trim($column['label']))==='слот'),null,'letter');
     $singleLine=array_fill_keys(array_column(array_filter($columns,
@@ -43,6 +45,7 @@ function vitrine_data(?array $requestedRows=null): array {
         foreach($columns as $f){$key=$f['letter'];$cell=$raw[(string)column_number($key)]??[];$kinds[$key]=$key==='A'?'status':(mb_strtolower(trim($f['label']))==='время'?'time':vitrine_clipboard_kind($cell,$key));
             if(!$raw){$kinds[$key]=match(mb_strtolower($f['label'])){'дата'=>'date','время'=>'time',default=>$key==='A'?'status':'text'};}
             if (isset($compactInputs[$key])) $kinds[$key]=$compactInputs[$key];
+            if ($key==='I' && isset($links[$key])) $kinds[$key]='text';
             if (isset($slots[$key])) $kinds[$key]='slot';
             if (isset($singleLine[$key])) $kinds[$key]='text';
             $display=display_cell($cell);if($display!==null){$baseline[$key]=$display;if(!isset($edits[(int)$r['id']][$key]))$values[$key]=$display;}
@@ -53,6 +56,9 @@ function vitrine_data(?array $requestedRows=null): array {
         foreach($refs[(int)$r['id']]??[] as $key=>$ref)$values[$key]=$ref['name'];
         foreach (array_keys($slots) as $key) {
             if (isset($values[$key])) $values[$key] = vitrine_slot_input($values[$key]) ?? $values[$key];
+        }
+        if (($compactInputs['J']??null)==='weight' && isset($values['J'])) {
+            $values['J']=vitrine_compact_input($values['J'],'weight')??$values['J'];
         }
         foreach($dependentLinks as $source=>$link){
             $entryId=$entriesByName[$source][vitrine_catalog_key($values[$source]??'')]??null;
@@ -116,7 +122,7 @@ function vitrine_store(array $body): array {
                 else $values['clientOrderStatus']=$nextOrderStatus;
             }
         }
-        $active=$value!==$body['original'];
+        $active=$value!==($body['comparisonOriginal']??$body['original']);
         $action=$body['editAction']??($body['reset']?'reset':'edit');if(!in_array($action,['edit','paste','undo','reset'],true))$action='edit';
         $operation=bin2hex(random_bytes(16));
         $dependentPatch=null;

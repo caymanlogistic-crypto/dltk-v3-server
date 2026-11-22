@@ -5,6 +5,7 @@
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
   const orderLabels = Object.fromEntries(Object.entries(orderStatuses).map(([code,status])=>[status.label,code]));
+  const normalizeContainer = value => value.replace(/[ \t\u00a0\u202f-]+/g,'').toUpperCase();
   function hasDraft(editor) {
     return editor.field.value !== editor.initialValue
       || (editor.orderField && editor.orderField.value !== editor.initialOrder)
@@ -108,7 +109,10 @@
     if (Number(cell.dataset.revision || 0) > result.revision) return;
     const slotRequested = cell.dataset.kind === 'slot' && window.VitrineSlot.isRequest(result.value);
     cell.toggleAttribute('data-slot-request',slotRequested);
-    cell.textContent = slotRequested ? window.VitrineSlot.requestLabel : result.value;
+    const weightMask = cell.dataset.kind === 'weight' ? window.VitrineCompactInput.weight : null;
+    const weightDigits = weightMask?.read(result.value);
+    cell.textContent = slotRequested ? window.VitrineSlot.requestLabel
+      : weightDigits ? weightMask.format(weightDigits) : result.value;
     cell.dataset.original = result.original ?? '';
     cell.dataset.revision = String(result.revision);
     if (catalog) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
@@ -275,10 +279,11 @@
     const isStatus = cell.dataset.kind === 'status';
     const isSlot = cell.dataset.kind === 'slot';
     const mask = isSlot ? window.VitrineSlot : window.VitrineCompactInput[cell.dataset.compactInput];
-    const isSingleLine = cell.hasAttribute('data-single-line');
+    const isContainer = cell.dataset.kind === 'container';
+    const isSingleLine = isContainer || cell.hasAttribute('data-single-line');
     const pickupEditor = cell.dataset.column === 'E' && Number(cell.dataset.catalogId) > 0 &&
       document.body.dataset.workspaceTable === 'vyvoz';
-    const catalogEditor = pickupEditor || (['B', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
+    const catalogEditor = pickupEditor || (['B', 'I', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
     if (mask || isSingleLine || isStatus || catalogEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
@@ -322,6 +327,25 @@
     if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
     field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : isSingleLine && catalog ? 160 : 20000;
     field.value = mask && firstCharacter !== null ? mask.format(firstCharacter) : firstCharacter ?? initialValue;
+    if (isContainer) {
+      const prefix = /^(?:[A-Z]{0,3}|[A-Z]{3}U[0-9]{0,7})$/;
+      const stored = normalizeContainer(initialValue);
+      replaceLegacyValue = initialValue !== '' && !prefix.test(stored);
+      if (!replaceLegacyValue) initialValue = stored;
+      field.value = firstCharacter?.toUpperCase() ?? initialValue;
+      field.placeholder = 'BICU6658782';
+      field.spellcheck = false;
+      field.addEventListener('beforeinput',event=>{
+        if (event.inputType !== 'insertText') return;
+        const next = field.value.slice(0,field.selectionStart)+(event.data ?? '')+field.value.slice(field.selectionEnd);
+        if (!/^[A-Za-z0-9]+$/.test(event.data ?? '') || !prefix.test(next.toUpperCase())) event.preventDefault();
+      });
+      field.addEventListener('input',()=>{
+        const position = field.selectionStart;
+        field.value = field.value.toUpperCase();
+        field.setSelectionRange(position,position);
+      });
+    }
     if (useCustom) field.dataset.customSelect = 'true';
     let orderField = null;
     let requestField = null;
@@ -536,18 +560,19 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
-    if (cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line')
+    const typedText = cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line') && /^\S$/u.test(event.key);
+    const typedContainer = cell.dataset.kind === 'container' && /^[a-z]$/i.test(event.key);
+    if ((typedText || typedContainer)
       && !cell.hasAttribute('data-required-choice') && cell.dataset.choices === '[]'
       && !cell.hasAttribute('data-readonly-cell') && !event.defaultPrevented && !event.isComposing
-      && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))
-      && /^\S$/u.test(event.key)) {
+      && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))) {
       event.preventDefault();
       const startTyping = target => open(target,event.key);
       if (window.VitrineRows && !cell.isConnected) window.VitrineRows.activate(cell,startTyping);
       else startTyping(cell);
       return;
     }
-    if ((cell.dataset.kind === 'slot' || cell.dataset.compactInput) && /^[0-9]$/.test(event.key) && !cell.hasAttribute('data-readonly-cell')
+    if ((cell.dataset.kind === 'slot' || window.VitrineCompactInput[cell.dataset.compactInput]) && /^[0-9]$/.test(event.key) && !cell.hasAttribute('data-readonly-cell')
       && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing) {
       event.preventDefault();
       const start = target=>open(target,event.key);
@@ -583,7 +608,7 @@
     let cell = eventCell(event);
     const inEditor = active && event.target === active.field;
     if ((!cell && !inEditor) || !event.clipboardData) return;
-    if (inEditor && (active.cell.dataset.kind === 'slot' || active.cell.dataset.compactInput || active.field.getAttribute('aria-autocomplete') === 'list'
+    if (inEditor && (active.cell.dataset.kind === 'slot' || window.VitrineCompactInput[active.cell.dataset.compactInput] || active.field.getAttribute('aria-autocomplete') === 'list'
       || active.cell.closest('[data-draft-slot]'))) return;
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
@@ -607,7 +632,8 @@
         const response = await fetch(window.VitrineGridScope.url('/api/vitrine/paste-check'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
         const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'Не удалось проверить формат.');
         if (active !== editor) return;
-        if (active.field.dataset.customSelect) active.field.value = value;
+        if (target.dataset.kind === 'container') active.field.value = normalizeContainer(value);
+        else if (active.field.dataset.customSelect) active.field.value = value;
         else active.field.setRangeText(value,active.field.selectionStart,active.field.selectionEnd,'end');
         active.paste = paste;
         fitEditor();

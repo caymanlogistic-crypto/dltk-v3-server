@@ -11,6 +11,7 @@ function workspace_catalog_directory_model(): array {
         'carriers'=>['A'=>'Перевозчик','B'=>'Логист'],
         'status'=>['A'=>'Статус','B'=>'Цвет'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
+        'container-types'=>['A'=>'Тип контейнера'],
         default=>['A'=>'Название'],
     };
     $columns = [];

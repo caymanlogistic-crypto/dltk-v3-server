@@ -75,4 +75,16 @@ foreach (['0830'=>'08:30','800'=>'08:00','8:00'=>'08:00','23:59'=>'23:59',''=>''
 foreach (['24:00','12:60','08','08:00:15'] as $input) {
     verify(vitrine_compact_input($input,'time')===null,'Compact time rejects '.$input);
 }
+foreach (['BICU6658782','bicu 665878-2'] as $input) {
+    verify(vitrine_container_input($input)==='BICU6658782','ISO example normalizes '.$input);
+}
+foreach (['BICU6658783','BICJ6658782','БICU6658782','BICU665878','BICU66587822','---'] as $input) {
+    verify(vitrine_container_input($input)===null,'Invalid freight container rejected '.$input);
+}
+foreach (['25990'=>'25 990','25 990'=>'25 990',"25\u{202F}990"=>'25 990','0000'=>'0',''=>''] as $input=>$expected) {
+    verify(vitrine_compact_input((string)$input,'weight')===$expected,'Weight formats '.$input);
+}
+foreach (['25.5','25,5','25кг','-25','+25','1 00'] as $input) {
+    verify(vitrine_compact_input($input,'weight')===null,'Non-integer weight rejected '.$input);
+}
 echo 'PASS '.$checks." clipboard format checks\n";
