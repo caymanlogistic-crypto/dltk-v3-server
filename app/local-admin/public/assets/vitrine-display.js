@@ -135,7 +135,7 @@
       const nodes = new Map(Array.from(container.children).filter(node => node.dataset.column).map(node => [node.dataset.column,node]));
       const fragment = document.createDocumentFragment();
       for (const letter of order) if (nodes.has(letter)) fragment.append(nodes.get(letter));
-      container.append(fragment);
+      container.insertBefore(fragment,container.querySelector(':scope > .vitrine-draft-note'));
     }
   }
   function applyVisibility(hidden) {

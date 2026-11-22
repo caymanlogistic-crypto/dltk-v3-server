@@ -2,15 +2,13 @@
 (() => {
   const actions = document.querySelector('[data-directory-row-actions]');
   if (!actions) return;
-  const add = actions.querySelector('[data-directory-add]');
   const remove = actions.querySelector('[data-directory-delete]');
-  const addDialog = document.querySelector('[data-directory-add-dialog]');
   const deleteDialog = document.querySelector('[data-directory-delete-dialog]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const palette = JSON.parse(document.getElementById('vitrine-status-data').content).palette;
   const endpoint = window.VitrineGridScope.url('/api/vitrine/cell');
   const table = document.querySelector('.vitrine-table');
-  const selection = () => table.querySelector('tbody .is-current-cell');
+  const selection = () => table.querySelector('#vitrine-rows .is-current-cell');
   table.addEventListener('click', event => {
     const header = event.target.closest('th[scope="row"]');
     const cell = header?.parentElement.querySelector('td[data-edit-cell]:not([hidden])');
@@ -26,14 +24,6 @@
   window.addEventListener('vitrine-rows-updated',update);
   update();
 
-  const page = new URL(location.href);
-  const focus = page.searchParams.get('focus');
-  if (focus && /^\d+$/.test(focus)) {
-    const column = document.querySelector('.vitrine-table th[data-column]:not([hidden])')?.dataset.column;
-    if (column) window.VitrineRows?.activate({dataset:{row:focus,column}});
-    page.searchParams.delete('focus');
-    history.replaceState(null,'',page);
-  }
   try {
     const feedback = sessionStorage.getItem(feedbackKey);
     sessionStorage.removeItem(feedbackKey);
@@ -53,14 +43,9 @@
     return result;
   }
 
-  function refresh(message,id) {
+  function refresh(message) {
     try { sessionStorage.setItem(feedbackKey,message); } catch {}
-    const url = new URL(location.href);
-    if (id) {
-      url.searchParams.delete('q');
-      url.searchParams.set('focus',String(id));
-    }
-    location.assign(url);
+    location.reload();
   }
 
   function bindForm(dialog, submitAction) {
@@ -81,26 +66,72 @@
     });
   }
 
-  const paletteSlot = addDialog.querySelector('[data-directory-palette]');
-  const picker = paletteSlot ? window.VitrineSelect.create(palette.map(item=>({value:item.name,label:item.name,color:item.fill}))) : null;
-  if (picker) {
-    picker.field.setAttribute('aria-labelledby','directory-color-label');
-    paletteSlot.append(picker.element);
+  const draftRows = Array.from(table.querySelectorAll('[data-draft-slot]'));
+  const draftKey = 'dltk-v3.flight-status-drafts.' + document.body.dataset.workspaceUser + '.' + document.body.dataset.workspaceTable;
+  const colors = new Map(palette.map(item=>[item.name,item.fill]));
+  let stored = {};
+  try { stored = JSON.parse(sessionStorage.getItem(draftKey)) || {}; } catch {}
+  const drafts = new Map(draftRows.map(row=>{
+    const slot = stored[row.dataset.rowNumber];
+    return [row,{name:typeof slot?.name === 'string' ? slot.name : '', color:colors.has(slot?.color) ? slot.color : '', saving:false}];
+  }));
+
+  function storeDrafts() {
+    const entries = [...drafts].filter(([,draft])=>draft.name || draft.color)
+      .map(([row,{name,color}])=>[row.dataset.rowNumber,{name,color}]);
+    try { sessionStorage.setItem(draftKey,JSON.stringify(Object.fromEntries(entries))); } catch {}
   }
-  add.addEventListener('click', () => {
-    addDialog.querySelector('form').reset();
-    if (picker) picker.field.value = '';
-    addDialog.showModal();
+
+  function showDraft(row) {
+    const {name,color} = drafts.get(row);
+    const note = row.querySelector('.vitrine-draft-note');
+    const nameCell = row.querySelector('[data-column="A"]');
+    const colorCell = row.querySelector('[data-column="B"]');
+    nameCell.textContent = name;
+    nameCell.title = name || 'Щелчок — ввести название.';
+    colorCell.textContent = color;
+    colorCell.title = color || 'Щелчок — выбрать цвет.';
+    if (color) colorCell.style.setProperty('--order-status-fill',colors.get(color));
+    else colorCell.style.removeProperty('--order-status-fill');
+    note.hidden = !name && !color;
+  }
+  draftRows.forEach(showDraft);
+
+  window.VitrineDirectoryDrafts = Object.freeze({
+    async write(cell,value) {
+      const row = cell.closest('[data-draft-slot]');
+      const draft = drafts.get(row);
+      if (draft.saving) throw new Error('Дождитесь сохранения строки.');
+      value = value.trim();
+      if (cell.dataset.column === 'A') {
+        if ([...value].length > 160 || /[\r\n]/.test(value)) throw new Error('Введите название одной строкой, до 160 символов.');
+        draft.name = value;
+      } else {
+        if (value && !colors.has(value)) throw new Error('Выберите цвет из системной палитры.');
+        draft.color = value;
+      }
+      storeDrafts();
+      showDraft(row);
+      const result = {draft:true,value,original:'',revision:0,baseHash:'',orderFill:cell.dataset.column === 'B' ? colors.get(value) : undefined};
+      if (!draft.name || !draft.color) return result;
+      draft.saving = true;
+      try {
+        const saved = await request('add',{name:draft.name,color:colors.get(draft.color)});
+        draft.name = draft.color = '';
+        storeDrafts();
+        return {...result,draftSaved:saved.id};
+      } finally { draft.saving = false; }
+    },
+    async finish(cell,id) {
+      showDraft(cell.closest('[data-draft-slot]'));
+      notice('Запись добавлена.','success');
+      try {
+        await window.VitrineRows.refreshManifest();
+        if (!window.VitrineGrid.editing()) await window.VitrineRows.activate({dataset:{row:String(id),column:cell.dataset.column}});
+      } catch (error) { onError(error); }
+    },
   });
-  bindForm(addDialog, async form => {
-    if (picker) {
-      const color = palette.find(item=>item.name===picker.field.value);
-      if (!color) { notice('Выберите цвет из системной палитры.','danger'); picker.field.focus(); return; }
-      form.set('color',color.fill);
-    }
-    const result = await request('add',Object.fromEntries(form));
-    refresh('Запись добавлена.',result.id);
-  });
+
   remove.addEventListener('click', async () => {
     const cell = selection();
     if (!cell || pending) return;

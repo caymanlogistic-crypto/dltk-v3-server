@@ -120,6 +120,7 @@
       cell.dataset.orderStatus = result.orderStatus;
       cell.style.setProperty('--order-status-fill',orderStatuses[result.orderStatus]?.color || '');
     }
+    if (result.draft && cell.dataset.column === 'B' && !result.orderFill) cell.style.removeProperty('--order-status-fill');
     if (result.orderFill) cell.style.setProperty('--order-status-fill',result.orderFill);
     if (cell.dataset.kind === 'status') {
       cell.dataset.statusId = result.statusId ?? '';
@@ -142,6 +143,7 @@
     if (cell.dataset.kind === 'time') cell.title = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' + result.value;
   }
   async function writeCell(cell, value, reset = false, paste = null, editAction = null, orderStatus = undefined) {
+    if (cell.closest('[data-draft-slot]')) return window.VitrineDirectoryDrafts.write(cell,value);
     const response = await fetch(window.DltkPaths.path('/api/vitrine/cell?'+scope), {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
@@ -217,12 +219,16 @@
     try {
       const result = await writeCell(cell, value, reset, reset ? null : editor.paste,null,!reset && editor.orderField ? (orderLabels[editor.orderField.value] || '') : undefined);
       applyResult(cell,result);
-      if (!reset && editor.paste) rememberPaste(before,result);
+      if (!reset && editor.paste && !result.draft) rememberPaste(before,result);
       editor.saving = false;
       close();
-      flash(cell);
+      if (result.draftSaved) {
+        await window.VitrineDirectoryDrafts.finish(cell,result.draftSaved);
+        return;
+      }
+      if (!result.draft) flash(cell);
       if (advance) move(cell, advance.row, advance.column);
-      if (reset || !editor.paste) report(reset ? 'Исходное значение восстановлено' : 'Локальная правка сохранена', 'success');
+      if (!result.draft && (reset || !editor.paste)) report(reset ? 'Исходное значение восстановлено' : 'Локальная правка сохранена', 'success');
     } catch (error) {
       editor.saving = false;
       editor.buttons.forEach(button => { button.disabled = false; });
@@ -501,15 +507,15 @@
   document.addEventListener('copy', event => {
     const cell = eventCell(event);
     if (active || !cell || !event.clipboardData) return;
-    copied = {row:Number(cell.dataset.row),column:cell.dataset.column,revision:Number(cell.dataset.revision),baseHash:cell.dataset.base,value:cell.textContent};
+    copied = cell.closest('[data-draft-slot]') ? null : {row:Number(cell.dataset.row),column:cell.dataset.column,revision:Number(cell.dataset.revision),baseHash:cell.dataset.base,value:cell.textContent};
     event.preventDefault(); event.clipboardData.setData('text/plain',cell.textContent);
-    event.clipboardData.setData('application/x-dltk-cell',JSON.stringify(copied));
+    if (copied) event.clipboardData.setData('application/x-dltk-cell',JSON.stringify(copied));
   });
   document.addEventListener('paste', async event => {
     let cell = eventCell(event);
     const inEditor = active && event.target === active.field;
     if ((!cell && !inEditor) || !event.clipboardData) return;
-    if (inEditor && active.field.getAttribute('aria-autocomplete') === 'list') return;
+    if (inEditor && (active.field.getAttribute('aria-autocomplete') === 'list' || active.cell.closest('[data-draft-slot]'))) return;
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
@@ -539,8 +545,10 @@
     pendingCells.add(target); target.setAttribute('aria-busy','true');
     const before = snapshot(target);
     try {
-      const result = await writeCell(target,value,false,paste); applyResult(target,result); flash(target);
-      rememberPaste(before,result);
+      const result = await writeCell(target,value,false,paste);
+      applyResult(target,result);
+      if (result.draftSaved) await window.VitrineDirectoryDrafts.finish(target,result.draftSaved);
+      if (!result.draft) { flash(target); rememberPaste(before,result); }
     } catch(error) { report(error instanceof TypeError ? 'Нет связи с сервером. Вставка не выполнена.' : error.message,'danger'); }
     finally { pendingCells.delete(target); target.removeAttribute('aria-busy'); target.focus({preventScroll:true}); }
   });

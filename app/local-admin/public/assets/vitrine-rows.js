@@ -3,6 +3,14 @@
   const table=document.querySelector('.vitrine-table'),body=document.getElementById('vitrine-rows'),scroll=document.querySelector('.vitrine-table-scroll');
   if(!table||!body||!scroll)return;
   let ids=[];try{ids=JSON.parse(document.getElementById('vitrine-row-manifest').content);}catch{}
+  const drafts=Array.from(document.querySelectorAll('[data-draft-slot]'));
+  const draftIndex=cell=>drafts.indexOf(cell.closest?.('[data-draft-slot]'));
+  const rowIndex=cell=>positions.get(cell.dataset.row) ?? ids.length+draftIndex(cell);
+  function setCounts() {
+    table.dataset.totalRows=String(ids.length);
+    table.setAttribute('aria-rowcount',String(ids.length+drafts.length+1));
+    drafts.forEach((row,index)=>row.setAttribute('aria-rowindex',String(ids.length+index+2)));
+  }
   const positions=new Map(ids.map((id,index)=>[String(id),index]));
   const remotePatches=new Map(),catalogPatches=new Map();
   const pageSize=100,cache=new Map(),loaded=new Map(),pending=new Map();
@@ -12,7 +20,8 @@
   let height=initial[0]?.getBoundingClientRect().height||32,headHeight=table.querySelector('thead').getBoundingClientRect().height,generation=0,frame=0,first=-1,last=-1,navigation=null,navigationGeneration=0,mounts=0,lastScrollTop=scroll.scrollTop,manifestVersion=0;
   const top=document.createElement('tr'),bottom=document.createElement('tr');
   for(const spacer of [top,bottom]){spacer.dataset.virtualSpacer='';spacer.setAttribute('aria-hidden','true');const cell=document.createElement('td');cell.colSpan=table.querySelectorAll('thead th:not([hidden])').length;spacer.append(cell);}
-  table.setAttribute('aria-rowcount',String(ids.length+1));table.setAttribute('aria-colcount',String(table.querySelectorAll('thead th').length));table.dataset.totalRows=String(ids.length);
+  setCounts();
+  table.setAttribute('aria-colcount',String(table.querySelectorAll('thead th').length));
   function report(error){window.PlanexNotifications.show({tone:'danger',message:error.message||'Не удалось загрузить строки. Повторите прокрутку.'});}
   function prune(){
     while(loaded.size>3){const page=loaded.keys().next().value;loaded.delete(page);for(const id of ids.slice(page*pageSize,(page+1)*pageSize)){const row=cache.get(id);if(row&&!row.isConnected)cache.delete(id);}}
@@ -34,7 +43,7 @@
         ids=ids.filter(id=>!missing.has(id));positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         for(const id of missing)cache.delete(id);
         loaded.clear();manifestVersion++;generation++;navigationGeneration++;navigation=null;first=last=-1;
-        table.dataset.totalRows=String(ids.length);table.setAttribute('aria-rowcount',String(ids.length+1));table.removeAttribute('aria-busy');
+        setCounts();table.removeAttribute('aria-busy');
         queue();return;
       }
       const template=document.createElement('template');template.innerHTML='<table><tbody>'+result.html+'</tbody></table>';
@@ -94,6 +103,10 @@
     else if((index+1)*height>scroll.scrollTop+available)scroll.scrollTop=Math.max(0,(index+1)*height-available);
   }
   async function activate(cell,action){
+    if(draftIndex(cell)>=0){
+      window.VitrineGrid.select(cell);cell.focus({preventScroll:true});window.VitrineGrid.reveal(cell);action?.(cell);
+      return cell;
+    }
     const index=positions.get(cell.dataset.row);if(index===undefined)return null;
     const ticket=++navigationGeneration;
     await page(Math.floor(index/pageSize));if(ticket!==navigationGeneration)return null;
@@ -103,7 +116,14 @@
     return target;
   }
   function go(cell,r,c){
-    const columns=visibleColumns();if(r<0||r>=ids.length||c<0||c>=columns.length)return false;
+    const columns=visibleColumns();if(r<0||r>=ids.length+drafts.length||c<0||c>=columns.length)return false;
+    if(r>=ids.length){
+      const target=drafts[r-ids.length].querySelector('td[data-column="'+columns[c]+'"]');
+      if(!target)return false;
+      navigationGeneration++;
+      activate(target);
+      return true;
+    }
     navigation={r,c};const ticket=++navigationGeneration;
     const ready=cache.get(ids[r])?.querySelector('td[data-column="'+columns[c]+'"]');
     if(ready?.isConnected){
@@ -165,11 +185,11 @@
         ids=next;positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         manifestVersion++;generation++;navigationGeneration++;navigation=null;pending.clear();loaded.clear();first=last=-1;
         const allowed=new Set(ids);for(const [id,row] of cache)if(!allowed.has(id)){row.remove();cache.delete(id);}
-        table.dataset.totalRows=String(ids.length);table.setAttribute('aria-rowcount',String(ids.length+1));
+        setCounts();
         const newAnchor=positions.has(String(anchor))?positions.get(String(anchor)):Math.min(Math.max(anchorIndex,0),Math.max(ids.length-1,0));
         scroll.scrollTop=Math.max(0,newAnchor*height+offset);
         await render(newAnchor);
-        if(chosenRow&&!positions.has(chosenRow)){
+        if(chosenRow&&!chosen?.closest('[data-draft-slot]')&&!positions.has(chosenRow)){
           const candidate=body.querySelector('td[data-column="'+chosenColumn+'"]:not([hidden])')||body.querySelector('td[data-column]:not([hidden])');
           if(candidate)window.VitrineGrid?.select(candidate);
         }
@@ -190,8 +210,8 @@
     patch(patch){const key=patch.row+':'+patch.column,old=remotePatches.get(key);if(!old||Number(old.revision)<Number(patch.revision))remotePatches.set(key,patch);const row=cache.get(Number(patch.row));applyPatch(row,patch);for(const item of catalogPatches.values())applyCatalogPatch(row,item);},
     activate:(cell,action)=>activate(cell,action).catch(report),
     resolveCell:cell=>cache.get(Number(cell.dataset.row))?.querySelector('td[data-column="'+cell.dataset.column+'"]')||cell,
-    move(cell,dr,dc,wrap){const columns=visibleColumns();let r=(navigation?.r??positions.get(cell.dataset.row))+dr,c=(navigation?.c??columns.indexOf(cell.dataset.column))+dc;if(wrap&&c<0){r--;c=columns.length-1;}if(wrap&&c>=columns.length){r++;c=0;}return go(cell,r,c);},
-    edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?ids.length-1:0):positions.get(cell.dataset.row),end?columns.length-1:0);},
+    move(cell,dr,dc,wrap){const columns=visibleColumns();let r=(navigation?.r??rowIndex(cell))+dr,c=(navigation?.c??columns.indexOf(cell.dataset.column))+dc;if(wrap&&c<0){r--;c=columns.length-1;}if(wrap&&c>=columns.length){r++;c=0;}return go(cell,r,c);},
+    edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?ids.length+drafts.length-1:0):rowIndex(cell),end?columns.length-1:0);},
     get total(){return ids.length;}
   });
   render();
