@@ -24,6 +24,8 @@ function workspace_catalog_save(array $b): array {
     if($catalog['kind']!=='status')$color=null;
     $hasManager=$catalog['kind']==='clients'&&array_key_exists('manager',$b);
     $manager=$hasManager?workspace_client_validate_manager($b['manager']):'';
+    $hasLogist=$catalog['kind']==='carriers'&&array_key_exists('logist',$b);
+    $logist=$hasLogist?workspace_client_validate_manager($b['logist']):'';
     workspace_begin();try{
         $old=isset($b['id'])?wquery('SELECT * FROM catalog_entries WHERE id=? AND catalog_id=? FOR UPDATE',[(int)$b['id'],$cid])->fetch():null;
         if(isset($b['id'])&&!$old)throw new ApiError('not_found','Запись не найдена.',404);
@@ -35,23 +37,32 @@ function workspace_catalog_save(array $b): array {
                 throw new ApiError('duplicate_catalog','Это название уже использовалось для другого клиента.',409);
             }
         }
-        if ($catalog['kind']==='status' && $old && $old['active'] && !$active) {
-            workspace_assert_flight_status_unused($cid,$old);
-        }
+        if ($old && $old['active'] && !$active) workspace_assert_catalog_entry_unused($catalog['kind'],$cid,$old);
+        $logists=$hasLogist?workspace_client_catalog_metadata('catalog_logists_'.$cid):[];
+        $beforeLogist=$old?($logists[$old['id']]??''):'';
+        $logistChanged=$hasLogist&&$beforeLogist!==$logist;
         $beforeManager=$old&&$hasManager?(workspace_client_manager_values($cid)[$old['id']]??''):'';
         $managerChanged=$hasManager&&$beforeManager!==$manager;
-        if($old&&$old['name']===$name&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged){workspace_db()->commit();return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
+        if($old&&$old['name']===$name&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged){workspace_db()->commit();return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
         if($old){wquery('UPDATE catalog_entries SET name=?,normalized=?,color=?,active=?,revision=? WHERE id=?',[$name,$norm,$color,(int)$active,$revision,$old['id']]);$id=(int)$old['id'];}
         else{wquery('INSERT INTO catalog_entries(catalog_id,name,normalized,color,active) VALUES(?,?,?,?,?)',[$cid,$name,$norm,$color,(int)$active]);$id=(int)workspace_db()->lastInsertId();}
         if($managerChanged)workspace_client_set_manager($cid,$id,$manager);
-        if($old&&$catalog['kind']==='clients'&&$old['normalized']!==$norm)workspace_client_remember_alias($cid,$id,$old['normalized']);
+        if($logistChanged){
+            $logists[$id]=$logist;
+            wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',['catalog_logists_'.$cid,wjson((object)$logists)]);
+        }
+        if($old&&$catalog['kind']!=='status'&&$old['normalized']!==$norm)workspace_client_remember_alias($cid,$id,$old['normalized']);
         $before=$old?['id'=>$id,'name'=>$old['name'],'color'=>$old['color'],'active'=>(bool)$old['active']]:null;
         $after=['id'=>$id,'name'=>$name,'color'=>$color,'active'=>$active];
         if($hasManager){
             if($before!==null)$before['manager']=$beforeManager;
             $after['manager']=$manager;
         }
-        $action=!$old?'create':(!$active?'archive':($catalog['kind']==='clients'&&!$old['active']?'restore':'edit'));
+        if($hasLogist){
+            if($before!==null)$before['logist']=$beforeLogist;
+            $after['logist']=$logist;
+        }
+        $action=!$old?'create':(!$active?'archive':(!$old['active']?'restore':'edit'));
         workspace_audit(['category'=>'catalog','label'=>$catalog['title'],'before'=>$before,'after'=>$after,'action'=>$action]);
         workspace_event('catalog.changed',['catalogId'=>$cid,'id'=>$id,'name'=>$name,'beforeName'=>$old['name']??null,'color'=>$color,'active'=>$active,'revision'=>$revision,'bindings'=>wquery('SELECT b.table_id AS tableId,t.slug AS tableSlug,b.field_key AS fieldKey FROM catalog_bindings b JOIN table_definitions t ON t.id=b.table_id WHERE b.catalog_id=?',[$cid])->fetchAll()]);workspace_db()->commit();return ['id'=>$id,'revision'=>$revision];
     }catch(Throwable $e){if(workspace_db()->inTransaction())workspace_db()->rollBack();if($e instanceof PDOException&&$e->getCode()==='23000')throw new ApiError('duplicate_catalog','Такое название уже есть в справочнике.',409);throw $e;}

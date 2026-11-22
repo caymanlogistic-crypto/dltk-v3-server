@@ -8,11 +8,16 @@ function workspace_employee_role_names(): array {
     ];
 }
 
-function workspace_employee_roles(): array {
-    $stored = array_column(wquery('SELECT id,code FROM roles')->fetchAll(), 'id', 'code');
+function workspace_employee_roles(bool $archive = false): array {
+    $knownNames = workspace_employee_role_names();
+    $archived = workspace_client_catalog_metadata('directory_archived_roles');
     $roles = [];
-    foreach (workspace_employee_role_names() as $code => $label) {
-        if (isset($stored[$code])) $roles[] = ['id'=>(int)$stored[$code], 'code'=>$code, 'name'=>$label];
+    foreach (wquery('SELECT id,code,name FROM roles ORDER BY id')->fetchAll() as $role) {
+        $id = (int)$role['id'];
+        $code = $role['code'];
+        if (!isset($knownNames[$code]) && !str_starts_with($code,'directory_')) continue;
+        if (isset($archived[$id]) !== $archive) continue;
+        $roles[] = ['id'=>$id,'code'=>$code,'name'=>$knownNames[$code] ?? $role['name']];
     }
     return $roles;
 }
@@ -159,6 +164,7 @@ function workspace_employee_save(array $input, bool $cellEdit = false): array {
             throw new ApiError('invalid_role','Эту роль нельзя назначить.',403);
         }
         $active = $input['active'] ?? ($old['active'] ?? true);
+        if ($old && $old['active'] && !$active) workspace_assert_employee_unused($old);
         if ($id === workspace_current_user()['id'] && (!$active || $roleChanged)) {
             throw new ApiError('own_account','Свою роль и активность изменить нельзя.');
         }

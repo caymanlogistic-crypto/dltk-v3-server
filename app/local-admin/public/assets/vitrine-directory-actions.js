@@ -3,9 +3,9 @@
   const actions = document.querySelector('[data-directory-row-actions]');
   if (!actions) return;
   const remove = actions.querySelector('[data-directory-delete]');
+  const archive = actions.hasAttribute('data-archive');
   const deleteDialog = document.querySelector('[data-directory-delete-dialog]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
-  const palette = JSON.parse(document.getElementById('vitrine-status-data').content).palette;
   const endpoint = window.VitrineGridScope.url('/api/vitrine/cell');
   const table = document.querySelector('.vitrine-table');
   const triggerSelector = '[data-directory-row-menu]';
@@ -13,7 +13,7 @@
   let pending = false, target = null, trigger = null, returnFocus = null;
 
   const notice = (message,tone) => window.PlanexNotifications.show({message,tone});
-  const onError = error => notice(error.message,error.code === 'entry_in_use' ? 'info' : 'danger');
+  const onError = error => notice(error.message || 'Не удалось выполнить действие.',error.code === 'entry_in_use' ? 'info' : 'danger');
 
   function closeMenu(restoreFocus = false) {
     if (!trigger) return;
@@ -112,58 +112,92 @@
     });
   }
 
-  const draftRows = Array.from(table.querySelectorAll('[data-draft-slot]'));
-  const draftKey = 'dltk-v3.flight-status-drafts.' + document.body.dataset.workspaceUser + '.' + document.body.dataset.workspaceTable;
-  const colors = new Map(palette.map(item=>[item.name,item.fill]));
+  const draftBody = document.getElementById('vitrine-draft-rows');
+  const fields = JSON.parse(draftBody?.dataset.draftFields || '{}');
+  const draftKey = 'dltk-v3.directory-drafts.' + document.body.dataset.workspaceUser + '.' + document.body.dataset.workspaceTable;
+  const legacyKey = draftKey.replace('directory-drafts','flight-status-drafts');
+  const isFlight = document.body.dataset.vitrineCatalog === 'flight-statuses';
   let stored = {};
-  try { stored = JSON.parse(sessionStorage.getItem(draftKey)) || {}; } catch {}
-  const drafts = new Map(draftRows.map(row=>{
+  try {
+    const current = sessionStorage.getItem(draftKey);
+    stored = JSON.parse(current || (isFlight ? sessionStorage.getItem(legacyKey) : '{}')) || {};
+    if (isFlight && !current) {
+      stored = Object.fromEntries(Object.entries(stored).map(([slot,{name,color}])=>[slot,{A:name,B:color}]));
+    }
+  } catch {}
+  const drafts = new Map(Array.from(draftBody?.rows || []).map(row=>{
     const slot = stored[row.dataset.rowNumber];
-    return [row,{name:typeof slot?.name === 'string' ? slot.name : '', color:colors.has(slot?.color) ? slot.color : '', saving:false}];
+    const values = Object.fromEntries(Object.keys(fields).map(column=>[
+      column,fields[column].type !== 'password' && typeof slot?.[column] === 'string' ? slot[column] : '',
+    ]));
+    const confirmed = new Set(Object.keys(fields).filter(column=>fields[column].allowEmpty && typeof slot?.[column] === 'string'));
+    return [row,{values,confirmed,saving:false}];
   }));
 
   function storeDrafts() {
-    const entries = [...drafts].filter(([,draft])=>draft.name || draft.color)
-      .map(([row,{name,color}])=>[row.dataset.rowNumber,{name,color}]);
-    try { sessionStorage.setItem(draftKey,JSON.stringify(Object.fromEntries(entries))); } catch {}
+    const entries = [];
+    for (const [row,{values,confirmed}] of drafts) {
+      const publicValues = Object.entries(values).filter(([column,value])=>fields[column].type !== 'password' && (value || confirmed.has(column)));
+      if (publicValues.length) entries.push([row.dataset.rowNumber,Object.fromEntries(publicValues)]);
+    }
+    try {
+      sessionStorage.setItem(draftKey,JSON.stringify(Object.fromEntries(entries)));
+      if (isFlight) sessionStorage.removeItem(legacyKey);
+    } catch {}
+  }
+
+  function choice(column,value) {
+    return fields[column].choices?.find(item=>(typeof item === 'string' ? item : item.value) === value);
   }
 
   function showDraft(row) {
-    const {name,color} = drafts.get(row);
-    const note = row.querySelector('.vitrine-draft-note');
-    const nameCell = row.querySelector('[data-column="A"]');
-    const colorCell = row.querySelector('[data-column="B"]');
-    nameCell.textContent = name;
-    nameCell.title = name || 'Щелчок — ввести название.';
-    colorCell.textContent = color;
-    colorCell.title = color || 'Щелчок — выбрать цвет.';
-    if (color) colorCell.style.setProperty('--order-status-fill',colors.get(color));
-    else colorCell.style.removeProperty('--order-status-fill');
-    note.hidden = !name && !color;
+    const {values} = drafts.get(row);
+    for (const cell of row.querySelectorAll('td[data-edit-cell]')) {
+      const column = cell.dataset.column;
+      const value = values[column];
+      const field = fields[column];
+      const display = field.type === 'password' && value ? 'Введён' : value;
+      cell.textContent = display;
+      cell.toggleAttribute('data-draft-allow-empty',Boolean(field.allowEmpty));
+      cell.title = display || (field.allowEmpty ? 'Заполните поле «'+cell.dataset.label+'» или подтвердите пустое значение.'
+        : 'Щелчок — '+(field.type === 'choice' ? 'выбрать' : 'заполнить')+' поле «'+cell.dataset.label+'».');
+      const fill = choice(column,value)?.color;
+      if (fill) cell.style.setProperty('--order-status-fill',fill);
+      else cell.style.removeProperty('--order-status-fill');
+    }
+    row.querySelector('.vitrine-draft-note').hidden = !Object.values(values).some(Boolean);
   }
-  draftRows.forEach(showDraft);
+  for (const row of drafts.keys()) showDraft(row);
 
   window.VitrineDirectoryDrafts = Object.freeze({
+    secret(cell) {
+      return drafts.get(cell.closest('[data-draft-slot]')).values[cell.dataset.column];
+    },
     async write(cell,value) {
       const row = cell.closest('[data-draft-slot]');
       const draft = drafts.get(row);
       if (draft.saving) throw new Error('Дождитесь сохранения строки.');
-      value = value.trim();
-      if (cell.dataset.column === 'A') {
-        if ([...value].length > 160 || /[\r\n]/.test(value)) throw new Error('Введите название одной строкой, до 160 символов.');
-        draft.name = value;
-      } else {
-        if (value && !colors.has(value)) throw new Error('Выберите цвет из системной палитры.');
-        draft.color = value;
+      const column = cell.dataset.column;
+      const field = fields[column];
+      if (field.type !== 'password') value = value.trim();
+      else if (value && (Array.from(value).length < 8 || new TextEncoder().encode(value).length > 72)) {
+        throw new Error('Пароль должен содержать от 8 символов и занимать до 72 байт.');
       }
+      if (value && field.type === 'choice' && !choice(column,value)) throw new Error('Выберите значение из списка.');
+      if (field.type === 'text' && (Array.from(value).length > 160 || /[\r\n]/.test(value))) {
+        throw new Error('Введите текст одной строкой, до 160 символов.');
+      }
+      draft.values[column] = value;
+      if (field.allowEmpty) draft.confirmed.add(column);
       storeDrafts();
       showDraft(row);
-      const result = {draft:true,value,original:'',revision:0,baseHash:'',orderFill:cell.dataset.column === 'B' ? colors.get(value) : undefined};
-      if (!draft.name || !draft.color) return result;
+      const result = {draft:true,value:cell.textContent,original:'',revision:0,baseHash:''};
+      if (Object.keys(fields).some(key=>fields[key].required && !draft.values[key] && !draft.confirmed.has(key))) return result;
       draft.saving = true;
       try {
-        const saved = await request('add',{name:draft.name,color:colors.get(draft.color)});
-        draft.name = draft.color = '';
+        const saved = await request('add',{values:draft.values});
+        for (const key of Object.keys(fields)) draft.values[key] = '';
+        draft.confirmed.clear();
         storeDrafts();
         return {...result,draftSaved:saved.id};
       } finally { draft.saving = false; }
@@ -181,14 +215,15 @@
   remove.addEventListener('click', async () => {
     const cell = trigger?.closest('tr').querySelector('td[data-edit-cell]');
     if (!cell || pending) return;
-    const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision)};
+    const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base};
+    const label = cell.closest('tr').querySelector('[data-column="A"]').textContent;
     closeMenu(true);
     pending = true;
     try {
-      const result = await request('check_delete',row);
+      const result = archive ? {name:label} : await request('check_delete',row);
       if (window.VitrineGrid.editing()) return;
       target = row;
-      deleteDialog.querySelector('[data-directory-delete-text]').textContent = 'Удалить «'+result.name+'»?';
+      deleteDialog.querySelector('[data-directory-delete-text]').textContent = (archive ? 'Восстановить' : 'Удалить')+' «'+result.name+'»?';
       deleteDialog.showModal();
     } catch (error) {
       onError(error);
@@ -197,7 +232,7 @@
     }
   });
   bindForm(deleteDialog, async () => {
-    await request('delete',target);
-    refresh('Запись удалена.');
+    await request(archive ? 'restore' : 'delete',target);
+    refresh(archive ? 'Запись восстановлена.' : 'Запись удалена.');
   });
 })();

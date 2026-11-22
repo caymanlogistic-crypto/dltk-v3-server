@@ -61,6 +61,7 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
 
 function vitrine_paste_check(): never {
     $directory = vitrine_directory_requested();
+    if ($directory === 'entries') workspace_catalog_directory_cell(true);
     if ($directory === 'clients') workspace_client_grid_endpoint(true);
     if ($directory === 'employees') workspace_employee_grid_endpoint(true);
     if ($directory === 'client-order-statuses') workspace_client_order_status_grid_endpoint(true);
@@ -78,6 +79,11 @@ function vitrine_paste_check(): never {
 
 function vitrine_save_cell(): never {
     $directory = vitrine_directory_requested();
+    if ($directory !== null && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+        $directoryBody = wbody();
+        if (isset($directoryBody['action'])) workspace_directory_rows_endpoint($directory,$directoryBody);
+    }
+    if ($directory === 'entries') workspace_catalog_directory_cell();
     if ($directory === 'clients') workspace_client_grid_endpoint();
     if ($directory === 'employees') workspace_employee_grid_endpoint();
     if ($directory === 'client-order-statuses') workspace_client_order_status_grid_endpoint();
@@ -110,7 +116,7 @@ function vitrine_save_cell(): never {
         if ($body['column']!=='B' || !isset(vitrine_catalog_links($data['table'])['B']) || !workspace_client_order_status_can_view($data['table'])) {
             throw new ApiError('invalid_order_status','Статус заказа доступен в поле B «Клиент».',403);
         }
-        if (!is_string($code) || ($code!=='' && !isset(workspace_client_order_statuses()[$code]))) {
+        if (!is_string($code) || ($code!=='' && !isset(workspace_active_client_order_statuses()[$code]))) {
             throw new ApiError('invalid_order_status','Выберите статус из справочника.');
         }
         $orderEdit=['orderStatus'=>$code];

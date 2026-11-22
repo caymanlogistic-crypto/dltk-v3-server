@@ -89,6 +89,9 @@ function vitrine_store(array $body): array {
             $nextOrderStatus=$body['orderStatus']??$oldOrderStatus;
             $orderResult=['orderStatus'=>$nextOrderStatus];
             $orderChanged=$nextOrderStatus!==$oldOrderStatus;
+            if ($orderChanged && $nextOrderStatus!=='' && !isset(workspace_active_client_order_statuses(true)[$nextOrderStatus])) {
+                throw new ApiError('invalid_order_status','Выберите действующий статус из справочника.');
+            }
             if ($orderChanged) {
                 if ($nextOrderStatus==='') unset($values['clientOrderStatus']);
                 else $values['clientOrderStatus']=$nextOrderStatus;

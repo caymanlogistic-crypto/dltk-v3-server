@@ -18,7 +18,6 @@ function workspace_flight_status_grid_endpoint(bool $pasteCheck = false): never 
     if (!$catalog['id']) throw new ApiError('not_found','Справочник статусов рейса не найден.',404);
     workspace_require('catalog',(string)$catalog['id'],'edit',$table['id']);
     $body = wbody();
-    if (!$pasteCheck && isset($body['action'])) workspace_flight_status_row_action($catalog,$body);
     if (!is_int($body['row'] ?? null) || !in_array($body['column'] ?? null,['A','B'],true) || !is_string($body['value'] ?? null)) {
         throw new ApiError('invalid_edit','Некорректные данные статуса рейса.');
     }
@@ -56,34 +55,4 @@ function workspace_assert_flight_status_unused(int $catalogId, array $entry): vo
             OR LOWER(REGEXP_REPLACE(TRIM(JSON_UNQUOTE(JSON_EXTRACT(r.baseline_json,'$.A'))),'[[:space:]]+',' ')) IN ($slots)
         )",[$catalogId,$entry['id'],...$names,$entry['id'],...$names,...$names])->fetchColumn();
     if ($used) throw new ApiError('entry_in_use','Статус «'.$entry['name'].'» используется. Рейсов с этим статусом — '.$used.'. Удалить его нельзя.',409);
-}
-
-function workspace_flight_status_row_action(array $catalog, array $body): never {
-    $action = $body['action'];
-    if ($action === 'add') {
-        if (!is_string($body['name'] ?? null) || !is_string($body['color'] ?? null)) {
-            throw new ApiError('invalid_status','Укажите название и цвет.');
-        }
-        $name = workspace_catalog_validate_name($body['name']);
-        $archived = wquery('SELECT id,revision FROM catalog_entries WHERE catalog_id=? AND normalized=? AND active=FALSE',
-            [$catalog['id'],vitrine_status_key($name)])->fetch();
-        $data = ['catalogId'=>$catalog['id'],'name'=>$name,'color'=>$body['color']];
-        if ($archived) $data += ['id'=>(int)$archived['id'],'revision'=>(int)$archived['revision']];
-        json_response(workspace_catalog_save($data));
-    }
-    if (!in_array($action,['check_delete','delete'],true) || !is_int($body['row'] ?? null) || !is_int($body['revision'] ?? null)) {
-        throw new ApiError('invalid_action','Выберите строку справочника.');
-    }
-    $entry = wquery('SELECT id,name,color,revision FROM catalog_entries WHERE id=? AND catalog_id=? AND active=TRUE',
-        [$body['row'],$catalog['id']])->fetch();
-    if (!$entry) throw new ApiError('not_found','Статус рейса не найден.',404);
-    if ((int)$entry['revision'] !== $body['revision']) {
-        throw new ApiError('revision_conflict','Статус изменился. Обновите страницу и повторите действие.',409);
-    }
-    if ($action === 'delete') {
-        json_response(workspace_catalog_save(['catalogId'=>$catalog['id'],'id'=>(int)$entry['id'],
-            'name'=>$entry['name'],'color'=>$entry['color'],'revision'=>(int)$entry['revision'],'active'=>false]));
-    }
-    workspace_assert_flight_status_unused($catalog['id'],$entry);
-    json_response(['id'=>(int)$entry['id'],'name'=>$entry['name']]);
 }

@@ -2,8 +2,6 @@
 (() => {
   let active = null;
   const catalog = document.body.dataset.vitrineCatalog;
-  const tableFilter = catalog === 'flight-statuses' ? '&table='+encodeURIComponent(new URLSearchParams(location.search).get('table') || 'vyvoz') : '';
-  const scope = catalog ? 'catalog=' + encodeURIComponent(catalog) + tableFilter : 'table=' + encodeURIComponent(document.body.dataset.workspaceTable || 'vyvoz');
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
   const orderLabels = Object.fromEntries(Object.entries(orderStatuses).map(([code,status])=>[status.label,code]));
@@ -120,7 +118,6 @@
       cell.dataset.orderStatus = result.orderStatus;
       cell.style.setProperty('--order-status-fill',orderStatuses[result.orderStatus]?.color || '');
     }
-    if (result.draft && cell.dataset.column === 'B' && !result.orderFill) cell.style.removeProperty('--order-status-fill');
     if (result.orderFill) cell.style.setProperty('--order-status-fill',result.orderFill);
     if (cell.dataset.kind === 'status') {
       cell.dataset.statusId = result.statusId ?? '';
@@ -144,7 +141,7 @@
   }
   async function writeCell(cell, value, reset = false, paste = null, editAction = null, orderStatus = undefined) {
     if (cell.closest('[data-draft-slot]')) return window.VitrineDirectoryDrafts.write(cell,value);
-    const response = await fetch(window.DltkPaths.path('/api/vitrine/cell?'+scope), {
+    const response = await fetch(window.VitrineGridScope.url('/api/vitrine/cell'), {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
       body:JSON.stringify({row:Number(cell.dataset.row),column:cell.dataset.column,value,
@@ -291,7 +288,14 @@
     field.classList.add('vitrine-editor-field');
     field.id = 'vitrine-editor-field';
     field.setAttribute('aria-label', 'Значение ячейки');
-    field.autocomplete = 'off'; field.maxLength = cell.hasAttribute('data-single-line') ? 160 : 20000; field.value = firstCharacter ?? cell.textContent;
+    const draftType = cell.dataset.draftType;
+    const initialValue = draftType === 'password' ? window.VitrineDirectoryDrafts.secret(cell) : cell.textContent;
+    field.autocomplete = draftType === 'password' ? 'new-password' : 'off';
+    if (draftType === 'password') field.type = 'password';
+    if (draftType === 'email') field.inputMode = 'email';
+    if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
+    field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : cell.hasAttribute('data-single-line') ? 160 : 20000;
+    field.value = firstCharacter ?? initialValue;
     if (useCustom) field.dataset.customSelect = 'true';
     let orderField = null;
     if (cell.hasAttribute('data-order-status')) {
@@ -330,7 +334,7 @@
     document.body.append(panel);
     cell.classList.add('is-editing');
     select(cell);
-    active = { panel, cell, field, initialValue:cell.textContent, orderField, initialOrder:orderField?.value, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
+    active = { panel, cell, field, initialValue, orderField, initialOrder:orderField?.value, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
     window.dispatchEvent(new CustomEvent('vitrine-editor-opened',{detail:{row:Number(cell.dataset.row),column:cell.dataset.column}}));
     table?.classList.add('has-editor');
     panel.addEventListener('keydown', event => {
@@ -487,7 +491,8 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
-    if (catalog === 'flight-statuses' && cell.dataset.column === 'A' && cell.hasAttribute('data-single-line')
+    if (catalog && cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line')
+      && !cell.hasAttribute('data-required-choice') && cell.dataset.choices === '[]'
       && !cell.hasAttribute('data-readonly-cell') && !event.defaultPrevented && !event.isComposing
       && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))
       && /^\S$/u.test(event.key)) {
@@ -529,6 +534,10 @@
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
+    if (!inEditor && target.dataset.draftType === 'password') {
+      report('Откройте поле пароля для вставки.','info');
+      return;
+    }
     if (target.dataset.derivedSource) { notifyDerivedCell(); return; }
     if (target.hasAttribute('data-readonly-cell')) { report(target.dataset.readonlyCell, 'info'); return; }
     if (pendingCells.has(target) || active?.saving) { report('Дождитесь сохранения ячейки.'); return; }
@@ -541,7 +550,7 @@
     if (inEditor) {
       const editor = active;
       try {
-        const response = await fetch(window.DltkPaths.path('/api/vitrine/paste-check?'+scope),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
+        const response = await fetch(window.VitrineGridScope.url('/api/vitrine/paste-check'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
         const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'Не удалось проверить формат.');
         if (active !== editor) return;
         if (active.field.dataset.customSelect) active.field.value = value;

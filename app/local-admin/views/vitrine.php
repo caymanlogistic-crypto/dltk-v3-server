@@ -5,9 +5,10 @@ $currentUser=workspace_current_user();
 $directory = $directory ?? null;
 $clientCatalog = $directory === 'clients';
 $catalogGrid = $data['catalogGrid'] ?? null;
-$showDraftRows = $directory === 'flight-statuses' && $catalogGrid['canEdit'];
+$canManageDirectory = $catalogGrid['canEdit'] ?? false;
+$showDraftRows = $canManageDirectory && !$catalogGrid['archive'];
 $viewUrl = static fn(string $path): string => function_exists('app_url_path') ? app_url_path($path) : $path;
-$currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Сотрудники','roles'=>'Роли','client-order-statuses'=>'Статусы клиентов','flight-statuses'=>'Статусы рейса'][$directory]] : workspace_table());
+$currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Сотрудники','roles'=>'Роли','client-order-statuses'=>'Статусы клиентов','flight-statuses'=>'Статусы рейса','entries'=>'Справочник'][$directory]] : workspace_table());
 $managementTable = $currentTable['sourceTable'] ?? ($directory ? 'vyvoz' : $currentTable['slug']);
 $workspaceTables=workspace_tables();
 $canOpenStatuses = !$directory || in_array('vyvoz',array_column($workspaceTables,'slug'),true);
@@ -29,7 +30,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="color-scheme" content="light">
   <meta name="csrf-token" content="<?= $escape(csrf_token()) ?>">
   <meta id="vitrine-status-data" name="vitrine-status-data" content="<?= $escape(json_encode(['statuses'=>$data['statuses'] ?? [], 'palette'=>$data['palette'] ?? []], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE)) ?>">
-  <meta id="vitrine-order-statuses" content="<?= $escape(wjson(workspace_client_order_statuses())) ?>">
+  <meta id="vitrine-order-statuses" content="<?= $escape(wjson(workspace_active_client_order_statuses())) ?>">
   <meta id="vitrine-row-manifest" name="vitrine-row-manifest" content="<?= $escape(json_encode($data['rowIds'] ?? [])) ?>">
   <meta id="workspace-preferences" name="workspace-preferences" content="<?= $escape(wjson($preferences)) ?>">
   <meta name="workspace-event-cursor" content="<?= (int)$eventCursor ?>">
@@ -63,10 +64,10 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if ($directory): ?>
   <link rel="stylesheet" href="<?= $escape($viewUrl('/assets/vitrine-catalog.css')) ?>">
   <?php endif; ?>
-  <?php if ($directory === 'flight-statuses'): ?>
+  <?php if ($canManageDirectory): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js')) ?>"></script>
   <?php endif; ?>
-  <?php if ($clientCatalog): ?>
+  <?php if ($clientCatalog || $directory === 'entries'): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-catalog.js')) ?>"></script>
   <?php elseif ($directory === 'employees'): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-employees.js')) ?>"></script>
@@ -138,7 +139,11 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
     <section class="vitrine-message" role="alert"><h2>Не удалось загрузить таблицу</h2><p><?= $escape($error) ?></p><p>Обновите страницу, чтобы повторить загрузку.</p></section>
     <?php else: ?>
     <?php if ($clientCatalog): require __DIR__.'/vitrine-client-toolbar.php';
-    elseif ($directory): require __DIR__.'/vitrine-directory-toolbar.php'; endif; ?>
+    elseif ($directory): require __DIR__.'/vitrine-directory-toolbar.php'; endif;
+    if ($canManageDirectory) {
+        require __DIR__.'/vitrine-directory-row-actions.php';
+        require __DIR__.'/vitrine-directory-row-dialogs.php';
+    } ?>
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
       <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
@@ -159,7 +164,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <tbody id="vitrine-rows">
           <?php require __DIR__.'/vitrine-rows.php'; ?>
           </tbody>
-          <?php if ($showDraftRows) require __DIR__.'/vitrine-flight-status-drafts.php'; ?>
+          <?php if ($showDraftRows) require __DIR__.'/vitrine-directory-drafts.php'; ?>
         </table>
         <div class="vitrine-message vitrine-empty" id="vitrine-empty" <?= count($rows) || ($showDraftRows && $catalogGrid['search'] === '') ? 'hidden' : '' ?> role="status"><?= ($catalogGrid ? $catalogGrid['search'] !== '' : count($rows) > 0) ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.' ?></div>
       </div>

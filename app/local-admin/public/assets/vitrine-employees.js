@@ -7,7 +7,6 @@
   const errorLine = form.querySelector('[data-employee-error]');
   const submit = form.querySelector('[type=submit]');
   const edit = document.getElementById('employee-edit');
-  const add = document.getElementById('employee-add');
   const table = document.querySelector('.vitrine-table');
   const roles = JSON.parse(dialog.dataset.roles);
   const viewerId = Number(document.body.dataset.workspaceUser);
@@ -15,7 +14,7 @@
   const feedbackKey = 'dltk-v3.employees-feedback';
   const path = url => window.DltkPaths?.path(url) ?? url;
   const notice = (message,tone) => window.PlanexNotifications.show({message,tone});
-  const selected = () => table.querySelector('.is-current-cell');
+  const selected = () => table.querySelector('#vitrine-rows .is-current-cell');
   let employee, roleField, saving = false, loading = false;
 
   const updateEdit = () => { edit.disabled = loading || !selected(); };
@@ -72,7 +71,6 @@
     dialog.showModal();
   }
 
-  add?.addEventListener('click',()=>open(null));
   edit.addEventListener('click', async () => {
     const id = selected()?.dataset.row;
     if (!id || loading) return;

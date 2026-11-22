@@ -5,6 +5,7 @@
   const pageFilters = new URLSearchParams(location.search);
   function url(path, {rowFilters = false, ids} = {}) {
     const params = new URLSearchParams(catalog ? {catalog} : {table:tableSlug});
+    if (catalog === 'entries' && pageFilters.has('id')) params.set('id',pageFilters.get('id'));
     if (catalog === 'flight-statuses') params.set('table',pageFilters.get('table') || 'vyvoz');
     if (catalog && rowFilters) {
       for (const key of ['archive','q']) {

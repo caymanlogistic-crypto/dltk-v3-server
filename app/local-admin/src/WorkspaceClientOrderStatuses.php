@@ -9,11 +9,14 @@ function workspace_client_order_statuses(bool $refresh = false): array {
         'confirmed'=>['id'=>2,'label'=>'Подтверждённый заказ','color'=>'#DCEAD4'],
     ];
     $saved = workspace_client_catalog_metadata('client_order_statuses');
-    foreach ($defaults as $code=>&$status) {
-        $status = ($saved[$code] ?? []) + $status + ['revision'=>0];
-    }
+    foreach ($defaults as $code=>$status) $saved[$code] = ($saved[$code] ?? []) + $status;
+    foreach ($saved as &$status) $status += ['revision'=>0,'active'=>true];
     unset($status);
-    return $statuses = $defaults;
+    return $statuses = $saved;
+}
+
+function workspace_active_client_order_statuses(bool $refresh = false): array {
+    return array_filter(workspace_client_order_statuses($refresh),static fn(array $status): bool=>$status['active']);
 }
 
 function workspace_client_order_status(string $code): array {
@@ -24,6 +27,64 @@ function workspace_client_order_status_can_view(array $table): bool {
     return $table['slug']==='vyvoz' && workspace_can('system','client-order-statuses','view',$table['id']);
 }
 
+function workspace_order_status_row_action(array $body): array {
+    workspace_require('system','client-order-statuses','view');
+    workspace_require('system','client-order-statuses','edit');
+    $action = $body['action'];
+    workspace_begin();
+    try {
+        $statuses = workspace_client_order_statuses(true);
+        $before = null;
+        if ($action === 'add') {
+            $label = workspace_catalog_validate_name($body['values']['A'] ?? '');
+            $color = workspace_directory_color($body['values']['B'] ?? '');
+            workspace_assert_unique_order_status($statuses,$label);
+            $id = max(array_column($statuses,'id'))+1;
+            $code = 'custom-'.$id;
+            $after = ['id'=>$id,'label'=>$label,'color'=>$color,'revision'=>1,'active'=>true];
+        } else {
+            $code = null;
+            foreach ($statuses as $key=>$status) if ($status['id'] === $body['row']) $code = $key;
+            if ($code === null) throw new ApiError('not_found','Статус не найден.',404);
+            $before = $statuses[$code];
+            $restore = $action === 'restore';
+            if ($before['active'] === $restore || $before['revision'] !== $body['revision']) workspace_directory_conflict();
+            if (!$restore) {
+                $count = (int)wquery("SELECT COUNT(*) FROM records WHERE
+                    JSON_UNQUOTE(JSON_EXTRACT(values_json,'$.clientOrderStatus'))=?
+                    OR JSON_UNQUOTE(JSON_EXTRACT(baseline_json,'$.clientOrderStatus'))=?",[$code,$code])->fetchColumn();
+                if ($count) throw new ApiError('entry_in_use','Статус «'.$before['label'].'» используется. Связанных заказов — '.$count.'. Удалить его нельзя.',409);
+            } else workspace_assert_unique_order_status($statuses,$before['label'],$code);
+            if ($action === 'check_delete') {
+                workspace_db()->commit();
+                return ['name'=>$before['label']];
+            }
+            $after = array_replace($before,['active'=>$restore,'revision'=>$before['revision']+1]);
+        }
+        $statuses[$code] = $after;
+        workspace_write_order_statuses($statuses);
+        workspace_audit(['category'=>'catalog','label'=>'Статусы клиентов','before'=>$before,'after'=>$after,
+            'action'=>match($action) {'add'=>'create','restore'=>'restore',default=>'archive'}]);
+        workspace_db()->commit();
+        return ['id'=>$after['id'],'revision'=>$after['revision']];
+    } catch (Throwable $error) {
+        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
+        throw $error;
+    }
+}
+
+function workspace_assert_unique_order_status(array $statuses,string $label,?string $except = null): void {
+    foreach ($statuses as $code=>$status) {
+        if ($code !== $except && $status['active'] && vitrine_status_key($status['label']) === vitrine_status_key($label)) {
+            throw new ApiError('duplicate_status','Такой статус уже есть.',409);
+        }
+    }
+}
+
+function workspace_write_order_statuses(array $statuses): void {
+    wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+        ['client_order_statuses',wjson($statuses)]);
+}
 
 function workspace_client_order_status_grid_endpoint(bool $pasteCheck = false): never {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method','Метод не поддерживается.',405);
@@ -34,37 +95,28 @@ function workspace_client_order_status_grid_endpoint(bool $pasteCheck = false): 
         throw new ApiError('invalid_edit','Некорректные данные статуса заказа.');
     }
     $column = $body['column'];
-    $palette = array_column(workspace_palette(),'fill','name');
     $value = $column === 'A' ? workspace_catalog_validate_name($body['value']) : trim($body['value']);
-    if ($column === 'B' && !isset($palette[$value])) throw new ApiError('invalid_color','Выберите цвет из системной палитры.');
+    $newValue = $column === 'A' ? $value : workspace_directory_color($value);
     if ($pasteCheck) json_response(['accepted'=>true]);
 
     workspace_begin();
     try {
         $statuses = workspace_client_order_statuses(true);
         $code = null;
-        foreach ($statuses as $key=>$item) {
-            if ($item['id'] === $body['row']) $code = $key;
-            elseif ($column === 'A' && mb_strtolower($item['label']) === mb_strtolower($value)) {
-                throw new ApiError('duplicate_status','Такой статус уже есть.',409);
-            }
-        }
-        if (!is_string($code)) throw new ApiError('not_found','Статус не найден.',404);
+        foreach ($statuses as $key=>$item) if ($item['id'] === $body['row'] && $item['active']) $code = $key;
+        if ($code === null) throw new ApiError('not_found','Активный статус не найден.',404);
+        if ($column === 'A') workspace_assert_unique_order_status($statuses,$value,$code);
         $status = $statuses[$code];
         $baseHash = hash('sha256','client-order-status:'.$code);
-        if (($body['revision'] ?? null) !== $status['revision'] || ($body['baseHash'] ?? null) !== $baseHash) {
-            throw new ApiError('revision_conflict','Статус изменился. Обновите страницу и повторите сохранение.',409);
-        }
+        if (($body['revision'] ?? null) !== $status['revision'] || ($body['baseHash'] ?? null) !== $baseHash) workspace_directory_conflict();
         $field = $column === 'A' ? 'label' : 'color';
-        $newValue = $column === 'A' ? $value : $palette[$value];
         if ($status[$field] !== $newValue) {
             workspace_audit(['category'=>'catalog','column'=>$column,'label'=>'Статусы клиентов',
                 'before'=>$status[$field],'after'=>$newValue,'action'=>'edit']);
             $status[$field] = $newValue;
             $status['revision']++;
             $statuses[$code] = $status;
-            wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
-                ['client_order_statuses',wjson($statuses)]);
+            workspace_write_order_statuses($statuses);
         }
         workspace_db()->commit();
         json_response(['value'=>$value,'original'=>$value,'revision'=>$status['revision'],'baseHash'=>$baseHash,
