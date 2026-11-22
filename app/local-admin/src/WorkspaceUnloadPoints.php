@@ -16,7 +16,7 @@ function workspace_unload_points(int $catalogId,?int $clientId=null): array {
     $args=$clientId===null ? [$catalogId] : [$catalogId,$clientId];
     $rows = wquery("SELECT e.id,e.name,e.active,e.revision,p.client_id,
         COALESCE(client.name,p.client_label) AS client,client.active AS client_active,p.address,p.schedule,p.instruction,
-        contact.name AS contact_name,contact.phone,contact.email,contact.original,
+        contact.id AS primary_contact_id,contact.name AS contact_name,contact.phone,contact.email,contact.original,
         (SELECT COUNT(*) FROM unload_point_contacts c WHERE c.entry_id=e.id) AS contact_count
         FROM catalog_entries e JOIN unload_points p ON p.entry_id=e.id
         LEFT JOIN catalog_entries client ON client.id=p.client_id
@@ -98,7 +98,7 @@ function workspace_unload_validate_point(array $values,?array $old=null): array 
     throw new ApiError('invalid_unload_client','Выберите клиента из справочника.');
 }
 
-function workspace_unload_save_point(int $catalogId,array $values,?int $entryId=null,?int $revision=null,?int $clientId=null): array {
+function workspace_unload_save_point(int $catalogId,array $values,?int $entryId=null,?int $revision=null,?int $clientId=null,?string $primaryPhone=null): array {
     workspace_require('catalog',(string)$catalogId,'edit');
     workspace_begin();
     try {
@@ -131,8 +131,21 @@ function workspace_unload_save_point(int $catalogId,array $values,?int $entryId=
             wquery("INSERT INTO unload_points(entry_id,client_id,client_label,address,schedule,instruction) VALUES(?,?,?,?,'','')",
                 [$entryId,$client,$point['client'],$point['address']]);
         }
-        workspace_audit(['category'=>'catalog','label'=>'Точки выгрузки','before'=>$old?workspace_unload_point_values($old):null,
-            'after'=>['id'=>$entryId]+$point,'action'=>$old?'edit':'create']);
+        $before=$old ? workspace_unload_point_values($old) : null;
+        $after=['id'=>$entryId]+$point;
+        if ($primaryPhone!==null && $primaryPhone!==($old['phone']??null)) {
+            if (!empty($old['primary_contact_id'])) {
+                wquery("UPDATE unload_point_contacts SET phone=?,original='' WHERE id=?",
+                    [$primaryPhone,$old['primary_contact_id']]);
+            } else {
+                wquery("INSERT INTO unload_point_contacts(entry_id,phone,original,is_primary) VALUES(?,?,'',TRUE)",
+                    [$entryId,$primaryPhone]);
+            }
+            if ($old) $before+=['primaryPhone'=>$old['phone'],'originalContact'=>$old['original']];
+            $after['primaryPhone']=$primaryPhone;
+        }
+        workspace_audit(['category'=>'catalog','label'=>'Точки выгрузки','before'=>$before,
+            'after'=>$after,'action'=>$old?'edit':'create']);
         workspace_db()->commit();
         return ['id'=>$entryId,'revision'=>$revision,'values'=>workspace_unload_point_values($point)];
     } catch (Throwable $error) {

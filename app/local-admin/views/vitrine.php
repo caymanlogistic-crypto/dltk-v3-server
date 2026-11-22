@@ -75,7 +75,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if ($canManageDirectory || !empty($catalogGrid['relatedLabel'])): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js')) ?>"></script>
   <?php endif; ?>
-  <?php if (!empty($catalogGrid['unloadPoints']) || !empty($catalogGrid['clientUnloadCatalog'])): ?>
+  <?php if (!empty($catalogGrid['unloadPoints'])): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-unload-contacts.js')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['clientUnloadCatalog'])): ?>

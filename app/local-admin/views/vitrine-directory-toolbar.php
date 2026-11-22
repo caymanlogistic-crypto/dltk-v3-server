@@ -69,19 +69,18 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
 <?php endif; ?>
 
 <?php if (!empty($catalogGrid['clientUnloadCatalog'])) require __DIR__.'/vitrine-client-unload-dialog.php'; ?>
-<?php if (!empty($catalogGrid['unloadPoints']) || !empty($catalogGrid['clientUnloadCatalog'])):
-      $canManageContacts=!empty($catalogGrid['unloadPoints']) ? $canManageDirectory && !$archive : $catalogGrid['canManageUnload']; ?>
-<dialog class="vitrine-catalog-dialog" id="unload-contacts-dialog" data-catalog-id="<?= (int)($catalogGrid['clientUnloadCatalog']??$catalogGrid['id']) ?>" aria-labelledby="unload-contacts-title">
+<?php if (!empty($catalogGrid['unloadPoints'])): ?>
+<dialog class="vitrine-catalog-dialog" id="unload-contacts-dialog" data-catalog-id="<?= (int)$catalogGrid['id'] ?>" aria-labelledby="unload-contacts-title">
   <form>
     <header class="modal-head"><h2 class="modal-title" id="unload-contacts-title">Контакты точки</h2></header>
     <div class="modal-body">
       <div data-unload-contact-list></div>
-      <?php if ($canManageContacts): ?>
+      <?php if ($canManageDirectory && !$archive): ?>
       <button class="btn btn-secondary" type="button" data-unload-contact-add>Добавить контакт</button>
       <?php endif; ?>
     </div>
     <footer class="modal-foot">
-      <?php if ($canManageContacts): ?><button class="btn btn-primary" type="submit">Сохранить</button><?php endif; ?>
+      <?php if ($canManageDirectory && !$archive): ?><button class="btn btn-primary" type="submit">Сохранить</button><?php endif; ?>
       <button class="btn btn-secondary" type="button" data-close>Закрыть</button>
     </footer>
   </form>

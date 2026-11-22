@@ -8,12 +8,13 @@
   const close=dialog.querySelector('[data-client-unload-close]');
   const addressForm=dialog.querySelector('[data-client-unload-form]');
   const address=addressForm.elements.address;
+  const phone=addressForm.elements.phone;
   const deleteForm=dialog.querySelector('[data-client-unload-delete]');
   const confirmLabel=deleteForm.querySelector('[data-client-unload-confirm]');
   const menu=dialog.querySelector('[data-client-unload-menu]');
   const csrf=document.querySelector('meta[name="csrf-token"]').content;
   let opener, clientId, data, selectedPoint, returnFocus, menuTrigger, menuPoint;
-  let busy=false, contactsOpen=false, restoreFocus=true;
+  let busy=false, restoreFocus=true;
 
   const notice=(message,tone='danger')=>window.PlanexNotifications.show({message,tone});
   function node(tag,text,cls) {
@@ -68,8 +69,9 @@
     selectedPoint=point;
     returnFocus=button;
     address.value=point?.address??'';
+    phone.value=point?.phone??'';
     showOnly(addressForm);
-    address.focus();
+    (button.dataset.unloadPhone ? phone : address).focus();
   }
   function askDelete(point,button) {
     selectedPoint=point;
@@ -80,21 +82,6 @@
   }
   function focusList() {
     (returnFocus?.isConnected ? returnFocus : add.hidden ? close : add).focus({preventScroll:true});
-  }
-  async function openContacts(point,button) {
-    busy=true;
-    try {
-      contactsOpen=await window.VitrineUnloadContacts.openPoint(point.id,button,result=>{
-        point.revision=result.revision;
-        point.summary=result.summary;
-        button.textContent=result.summary;
-      }, {anchor:opener,onClose:()=>{
-        contactsOpen=false;
-        dialog.style.visibility='';
-        position();
-      }});
-      if (contactsOpen) dialog.style.visibility='hidden';
-    } finally { busy=false; }
   }
   function render() {
     dialog.querySelector('h2').textContent='Точки выгрузки · '+data.name;
@@ -113,12 +100,15 @@
       const location=node('td');
       const addressCell=data.canEdit ? action(point.address,button=>edit(point,button))
         : node('span',point.address,'vitrine-client-unload-cell');
-      addressCell.title=data.canEdit ? 'Щелчок — изменить адрес' : point.address;
+      addressCell.title=data.canEdit ? 'Щелчок — изменить адрес и телефон' : point.address;
       location.append(addressCell);
       const contact=node('td');
-      const contacts=action(point.summary,button=>openContacts(point,button));
-      contacts.title='Щелчок — открыть контакты';
-      contacts.setAttribute('aria-haspopup','dialog');
+      const contacts=data.canEdit ? action(point.phone||'—',button=>edit(point,button))
+        : node('span',point.phone||'—','vitrine-client-unload-cell');
+      if (data.canEdit) {
+        contacts.title='Щелчок — изменить адрес и телефон';
+        contacts.dataset.unloadPhone='true';
+      }
       contact.append(contacts);
       row.append(actions,location,contact);
       rows.append(row);
@@ -154,14 +144,14 @@
   }
   async function submit(form,payload,message) {
     if (busy) return;
-    const controls=[...form.querySelectorAll('button, textarea')];
+    const controls=[...form.querySelectorAll('button, textarea, input')].filter(control=>!control.disabled);
     busy=true;
     controls.forEach(control=>control.disabled=true);
     try {
       data=await request(payload);
       render();
-      showOnly(list);
-      focusList();
+      if (form===deleteForm) dialog.close();
+      else { showOnly(list);focusList(); }
       notice(message,'success');
     } catch (error) { notice(error.message,'info'); }
     finally { busy=false;controls.forEach(control=>control.disabled=false); }
@@ -169,7 +159,7 @@
   addressForm.addEventListener('submit',event=>{
     event.preventDefault();
     submit(addressForm,{action:'save_client_unload_point',address:address.value,
-      entryId:selectedPoint?.id,revision:selectedPoint?.revision},selectedPoint ? 'Адрес сохранён.' : 'Точка добавлена.');
+      phone:phone.value,entryId:selectedPoint?.id,revision:selectedPoint?.revision},selectedPoint ? 'Точка сохранена.' : 'Точка добавлена.');
   });
   deleteForm.addEventListener('submit',event=>{
     event.preventDefault();
@@ -209,13 +199,12 @@
       if (menuTrigger && !menu.contains(event.target) && !menuTrigger.contains(event.target)) closeMenu();
       return;
     }
-    const contactDialog=document.getElementById('unload-contacts-dialog');
-    if (contactsOpen && contactDialog.contains(event.target)) return;
-    const hasDraft=!addressForm.hidden && address.value!==(selectedPoint?.address??'');
-    if (contactsOpen || hasDraft || busy) {
+    const hasDraft=!addressForm.hidden && (address.value!==(selectedPoint?.address??'') ||
+      phone.value!==(selectedPoint?.phone??''));
+    if (hasDraft || busy) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (hasDraft) notice('Сначала сохраните адрес или нажмите «Отмена».','info');
+      if (hasDraft) notice('Сначала сохраните изменения или нажмите «Отмена».','info');
       return;
     }
     restoreFocus=false;

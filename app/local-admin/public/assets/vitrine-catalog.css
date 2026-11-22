@@ -31,9 +31,7 @@
 .vitrine .vitrine-catalog-dialog .modal-body { display:grid; gap:12px; padding:16px; }
 .vitrine .vitrine-catalog-dialog .modal-body p { margin:0; color:var(--text-muted); }
 .vitrine.vitrine-catalog-page .vitrine-table { --vitrine-default-width-C:180px; }
-.vitrine .vitrine-client-unload-dialog,
-.vitrine .vitrine-anchored-contacts { inset:auto; margin:0; max-height:calc(100dvh - 20px); }
-.vitrine .vitrine-client-unload-dialog { width:570px; overflow:visible; }
+.vitrine .vitrine-client-unload-dialog { inset:auto; margin:0; max-height:calc(100dvh - 20px); width:570px; overflow:visible; }
 .vitrine .vitrine-client-unload-dialog [hidden] { display:none; }
 .vitrine .vitrine-client-unload-scroll { max-height:min(40dvh,310px); overflow:auto; margin-top:8px; border:1px solid var(--line); }
 .vitrine .vitrine-client-unload-table { width:100%; table-layout:fixed; border-spacing:0; font-size:12px; }
@@ -49,11 +47,6 @@
 .vitrine .vitrine-client-unload-table .vitrine-row-menu-trigger { inset-block-start:3px; transform:none; }
 .vitrine .vitrine-client-unload-table tr:hover .vitrine-row-menu-trigger { opacity:1; }
 .vitrine .vitrine-client-unload-empty { padding:8px; color:var(--text-muted); }
-.vitrine .vitrine-anchored-contacts { width:420px; padding:14px; overflow:auto; }
-.vitrine .vitrine-anchored-contacts .modal-head { padding:0 0 8px; margin:0; border:0; background:transparent; }
-.vitrine .vitrine-anchored-contacts .modal-title { margin:0; font-size:13px; font-weight:600; }
-.vitrine .vitrine-anchored-contacts .modal-body { padding:0; }
-.vitrine .vitrine-anchored-contacts .modal-foot { justify-content:flex-start; padding:0; margin-top:12px; border:0; background:transparent; }
 @media(max-width:700px) {
   .vitrine .vitrine-catalog-search { margin-inline-start:0; }
 }

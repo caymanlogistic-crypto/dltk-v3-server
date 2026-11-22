@@ -78,7 +78,6 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
         'catalogGrid'=>['id'=>$catalogId, 'archive'=>$archive, 'search'=>$search, 'canEdit'=>$canEdit, 'syncLabel'=>$syncLabel,
             'relatedLabel'=>$canViewUnload ? 'Точки выгрузки' : null,'clientFilter'=>$clientFilter,
             'clientUnloadCatalog'=>$canViewUnload ? $unloadCatalog : null,
-            'canManageUnload'=>$canViewUnload && !$archive && workspace_can('catalog',(string)$unloadCatalog,'edit'),
             'draftFields'=>workspace_directory_draft_fields('clients')],
         'table'=>$table,
         'sheetTitle'=>$table['title'],
