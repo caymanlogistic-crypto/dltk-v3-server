@@ -100,7 +100,18 @@ function vitrine_save_cell(): never {
         foreach ($data['statuses'] as $status) if (vitrine_status_key($status['name'])===vitrine_status_key($body['value'])) { $statusId=$status['id']; $body['value']=$status['name']; }
         if ($statusId===null && $body['value']!==$original && $body['value']!==($current['values']['A']??'')) throw new ApiError('unknown_status','Выберите статус из справочника или добавьте новый в «Справочники → Статусы».');
     }
-    $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'']);
+    $orderEdit=[];
+    if (array_key_exists('orderStatus',$body)) {
+        $code=$body['orderStatus'];
+        if ($body['column']!=='B' || !isset(vitrine_catalog_links($data['table'])['B']) || !workspace_client_order_status_can_view($data['table'])) {
+            throw new ApiError('invalid_order_status','Статус заказа доступен в поле B «Клиент».',403);
+        }
+        if (!is_string($code) || ($code!=='' && !isset(workspace_client_order_statuses()[$code]))) {
+            throw new ApiError('invalid_order_status','Выберите статус из справочника.');
+        }
+        $orderEdit=['orderStatus'=>$code];
+    }
+    $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'']+$orderEdit);
     $statusColor = null; $resultStatusId = null;
     if ($body['column']==='A') foreach ($data['statuses'] as $status) if (vitrine_status_key($status['name'])===vitrine_status_key($result['value'])) { $statusColor=$status['color']; $resultStatusId=$status['id']; }
     json_response($result + ['original'=>$original,'baseHash'=>$current['baseHash'],'conflict'=>false,'statusColor'=>$statusColor,'statusId'=>$resultStatusId]);

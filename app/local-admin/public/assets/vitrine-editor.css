@@ -40,3 +40,7 @@
 .vitrine .vitrine-editor-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
 .vitrine .vitrine-editor-actions .btn { flex:0 0 auto; width:auto; margin:0; }
 .vitrine .vitrine-editor-actions .vitrine-editor-reset { margin-left:auto; }
+
+.vitrine .vitrine-editor-order { margin-block-start:10px; }
+.vitrine .vitrine-table tbody tr > td[data-edit-cell][data-order-status="preliminary"] { background-color:#F7F2D2; }
+.vitrine .vitrine-table tbody tr > td[data-edit-cell][data-order-status="confirmed"] { background-color:#DCEAD4; }

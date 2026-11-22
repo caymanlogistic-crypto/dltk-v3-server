@@ -16,7 +16,7 @@ $archive = $catalogGrid['archive'];
     <input type="hidden" name="catalog" value="<?= $escape($directory) ?>">
     <?php if ($archive): ?><input type="hidden" name="archive" value="1"><?php endif; ?>
     <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape($catalogGrid['search']) ?>"
-           aria-label="Поиск в справочнике" placeholder="<?= $employeePage ? 'ФИО, логин, email или роль' : 'Название роли' ?>">
+           aria-label="Поиск в справочнике" placeholder="<?= $employeePage ? 'ФИО, логин, email или роль' : ($directory === 'roles' ? 'Название роли' : 'Название статуса') ?>">
     <button class="btn" type="submit">Найти</button>
   </form>
   <?php if ($employeeScope): ?>

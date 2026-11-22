@@ -6,7 +6,7 @@ $directory = $directory ?? null;
 $clientCatalog = $directory === 'clients';
 $catalogGrid = $data['catalogGrid'] ?? null;
 $viewUrl = static fn(string $path): string => function_exists('app_url_path') ? app_url_path($path) : $path;
-$currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Сотрудники','roles'=>'Роли'][$directory]] : workspace_table());
+$currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Сотрудники','roles'=>'Роли','client-order-statuses'=>'Статусы клиентов'][$directory]] : workspace_table());
 $managementTable = $directory ? 'vyvoz' : $currentTable['slug'];
 $workspaceTables=workspace_tables();
 $preferences=empty($error) ? workspace_preferences($currentTable) : [];
@@ -26,6 +26,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="color-scheme" content="light">
   <meta name="csrf-token" content="<?= $escape(csrf_token()) ?>">
   <meta id="vitrine-status-data" name="vitrine-status-data" content="<?= $escape(json_encode(['statuses'=>$data['statuses'] ?? [], 'palette'=>$data['palette'] ?? []], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE)) ?>">
+  <meta id="vitrine-order-statuses" content="<?= $escape(wjson(workspace_client_order_statuses())) ?>">
   <meta id="vitrine-row-manifest" name="vitrine-row-manifest" content="<?= $escape(json_encode($data['rowIds'] ?? [])) ?>">
   <meta id="workspace-preferences" name="workspace-preferences" content="<?= $escape(wjson($preferences)) ?>">
   <meta name="workspace-event-cursor" content="<?= (int)$eventCursor ?>">
@@ -103,10 +104,11 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
       <details class="vitrine-folder" id="vitrine-catalogs">
         <summary class="nav-item is-parent<?= $directory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
-          <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Сотрудники', 'roles'=>'Роли']; ?>
+          <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Сотрудники', 'roles'=>'Роли', 'client-order-statuses'=>'Статусы клиентов']; ?>
           <?php if (!workspace_client_grid_catalog()) unset($directoryLinks['clients']); ?>
           <?php if (!workspace_can('system','users','view')) unset($directoryLinks['employees']); ?>
           <?php if (!workspace_can('system','roles','view')) unset($directoryLinks['roles']); ?>
+          <?php if (!workspace_can('system','client-order-statuses','view')) unset($directoryLinks['client-order-statuses']); ?>
           <?php foreach ($directoryLinks as $key => $label): ?>
           <a class="nav-sub-item<?= $directory === $key ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog='.$key)) ?>"<?= $directory === $key ? ' aria-current="page"' : '' ?>><?= $escape($label) ?></a>
           <?php endforeach; ?>
