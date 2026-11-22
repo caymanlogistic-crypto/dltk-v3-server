@@ -15,17 +15,17 @@
   observer.observe(document.documentElement, {childList:true,subtree:true});
 
   window.VitrineSelect = Object.freeze({
-    create(sourceOptions, initialValue = '') {
+    create(sourceOptions, initialValue = '', {searchable = false} = {}) {
       const options = sourceOptions.map(option => ({value:String(option.value ?? ''),label:String(option.label ?? option.value ?? ''),color:option.color}));
       const id = 'vitrine-select-' + (++sequence);
       const element = document.createElement('div');
       element.className = 'custom-select vitrine-select';
       const field = document.createElement('input');
-      field.type = 'text'; field.readOnly = true;
+      field.type = 'text'; field.readOnly = !searchable;
       field.className = 'cs-trigger vitrine-select-field';
       field.value = String(initialValue);
       field.placeholder = options.find(option => option.value === '')?.label || 'Не выбран';
-      field.setAttribute('role','combobox'); field.setAttribute('aria-autocomplete','none');
+      field.setAttribute('role','combobox'); field.setAttribute('aria-autocomplete',searchable ? 'list' : 'none');
       field.setAttribute('aria-haspopup','listbox'); field.setAttribute('aria-controls',id);
       field.setAttribute('aria-expanded','false'); field.autocomplete = 'off';
       const arrow = document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -37,7 +37,17 @@
       const list = document.createElement('div'); list.className = 'cs-options'; list.id = id;
       list.setAttribute('role','listbox'); list.setAttribute('aria-label','Варианты значения');
       dropdown.append(list); element.append(field,arrow,dropdown);
-      let opened = false, activeIndex = -1, typed = '', typedAt = 0;
+      const empty = document.createElement('div');
+      if (searchable) {
+        empty.className = 'vitrine-select-empty';
+        empty.setAttribute('role','status');
+        empty.textContent = 'Совпадений нет';
+        empty.hidden = true;
+        dropdown.append(empty);
+      }
+      const normalize = value => value.trim().replace(/\s+/g,' ').toLocaleLowerCase('ru').replace(/ё/g,'е');
+      let opened = false, activeIndex = -1, typed = '', typedAt = 0, filtering = false;
+      let visible = options.map((_,index)=>index);
       const nodes = options.map((option,index) => {
         const node = document.createElement('div'); node.className = 'cs-option'; node.id = id + '-' + index;
         node.setAttribute('role','option'); node.setAttribute('aria-selected',String(option.value === field.value));
@@ -65,34 +75,56 @@
         opened = false; element.classList.remove('is-open'); field.classList.remove('is-open'); dropdown.classList.remove('is-open');
         field.setAttribute('aria-expanded','false'); field.removeAttribute('aria-activedescendant');
       }
+      function filter(query) {
+        const term = normalize(query);
+        visible = [];
+        for (const [index,option] of options.entries()) {
+          const match = !term || (option.value !== '' && normalize(option.label).includes(term));
+          nodes[index].hidden = !match;
+          if (match) visible.push(index);
+        }
+        empty.hidden = visible.length > 0;
+      }
       function open() {
         if (field.disabled || !options.length) return;
         for (const instance of instances) if (instance.element !== element) instance.close();
         opened = true; element.classList.add('is-open'); field.classList.add('is-open'); dropdown.classList.add('is-open');
         field.setAttribute('aria-expanded','true');
         const rect = field.getBoundingClientRect();
-        const expectedHeight = Math.min(220,options.length * 30 + 2);
+        if (searchable) filter(filtering ? field.value : '');
+        const expectedHeight = Math.min(220,Math.max(1,visible.length) * 30 + 2);
         const up = window.innerHeight - rect.bottom < expectedHeight && rect.top > expectedHeight;
         dropdown.classList.toggle('vitrine-select-up',up);
-        activate(Math.max(0,selectedIndex()));
+        const selected = selectedIndex();
+        activate(visible.includes(selected) ? selected : (visible[0] ?? -1));
       }
       function choose(index) {
         if (!options[index]) return;
-        field.value = options[index].value; activate(index); close();
-        field.dispatchEvent(new Event('input',{bubbles:true})); field.dispatchEvent(new Event('change',{bubbles:true}));
+        field.value = options[index].value; filtering = false; activate(index); close();
+        if (!searchable) field.dispatchEvent(new Event('input',{bubbles:true})); field.dispatchEvent(new Event('change',{bubbles:true}));
         field.focus({preventScroll:true});
       }
-      field.addEventListener('click',event => { event.stopPropagation(); if (opened) close(); else open(); });
+      field.addEventListener('click',event => {
+        event.stopPropagation();
+        if (!opened) open();
+        else if (!searchable) close();
+      });
+      if (searchable) field.addEventListener('input', () => { filtering = true; open(); });
       field.addEventListener('keydown',event => {
+        if (event.isComposing) return;
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
           event.preventDefault(); event.stopPropagation();
-          if (!opened) open(); else activate(Math.max(0,Math.min(options.length-1,activeIndex + (event.key === 'ArrowDown' ? 1 : -1))));
+          if (!opened) open();
+          else {
+            const next = visible.indexOf(activeIndex) + (event.key === 'ArrowDown' ? 1 : -1);
+            activate(visible[Math.max(0,Math.min(visible.length-1,next))] ?? -1);
+          }
         } else if (opened && event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); choose(activeIndex); }
         else if (opened && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
         else if (event.key === 'Tab') close();
-        else if (opened && (event.key === 'Home' || event.key === 'End')) { event.preventDefault(); event.stopPropagation(); activate(event.key === 'Home' ? 0 : options.length-1); }
-        else if (event.key === ' ' && !opened) { event.preventDefault(); event.stopPropagation(); open(); }
-        else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        else if (!searchable && opened && (event.key === 'Home' || event.key === 'End')) { event.preventDefault(); event.stopPropagation(); activate(event.key === 'Home' ? 0 : options.length-1); }
+        else if (!searchable && event.key === ' ' && !opened) { event.preventDefault(); event.stopPropagation(); open(); }
+        else if (!searchable && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
           event.preventDefault(); event.stopPropagation();
           const now = performance.now(); typed = now - typedAt < 700 ? typed + event.key : event.key; typedAt = now;
           if (!opened) open();
@@ -102,7 +134,16 @@
       });
       element.addEventListener('focusout',event => { if (!element.contains(event.relatedTarget)) close(); });
       const instance = {element,close,attached:false}; instances.add(instance);
-      return {element,field};
+      function resolveValue() {
+        if (!searchable || field.value === String(initialValue)) return field.value;
+        const query = field.value.trim();
+        if (!query) return '';
+        const exact = options.find(option=>option.value === query);
+        if (exact) return exact.value;
+        const matches = options.filter(option=>normalize(option.value) === normalize(query));
+        return matches.length === 1 ? matches[0].value : null;
+      }
+      return {element,field,resolveValue};
     }
   });
 })();

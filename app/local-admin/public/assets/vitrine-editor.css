@@ -41,6 +41,7 @@
 .vitrine .vitrine-editor-actions .btn { flex:0 0 auto; width:auto; margin:0; }
 .vitrine .vitrine-editor-actions .vitrine-editor-reset { margin-left:auto; }
 
-.vitrine .vitrine-editor-order { margin-block-start:10px; }
+.vitrine .vitrine-editor-order-field { display:grid; row-gap:6px; }
+.vitrine .vitrine-editor-order-field + .vitrine-editor-order-field { margin-block-start:12px; }
 .vitrine .vitrine-table tbody tr > td[data-edit-cell][data-order-status="preliminary"] { background-color:#F7F2D2; }
 .vitrine .vitrine-table tbody tr > td[data-edit-cell][data-order-status="confirmed"] { background-color:#DCEAD4; }

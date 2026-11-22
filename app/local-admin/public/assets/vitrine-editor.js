@@ -194,6 +194,12 @@
   async function save(reset = false, advance = null) {
     if (!active || active.saving) return;
     const editor = active;
+    const value = editor.resolveValue ? editor.resolveValue() : editor.field.value;
+    if (!reset && value === null) {
+      report('Выберите клиента из подсказок.','danger');
+      editor.field.focus();
+      return;
+    }
     editor.saving = true;
     editor.error.hidden = true;
     editor.buttons.forEach(button => { button.disabled = true; });
@@ -204,7 +210,7 @@
     const cell = editor.cell;
     const before = snapshot(cell);
     try {
-      const result = await writeCell(cell, editor.field.value, reset, reset ? null : editor.paste,null,!reset && editor.orderField ? (orderLabels[editor.orderField.value] || '') : undefined);
+      const result = await writeCell(cell, value, reset, reset ? null : editor.paste,null,!reset && editor.orderField ? (orderLabels[editor.orderField.value] || '') : undefined);
       applyResult(cell,result);
       if (!reset && editor.paste) rememberPaste(before,result);
       editor.saving = false;
@@ -260,6 +266,7 @@
     if (!Array.isArray(choices)) choices = [];
     const isStatus = cell.dataset.kind === 'status';
     const useCustom = isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0;
+    const searchableClient = cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');
@@ -267,7 +274,7 @@
       const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(value => ({value:String(value),label:String(value)}));
       if (!required && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
       options.push(...items.filter(item => item.value !== ''));
-      control = window.VitrineSelect.create(options,cell.textContent);
+      control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableClient});
     }
     const field = control?.field || element('textarea', 'field-input');
     field.classList.add('vitrine-editor-field');
@@ -278,7 +285,9 @@
     let orderField = null;
     if (cell.hasAttribute('data-order-status')) {
       field.setAttribute('aria-label','Клиент');
-      panel.append(element('div','field-label','Клиент'),control?.element || field);
+      const clientGroup = element('div','vitrine-editor-order-field');
+      clientGroup.append(element('div','field-label','Клиент'),control?.element || field);
+      panel.append(clientGroup);
       const options = [{value:'',label:'Без статуса'},...Object.values(orderStatuses).map(status=>({
         value:status.label,label:status.label,color:status.color
       }))];
@@ -286,7 +295,7 @@
       orderField = picker.field;
       orderField.setAttribute('aria-label','Статус заказа');
       orderField.classList.add('vitrine-editor-field');
-      const statusGroup = element('div','vitrine-editor-order');
+      const statusGroup = element('div','vitrine-editor-order-field');
       statusGroup.append(element('div','field-label','Статус заказа'),picker.element);
       panel.append(statusGroup);
     } else panel.append(control?.element || field);
@@ -310,7 +319,7 @@
     document.body.append(panel);
     cell.classList.add('is-editing');
     select(cell);
-    active = { panel, cell, field, initialValue:field.value, orderField, initialOrder:orderField?.value, buttons, saveButton, error, saving:false };
+    active = { panel, cell, field, initialValue:field.value, orderField, initialOrder:orderField?.value, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
     window.dispatchEvent(new CustomEvent('vitrine-editor-opened',{detail:{row:Number(cell.dataset.row),column:cell.dataset.column}}));
     table?.classList.add('has-editor');
     panel.addEventListener('keydown', event => {
@@ -333,7 +342,8 @@
     });
     field.addEventListener('input',fitEditor);
     fitEditor(); field.focus();
-    field.setSelectionRange(field.value.length, field.value.length);
+    if (searchableClient) field.select();
+    else field.setSelectionRange(field.value.length, field.value.length);
   }
   window.addEventListener('vitrine-statuses-updated', event => {
     const statuses = event.detail.statuses;
@@ -494,6 +504,7 @@
     let cell = eventCell(event);
     const inEditor = active && event.target === active.field;
     if ((!cell && !inEditor) || !event.clipboardData) return;
+    if (inEditor && active.field.getAttribute('aria-autocomplete') === 'list') return;
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
