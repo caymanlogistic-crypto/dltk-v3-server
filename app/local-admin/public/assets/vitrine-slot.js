@@ -61,7 +61,9 @@
       const start = digitOffset(field.selectionStart);
       const end = digitOffset(field.selectionEnd);
       const digits = digitsOnly(field.value), next = digits.slice(0,start)+value+digits.slice(end);
-      if (next.length<=maxDigits) setValue(next,start+value.length);
+      if (next.length>maxDigits) return;
+      setValue(next,start+value.length);
+      field.dispatchEvent(new InputEvent('input',{inputType:'insertFromPaste',bubbles:true}));
     });
   }
 

@@ -242,7 +242,7 @@
     } catch (error) {
       editor.saving = false;
       editor.buttons.forEach(button => { button.disabled = false; });
-      editor.field.disabled = Boolean(editor.requestField?.checked);
+      editor.field.disabled = false;
       if (editor.orderField) editor.orderField.disabled = false;
       if (editor.requestField) editor.requestField.disabled = false;
       editor.saveButton.textContent = 'Сохранить';
@@ -250,7 +250,7 @@
       editor.error.textContent = error instanceof TypeError ? 'Нет связи с сервером. Текст сохранён в поле — повторите попытку.' : error.message;
       report(editor.error.textContent, 'danger');
       position();
-      (editor.field.disabled ? editor.requestField : editor.field).focus();
+      editor.field.focus();
     }
   }
   function open(cell, firstCharacter = null) {
@@ -352,9 +352,8 @@
       label.append(requestField,mark,element('span','checkbox-label','Запросить слот'));
       group.append(field,label);
       panel.append(group);
-      field.disabled = requestField.checked;
-      requestField.addEventListener('change',()=>{
-        field.disabled = requestField.checked;
+      field.addEventListener('input',event=>{
+        if (field.value && event.inputType?.startsWith('insert')) requestField.checked = false;
       });
     } else panel.append(control?.element || field);
     if (!mask && !isSingleLine && !isStatus && !catalog && !orderField) {
@@ -402,7 +401,7 @@
     });
     field.addEventListener('input',fitEditor);
     fitEditor();
-    (field.disabled ? requestField : field).focus();
+    field.focus();
     if (searchableCatalog || (replaceLegacyValue && firstCharacter === null)) field.select();
     else field.setSelectionRange(field.value.length, field.value.length);
   }
