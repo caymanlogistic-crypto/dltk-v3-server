@@ -264,11 +264,12 @@
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder => { folder.open = false; });
     const panel = element('section', 'vitrine-editor');
     panel.setAttribute('role', 'dialog');
+    const isStatus = cell.dataset.kind === 'status';
     const isSlot = cell.dataset.kind === 'slot';
     const isSingleLine = cell.hasAttribute('data-single-line');
     const catalogEditor = ['B', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz';
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
-    if (isSlot || isSingleLine || catalogEditor || catalog) {
+    if (isSlot || isSingleLine || isStatus || catalogEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
     } else {
       const title = element('h2', 'vitrine-editor-title', dialogName);
@@ -280,7 +281,6 @@
     let choices = [];
     try { choices = JSON.parse(cell.dataset.choices || '[]'); } catch {}
     if (!Array.isArray(choices)) choices = [];
-    const isStatus = cell.dataset.kind === 'status';
     const useCustom = !isSlot && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
     const searchableClient = cell.hasAttribute('data-order-status');
     let control = null;
@@ -343,7 +343,9 @@
         field.disabled = requestField.checked;
       });
     } else panel.append(control?.element || field);
-    if (!isSlot && !isSingleLine && !catalog && !orderField) panel.append(element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить · Esc — отменить'));
+    if (!isSlot && !isSingleLine && !isStatus && !catalog && !orderField) {
+      panel.append(element('p', 'vitrine-editor-help', useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить · Esc — отменить'));
+    }
     const error = element('p', 'vitrine-editor-error');
     error.setAttribute('role', 'alert'); error.hidden = true; panel.append(error);
     const actions = element('div', 'vitrine-editor-actions');
@@ -354,7 +356,7 @@
     saveButton.addEventListener('click', () => save());
     cancelButton.addEventListener('click', close);
     actions.append(saveButton, cancelButton);
-    if (!orderField && cell.classList.contains('local-edited')) {
+    if (!isStatus && !orderField && cell.classList.contains('local-edited')) {
       const resetButton = element('button', 'btn btn-secondary vitrine-editor-reset', 'Исходное');
       resetButton.type = 'button'; resetButton.addEventListener('click', () => save(true));
       buttons.push(resetButton); actions.append(resetButton);
