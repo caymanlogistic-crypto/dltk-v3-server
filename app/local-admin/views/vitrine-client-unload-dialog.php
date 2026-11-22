@@ -1,9 +1,9 @@
 <?php declare(strict_types=1); ?>
-<dialog class="vitrine-editor vitrine-client-unload-dialog" id="client-unload-dialog" aria-labelledby="client-unload-title">
+<dialog class="vitrine-editor vitrine-client-relations-dialog vitrine-client-unload-dialog" id="client-unload-dialog" aria-labelledby="client-unload-title">
   <h2 class="vitrine-editor-title" id="client-unload-title">Точки выгрузки</h2>
   <section data-client-unload-list>
-    <div class="vitrine-client-unload-scroll" data-client-unload-scroll>
-      <table class="vitrine-client-unload-table" aria-label="Точки выгрузки клиента">
+    <div class="vitrine-client-relations-scroll" data-client-unload-scroll>
+      <table class="vitrine-client-relations-table" aria-label="Точки выгрузки клиента">
         <thead><tr><th scope="col" aria-label="Действия"></th><th scope="col">Адрес</th><th scope="col">Контакты</th></tr></thead>
         <tbody data-client-unload-rows></tbody>
       </table>

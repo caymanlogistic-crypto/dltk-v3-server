@@ -23,7 +23,7 @@
     if (cls) element.className=cls;
     return element;
   }
-  function action(text,run,cls='vitrine-client-unload-cell') {
+  function action(text,run,cls='vitrine-client-relations-cell') {
     const button=node('button',text,cls);
     button.type='button';
     button.addEventListener('click',()=>run(button));
@@ -99,12 +99,12 @@
       }
       const location=node('td');
       const addressCell=data.canEdit ? action(point.address,button=>edit(point,button))
-        : node('span',point.address,'vitrine-client-unload-cell');
+        : node('span',point.address,'vitrine-client-relations-cell');
       addressCell.title=data.canEdit ? 'Щелчок — изменить адрес и контакты' : point.address;
       location.append(addressCell);
       const contactCell=node('td');
       const contacts=data.canEdit ? action(point.contact||'—',button=>edit(point,button))
-        : node('span',point.contact||'—','vitrine-client-unload-cell');
+        : node('span',point.contact||'—','vitrine-client-relations-cell');
       if (data.canEdit) {
         contacts.title='Щелчок — изменить адрес и контакты';
         contacts.dataset.unloadContact='true';
@@ -115,7 +115,7 @@
     }
     if (!data.points.length) {
       const row=node('tr');
-      const empty=node('td','У клиента пока нет точек выгрузки.','vitrine-client-unload-empty');
+      const empty=node('td','У клиента пока нет точек выгрузки.','vitrine-client-relations-empty');
       empty.colSpan=3;
       row.append(empty);
       rows.append(row);
