@@ -337,8 +337,22 @@
       field.spellcheck = false;
       field.addEventListener('beforeinput',event=>{
         if (event.inputType !== 'insertText') return;
-        const next = field.value.slice(0,field.selectionStart)+(event.data ?? '')+field.value.slice(field.selectionEnd);
-        if (!/^[A-Za-z0-9]+$/.test(event.data ?? '') || !prefix.test(next.toUpperCase())) event.preventDefault();
+        const typed = event.data ?? '';
+        const start = field.selectionStart;
+        const end = field.selectionEnd;
+        const before = field.value.slice(0,start);
+        const after = field.value.slice(end);
+        const addCategory = /^[A-Z]{3}$/.test(before) && /^[0-9]+$/.test(typed);
+        const inserted = addCategory ? 'U'+typed : typed;
+        if (!/^[A-Za-z0-9]+$/.test(typed) || !prefix.test((before+inserted+after).toUpperCase())) {
+          event.preventDefault();
+          return;
+        }
+        if (addCategory) {
+          event.preventDefault();
+          field.setRangeText(inserted,start,end,'end');
+          field.dispatchEvent(new InputEvent('input',{inputType:'insertText',bubbles:true}));
+        }
       });
       field.addEventListener('input',()=>{
         const position = field.selectionStart;
