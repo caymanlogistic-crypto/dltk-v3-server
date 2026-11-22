@@ -46,7 +46,7 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
     if (!is_array($paste) || !array_key_exists('source',$paste)) throw new ApiError('invalid_clipboard','Не удалось определить содержимое буфера обмена.');
     $kind = $target['kinds'][$body['column']] ?? 'text';
     if ($kind === 'time') $body['value'] = vitrine_time_input($body['value']) ?? $body['value'];
-    $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','boolean'=>'TRUE/FALSE'];
+    $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','slot'=>'Слот','boolean'=>'TRUE/FALSE'];
     if ($paste['source'] !== null) {
         $source = $paste['source'];
         if (!is_array($source) || !is_int($source['row']??null) || !is_string($source['column']??null) || !is_int($source['revision']??null) || !is_string($source['baseHash']??null) || !is_string($source['value']??null)) throw new ApiError('invalid_clipboard','Некорректный формат скопированной ячейки.');
@@ -102,6 +102,13 @@ function vitrine_save_cell(): never {
         $normalized = vitrine_time_input($body['value']);
         if ($normalized === null && $body['value'] !== ($current['values'][$body['column']] ?? '')) throw new ApiError('invalid_time','Введите время: 800 или 0800 → 08:00. Часы 00–23, минуты 00–59.');
         if ($normalized !== null) $body['value'] = $normalized;
+    }
+    if (!$body['reset'] && ($current['kinds'][$body['column']] ?? '') === 'slot') {
+        $normalized = vitrine_slot_input($body['value']);
+        if ($normalized === null) {
+            throw new ApiError('invalid_slot','Введите 12 цифр: часы начала и окончания от 00 до 23 и действительную дату ДДММГГГГ.');
+        }
+        $body['value'] = $normalized;
     }
     if (isset($body['paste']) && !$body['reset']) vitrine_validate_paste($body,$data,$current);
     $original = $current['originalValues'][$body['column']] ?? '';

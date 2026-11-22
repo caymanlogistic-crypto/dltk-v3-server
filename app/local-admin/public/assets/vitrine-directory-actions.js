@@ -202,12 +202,12 @@
         return {...result,draftSaved:saved.id};
       } finally { draft.saving = false; }
     },
-    async finish(cell,id) {
+    async finish(cell) {
       showDraft(cell.closest('[data-draft-slot]'));
       notice('Запись добавлена.','success');
       try {
         await window.VitrineRows.refreshManifest();
-        if (!window.VitrineGrid.editing()) await window.VitrineRows.activate({dataset:{row:String(id),column:cell.dataset.column}});
+        if (cell.classList.contains('is-current-cell') && !window.VitrineGrid.editing()) window.VitrineGrid.reveal(cell);
       } catch (error) { onError(error); }
     },
   });

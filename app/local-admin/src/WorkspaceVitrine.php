@@ -4,6 +4,7 @@ require_once __DIR__.'/WorkspaceVitrineCatalogLinks.php';
 
 function vitrine_data(?array $requestedRows=null): array {
     $t=workspace_table();$columns=array_values(array_filter($t['columns'],fn($f)=>workspace_can('field',$f['letter'],'view',$t['id'])));
+    $slots=array_column(array_filter($columns,static fn(array $column): bool=>mb_strtolower(trim($column['label']))==='слот'),null,'letter');
     $links=vitrine_catalog_links($t);
     $orderStatusEnabled=isset($links['B']) && workspace_client_order_status_can_view($t);
     $derivedByColumn=array_column($links,null,'target');
@@ -30,6 +31,7 @@ function vitrine_data(?array $requestedRows=null): array {
         unset($values['clientOrderStatus']);
         foreach($columns as $f){$key=$f['letter'];$cell=$raw[(string)column_number($key)]??[];$kinds[$key]=$key==='A'?'status':(mb_strtolower(trim($f['label']))==='время'?'time':vitrine_clipboard_kind($cell,$key));
             if(!$raw){$kinds[$key]=match(mb_strtolower($f['label'])){'дата'=>'date','время'=>'time',default=>$key==='A'?'status':'text'};}
+            if (isset($slots[$key])) $kinds[$key]='slot';
             $display=display_cell($cell);if($display!==null){$baseline[$key]=$display;if(!isset($edits[(int)$r['id']][$key]))$values[$key]=$display;}
             if(($cell['dataValidation']['condition']['type']??'')==='ONE_OF_LIST')foreach($cell['dataValidation']['condition']['values']??[] as $o)if(isset($o['userEnteredValue']))$choices[$key][]=(string)$o['userEnteredValue'];
         }
@@ -40,7 +42,7 @@ function vitrine_data(?array $requestedRows=null): array {
             $entryId=$entriesByName[$source][vitrine_catalog_key($values[$source]??'')]??null;
             $values[$link['target']]=$dependentValues[$source][$entryId]??'';
         }
-        $choices=array_replace($choices,$boundChoices);
+        $choices=array_diff_key(array_replace($choices,$boundChoices),$slots);
         $statusId=$edits[(int)$r['id']]['A']['status_id']??null;$status=$byId[$statusId]??($byName[vitrine_status_key($values['A']??'')]??null);
         if($status)$values['A']=$status['name'];$choices['A']=array_column($catalog['statuses'],'name');
         $rows[]=['references'=>$refs[(int)$r['id']]??[],'catalogBindings'=>$boundCatalogs,'recordId'=>(int)$r['id'],'rowIndex'=>(int)$r['row_num'],'values'=>$values,'originalValues'=>$baseline,'baseHash'=>hash('sha256',$r['baseline_json']),'choices'=>$choices,'kinds'=>$kinds,'edits'=>$rowEdits,'statusId'=>$status['id']??null,'statusColor'=>$status['color']??null,'orderStatus'=>$orderStatus];
