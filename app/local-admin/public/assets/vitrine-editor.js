@@ -45,12 +45,16 @@
   }
   function position() {
     if (!active) return;
-    const rect = active.cell.getBoundingClientRect();
     const panel = active.panel;
     if (active.inline) {
+      const rect = active.cell.getBoundingClientRect();
       Object.assign(panel.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'});
       return;
     }
+    positionPanel(panel,active.cell);
+  }
+  function positionPanel(panel,cell) {
+    const rect = cell.getBoundingClientRect();
     const width = panel.offsetWidth;
     const height = panel.offsetHeight;
     panel.style.left = Math.max(10, Math.min(rect.left, window.innerWidth - width - 10)) + 'px';
@@ -702,5 +706,5 @@
   });
   document.querySelector('.vitrine-table-scroll')?.addEventListener('scroll', position);
   window.addEventListener('resize', fitEditor);
-  window.VitrineGrid=Object.freeze({select,reveal,editing:()=>Boolean(active),editingCell:()=>active?.cell||null,applyRemote});
+  window.VitrineGrid=Object.freeze({select,reveal,positionPanel,editing:()=>Boolean(active),editingCell:()=>active?.cell||null,applyRemote});
 })();

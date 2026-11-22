@@ -9,7 +9,7 @@
   const save = dialog.querySelector('button[type="submit"]');
   const close = dialog.querySelector('[data-close]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
-  let entryId, revision, opener, afterSave, loading=false;
+  let entryId, revision, opener, afterSave, placement, loading=false;
   const notice = (message,tone='danger') => window.PlanexNotifications.show({message,tone});
   const node = (tag, cls, text) => {
     const result = document.createElement(tag);
@@ -64,12 +64,13 @@
   function open(cell) {
     return openPoint(Number(cell.dataset.row),cell);
   }
-  async function openPoint(id,trigger,onSaved=null) {
-    if (loading || dialog.open) return;
-    if (id<=0) { notice('Сначала заполните клиента и адрес.','info'); return; }
+  async function openPoint(id,trigger,onSaved=null,positioning=null) {
+    if (loading || dialog.open) return false;
+    if (id<=0) { notice('Сначала заполните клиента и адрес.','info'); return false; }
     entryId=id;
     opener=trigger;
     afterSave=onSaved;
+    placement=positioning;
     loading=true;
     opener.setAttribute('aria-busy','true');
     try {
@@ -78,20 +79,45 @@
       dialog.querySelector('h2').textContent='Контакты точки · '+data.point;
       list.replaceChildren(...data.contacts.map(row));
       if (!data.contacts.length && !save) list.append(node('p',null,'Контакты не указаны.'));
-      dialog.showModal();
-    } catch (error) { notice(error.message); }
+      if (placement) {
+        dialog.classList.remove('vitrine-catalog-dialog');
+        dialog.classList.add('vitrine-editor','vitrine-anchored-contacts');
+        dialog.show();
+        position();
+      } else dialog.showModal();
+      return true;
+    } catch (error) { notice(error.message);return false; }
     finally { loading=false;opener.removeAttribute('aria-busy'); }
   }
   window.VitrineUnloadContacts=Object.freeze({open,openPoint});
+  function position() {
+    if (dialog.open && placement?.anchor.isConnected) window.VitrineGrid.positionPanel(dialog,placement.anchor);
+  }
+  document.querySelector('.vitrine-table-scroll')?.addEventListener('scroll',position);
+  window.addEventListener('resize',position);
   add?.addEventListener('click',()=>{
     const section=row({});
     list.append(section);
     identifyPrimary();
+    position();
     section.querySelector('[data-contact-field]').focus();
   });
   close.addEventListener('click',()=>dialog.close());
   dialog.addEventListener('cancel',event=>{ if (save?.disabled) event.preventDefault(); });
+  dialog.addEventListener('keydown',event=>{
+    if (!placement || event.key!=='Escape') return;
+    event.preventDefault();
+    if (!save?.disabled) dialog.close();
+  });
   dialog.addEventListener('close',()=>{
+    if (placement) {
+      dialog.classList.remove('vitrine-editor','vitrine-anchored-contacts');
+      dialog.classList.add('vitrine-catalog-dialog');
+      dialog.style.removeProperty('left');
+      dialog.style.removeProperty('top');
+      placement.onClose();
+      placement=null;
+    }
     const cell=window.VitrineRows?.resolveCell(opener)??opener;
     if (cell?.isConnected) cell.focus({preventScroll:true});
   });

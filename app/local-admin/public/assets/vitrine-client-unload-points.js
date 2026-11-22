@@ -10,9 +10,10 @@
   const address=addressForm.elements.address;
   const deleteForm=dialog.querySelector('[data-client-unload-delete]');
   const confirmLabel=deleteForm.querySelector('[data-client-unload-confirm]');
+  const menu=dialog.querySelector('[data-client-unload-menu]');
   const csrf=document.querySelector('meta[name="csrf-token"]').content;
-  let opener, clientId, data, selectedPoint, returnFocus;
-  let busy=false;
+  let opener, clientId, data, selectedPoint, returnFocus, menuTrigger, menuPoint;
+  let busy=false, contactsOpen=false, restoreFocus=true;
 
   const notice=(message,tone='danger')=>window.PlanexNotifications.show({message,tone});
   function node(tag,text,cls) {
@@ -21,8 +22,8 @@
     if (cls) element.className=cls;
     return element;
   }
-  function action(text,run) {
-    const button=node('button',text,'btn btn-secondary');
+  function action(text,run,cls='vitrine-client-unload-cell') {
+    const button=node('button',text,cls);
     button.type='button';
     button.addEventListener('click',()=>run(button));
     return button;
@@ -41,6 +42,27 @@
   }
   function showOnly(section) {
     for (const part of [list,addressForm,deleteForm]) part.hidden=part!==section;
+    position();
+  }
+  function position() {
+    if (dialog.open && opener?.isConnected) window.VitrineGrid.positionPanel(dialog,opener);
+  }
+  function closeMenu(focus=false) {
+    if (!menuTrigger) return;
+    menuTrigger.setAttribute('aria-expanded','false');
+    if (focus) menuTrigger.focus({preventScroll:true});
+    menu.hidden=true;
+    menuTrigger=null;
+  }
+  function rowMenu(point,button) {
+    if (menuTrigger===button) { closeMenu(true);return; }
+    closeMenu();
+    menuTrigger=button;
+    menuPoint=point;
+    button.setAttribute('aria-expanded','true');
+    menu.hidden=false;
+    window.VitrineGrid.positionPanel(menu,button);
+    menu.querySelector('button').focus({preventScroll:true});
   }
   function edit(point,button) {
     selectedPoint=point;
@@ -57,31 +79,57 @@
     deleteForm.querySelector('[data-client-unload-cancel]').focus();
   }
   function focusList() {
-    (returnFocus?.isConnected ? returnFocus : add.hidden ? close : add).focus();
+    (returnFocus?.isConnected ? returnFocus : add.hidden ? close : add).focus({preventScroll:true});
+  }
+  async function openContacts(point,button) {
+    busy=true;
+    try {
+      contactsOpen=await window.VitrineUnloadContacts.openPoint(point.id,button,result=>{
+        point.revision=result.revision;
+        point.summary=result.summary;
+        button.textContent=result.summary;
+      }, {anchor:opener,onClose:()=>{
+        contactsOpen=false;
+        dialog.style.visibility='';
+        position();
+      }});
+      if (contactsOpen) dialog.style.visibility='hidden';
+    } finally { busy=false; }
   }
   function render() {
     dialog.querySelector('h2').textContent='Точки выгрузки · '+data.name;
     add.hidden=!data.canEdit;
     rows.replaceChildren();
     for (const point of data.points) {
-      const item=node('article',null,'vitrine-client-unload-point');
-      const title=node('strong',point.address);
-      const summary=node('p',point.summary==='—' ? 'Контакты не указаны' : point.summary);
-      const buttons=node('div',null,'vitrine-client-unload-actions');
-      const contacts=action('Контакты',button=>{
-        window.VitrineUnloadContacts.openPoint(point.id,button,result=>{
-          point.revision=result.revision;
-          point.summary=result.summary;
-          summary.textContent=result.summary==='—' ? 'Контакты не указаны' : result.summary;
-        });
-      });
-      buttons.append(contacts);
-      if (data.canEdit) buttons.prepend(action('Изменить адрес',button=>edit(point,button)));
-      if (data.canEdit) buttons.append(action('Удалить',button=>askDelete(point,button)));
-      item.append(title,summary,buttons);
-      rows.append(item);
+      const row=node('tr');
+      const actions=node('td');
+      if (data.canEdit) {
+        const more=action('⋯',button=>rowMenu(point,button),'vitrine-row-menu-trigger');
+        more.setAttribute('aria-label','Действия со строкой');
+        more.setAttribute('aria-haspopup','menu');
+        more.setAttribute('aria-expanded','false');
+        actions.append(more);
+      }
+      const location=node('td');
+      const addressCell=data.canEdit ? action(point.address,button=>edit(point,button))
+        : node('span',point.address,'vitrine-client-unload-cell');
+      addressCell.title=data.canEdit ? 'Щелчок — изменить адрес' : point.address;
+      location.append(addressCell);
+      const contact=node('td');
+      const contacts=action(point.summary,button=>openContacts(point,button));
+      contacts.title='Щелчок — открыть контакты';
+      contacts.setAttribute('aria-haspopup','dialog');
+      contact.append(contacts);
+      row.append(actions,location,contact);
+      rows.append(row);
     }
-    if (!data.points.length) rows.append(node('p','У клиента пока нет точек выгрузки.'));
+    if (!data.points.length) {
+      const row=node('tr');
+      const empty=node('td','У клиента пока нет точек выгрузки.','vitrine-client-unload-empty');
+      empty.colSpan=3;
+      row.append(empty);
+      rows.append(row);
+    }
     const cell=window.VitrineRows?.resolveCell(opener)??opener;
     cell.textContent=data.summary;
     cell.dataset.original=data.summary;
@@ -96,9 +144,11 @@
     cell.setAttribute('aria-busy','true');
     try {
       data=await request();
+      restoreFocus=true;
       render();
       showOnly(list);
-      dialog.showModal();
+      dialog.show();
+      position();
     } catch (error) { notice(error.message); }
     finally { busy=false;cell.removeAttribute('aria-busy'); }
   }
@@ -128,19 +178,51 @@
   });
   add.addEventListener('click',()=>edit(null,add));
   close.addEventListener('click',()=>dialog.close());
+  menu.querySelector('[data-client-unload-remove]').addEventListener('click',()=>{
+    const button=menuTrigger;
+    closeMenu();
+    askDelete(menuPoint,button);
+  });
   for (const cancel of dialog.querySelectorAll('[data-client-unload-cancel]')) {
     cancel.addEventListener('click',()=>{showOnly(list);focusList();});
   }
-  dialog.addEventListener('cancel',event=>{
-    if (busy) { event.preventDefault();return; }
-    if (!list.hidden) return;
+  dialog.addEventListener('keydown',event=>{
+    if (event.key==='Enter' && event.target===address && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      addressForm.requestSubmit();
+      return;
+    }
+    if (event.key!=='Escape') return;
     event.preventDefault();
-    showOnly(list);
-    focusList();
+    if (busy) return;
+    if (menuTrigger) closeMenu(true);
+    else if (list.hidden) { showOnly(list);focusList(); }
+    else dialog.close();
   });
   dialog.addEventListener('close',()=>{
+    closeMenu();
     const cell=window.VitrineRows?.resolveCell(opener)??opener;
-    if (cell?.isConnected) cell.focus({preventScroll:true});
+    if (restoreFocus && cell?.isConnected) cell.focus({preventScroll:true});
   });
+  document.addEventListener('click',event=>{
+    if (!dialog.open || dialog.contains(event.target)) {
+      if (menuTrigger && !menu.contains(event.target) && !menuTrigger.contains(event.target)) closeMenu();
+      return;
+    }
+    const contactDialog=document.getElementById('unload-contacts-dialog');
+    if (contactsOpen && contactDialog.contains(event.target)) return;
+    const hasDraft=!addressForm.hidden && address.value!==(selectedPoint?.address??'');
+    if (contactsOpen || hasDraft || busy) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (hasDraft) notice('Сначала сохраните адрес или нажмите «Отмена».','info');
+      return;
+    }
+    restoreFocus=false;
+    dialog.close();
+  },true);
+  dialog.querySelector('[data-client-unload-scroll]').addEventListener('scroll',()=>closeMenu());
+  document.querySelector('.vitrine-table-scroll')?.addEventListener('scroll',()=>{closeMenu();position();});
+  window.addEventListener('resize',()=>{closeMenu();position();});
   window.VitrineClientUnloadPoints=Object.freeze({open});
 })();
