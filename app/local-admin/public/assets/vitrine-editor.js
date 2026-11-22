@@ -313,7 +313,7 @@
     const initialRequest = isSlot && window.VitrineSlot.isRequest(cell.textContent);
     if (cell.hasAttribute('data-order-status')) {
       field.setAttribute('aria-label','Клиент');
-      const clientGroup = element('div','vitrine-editor-order-field');
+      const clientGroup = element('div','vitrine-editor-field-group');
       clientGroup.append(element('div','field-label','Клиент'),control?.element || field);
       panel.append(clientGroup);
       const options = [{value:'',label:'Без статуса'},...Object.values(orderStatuses).map(status=>({
@@ -323,24 +323,25 @@
       orderField = picker.field;
       orderField.setAttribute('aria-label','Статус заказа');
       orderField.classList.add('vitrine-editor-field');
-      const statusGroup = element('div','vitrine-editor-order-field');
+      const statusGroup = element('div','vitrine-editor-field-group');
       statusGroup.append(element('div','field-label','Статус заказа'),picker.element);
       panel.append(statusGroup);
-    } else panel.append(control?.element || field);
-    if (isSlot) {
-      const label = element('label','checkbox-item vitrine-slot-request-toggle');
+    } else if (isSlot) {
+      const group = element('div','vitrine-editor-field-group');
+      const label = element('label','checkbox-item');
       requestField = element('input');
       requestField.type = 'checkbox';
       requestField.checked = initialRequest && firstCharacter === null;
       const mark = element('span','checkbox-mark');
       mark.setAttribute('aria-hidden','true');
       label.append(requestField,mark,element('span','checkbox-label','Запросить слот'));
-      panel.append(label);
+      group.append(field,label);
+      panel.append(group);
       field.disabled = requestField.checked;
       requestField.addEventListener('change',()=>{
         field.disabled = requestField.checked;
       });
-    }
+    } else panel.append(control?.element || field);
     if (!isSlot && !catalog && !orderField) panel.append(element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить · Esc — отменить'));
     const error = element('p', 'vitrine-editor-error');
     error.setAttribute('role', 'alert'); error.hidden = true; panel.append(error);
