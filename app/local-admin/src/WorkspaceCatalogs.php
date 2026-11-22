@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__.'/WorkspaceClientManagers.php';
 require_once __DIR__.'/WorkspaceClientTransfer.php';
+require_once __DIR__.'/WorkspacePickupTransfer.php';
 
 function workspace_catalogs(): array {
     $out=[];foreach(wquery('SELECT * FROM catalogs ORDER BY id')->fetchAll() as $c){if(!workspace_can('catalog',(string)$c['id'],'view'))continue;$c['id']=(int)$c['id'];$c['tableIds']=array_map('intval',wquery('SELECT DISTINCT table_id FROM catalog_bindings WHERE catalog_id=?',[$c['id']])->fetchAll(PDO::FETCH_COLUMN));$out[]=$c;}return $out;
@@ -79,6 +80,7 @@ function workspace_catalogs_endpoint(string $method): never {
     if(!in_array($method,['GET','POST'],true))throw new ApiError('method','Метод не поддерживается.',405);
     if($method==='POST'){
         $b=wbody();
+        if (($b['action'] ?? '') === 'import_pickup_directory') json_response(workspace_import_pickup_directory($b));
         if (($b['action'] ?? '') === 'import_client_directory') json_response(workspace_import_client_directory($b));
         if(($b['action']??'')==='create_catalog'){
         $title=trim((string)($b['title']??''));$ids=array_values(array_unique(array_map('intval',$b['tableIds']??[])));$scope=$b['scope']??'local';$tables=array_column(workspace_tables(),'id');

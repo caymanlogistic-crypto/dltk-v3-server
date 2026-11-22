@@ -7,3 +7,7 @@ Read README.md and docs/HANDOFF.md first. This repository is a separate server c
 17 November 2026, public access completed at https://89.208.213.14/dltk-v3/. User declined port/firewall changes. One reviewed IncludeOptional mounts only this prefix in the existing HTTPS443 vhost; preserve all other routes. APP_BASE_PATH=/dltk-v3 is required; the old8443 address and request to open its port are superseded. See current docs/HANDOFF.md before changes.
 
 17 November 2026: user requested GitHub automatic deployment. Push to main now deploys after checks through the restricted root-owned receiver. Read docs/AUTODEPLOY.md first; do not reset/import the DB or modify runtime config during release. Root receiver outside releases is not self-updated from an archive. Record actual running SHA from the public version marker and Actions.
+
+## Заливка ячеек
+
+В справочниках выбирается системная цветовая группа. Оттенок ячеек и образцов берётся из активного пресета Витрины. Это относится ко всем колонкам, в том числе к B «Клиент», E «Постановка» и AL «Менеджер». Канонический контракт — `app/local-admin/VITRINE.md`.
