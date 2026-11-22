@@ -8,7 +8,7 @@
   const close=dialog.querySelector('[data-client-unload-close]');
   const addressForm=dialog.querySelector('[data-client-unload-form]');
   const address=addressForm.elements.address;
-  const phone=addressForm.elements.phone;
+  const contact=addressForm.elements.contact;
   const deleteForm=dialog.querySelector('[data-client-unload-delete]');
   const confirmLabel=deleteForm.querySelector('[data-client-unload-confirm]');
   const menu=dialog.querySelector('[data-client-unload-menu]');
@@ -69,9 +69,9 @@
     selectedPoint=point;
     returnFocus=button;
     address.value=point?.address??'';
-    phone.value=point?.phone??'';
+    contact.value=point?.contact??'';
     showOnly(addressForm);
-    (button.dataset.unloadPhone ? phone : address).focus();
+    (button.dataset.unloadContact ? contact : address).focus();
   }
   function askDelete(point,button) {
     selectedPoint=point;
@@ -100,17 +100,17 @@
       const location=node('td');
       const addressCell=data.canEdit ? action(point.address,button=>edit(point,button))
         : node('span',point.address,'vitrine-client-unload-cell');
-      addressCell.title=data.canEdit ? 'Щелчок — изменить адрес и телефон' : point.address;
+      addressCell.title=data.canEdit ? 'Щелчок — изменить адрес и контакты' : point.address;
       location.append(addressCell);
-      const contact=node('td');
-      const contacts=data.canEdit ? action(point.phone||'—',button=>edit(point,button))
-        : node('span',point.phone||'—','vitrine-client-unload-cell');
+      const contactCell=node('td');
+      const contacts=data.canEdit ? action(point.contact||'—',button=>edit(point,button))
+        : node('span',point.contact||'—','vitrine-client-unload-cell');
       if (data.canEdit) {
-        contacts.title='Щелчок — изменить адрес и телефон';
-        contacts.dataset.unloadPhone='true';
+        contacts.title='Щелчок — изменить адрес и контакты';
+        contacts.dataset.unloadContact='true';
       }
-      contact.append(contacts);
-      row.append(actions,location,contact);
+      contactCell.append(contacts);
+      row.append(actions,location,contactCell);
       rows.append(row);
     }
     if (!data.points.length) {
@@ -159,7 +159,7 @@
   addressForm.addEventListener('submit',event=>{
     event.preventDefault();
     submit(addressForm,{action:'save_client_unload_point',address:address.value,
-      phone:phone.value,entryId:selectedPoint?.id,revision:selectedPoint?.revision},selectedPoint ? 'Точка сохранена.' : 'Точка добавлена.');
+      contact:contact.value,entryId:selectedPoint?.id,revision:selectedPoint?.revision},selectedPoint ? 'Точка сохранена.' : 'Точка добавлена.');
   });
   deleteForm.addEventListener('submit',event=>{
     event.preventDefault();
@@ -200,7 +200,7 @@
       return;
     }
     const hasDraft=!addressForm.hidden && (address.value!==(selectedPoint?.address??'') ||
-      phone.value!==(selectedPoint?.phone??''));
+      contact.value!==(selectedPoint?.contact??''));
     if (hasDraft || busy) {
       event.preventDefault();
       event.stopImmediatePropagation();

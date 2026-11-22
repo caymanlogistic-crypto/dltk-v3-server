@@ -43,9 +43,9 @@ function workspace_client_unload_points(int $clientId,?array $body=null): array 
         $point=$entryId!==null ? ($list()[$entryId]??null) : null;
         if ($entryId!==null && !$point) throw new ApiError('not_found','Точка клиента не найдена.',404);
         if ($body['action']==='save_client_unload_point') {
-            $phone=workspace_unload_text($body['phone']??'',100);
-            if ($phone==='') throw new ApiError('invalid_unload_phone','Укажите телефон точки выгрузки.');
-            workspace_unload_save_point($catalogId,['B'=>$body['address']??null],$entryId,$revision,$clientId,$phone);
+            $contact=workspace_unload_text($body['contact']??'',6000);
+            if ($contact==='') throw new ApiError('invalid_unload_contact','Укажите контакты точки выгрузки.');
+            workspace_unload_save_point($catalogId,['B'=>$body['address']??null],$entryId,$revision,$clientId,$contact);
         } elseif ($body['action']==='delete_client_unload_point' && $point) {
             workspace_catalog_save(['catalogId'=>$catalogId,'id'=>$entryId,'revision'=>$revision,
                 'name'=>$point['name'],'active'=>false]);
@@ -56,7 +56,7 @@ function workspace_client_unload_points(int $clientId,?array $body=null): array 
     $points=[];
     foreach ($list() as $point) {
         $points[]=['id'=>(int)$point['id'],'address'=>$point['address'],'revision'=>(int)$point['revision'],
-            'phone'=>(string)$point['phone']];
+            'contact'=>workspace_unload_contact_line(workspace_unload_primary($point))];
     }
     return ['name'=>$client['name'],'canEdit'=>$canEdit,'points'=>$points,
         'summary'=>workspace_client_unload_count_label(count($points))];

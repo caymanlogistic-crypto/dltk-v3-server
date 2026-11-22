@@ -4,7 +4,7 @@
   <section data-client-unload-list>
     <div class="vitrine-client-unload-scroll" data-client-unload-scroll>
       <table class="vitrine-client-unload-table" aria-label="Точки выгрузки клиента">
-        <thead><tr><th scope="col" aria-label="Действия"></th><th scope="col">Адрес</th><th scope="col">Телефон</th></tr></thead>
+        <thead><tr><th scope="col" aria-label="Действия"></th><th scope="col">Адрес</th><th scope="col">Контакты</th></tr></thead>
         <tbody data-client-unload-rows></tbody>
       </table>
     </div>
@@ -15,7 +15,7 @@
   </section>
   <form data-client-unload-form hidden>
     <label class="vitrine-editor-field-group"><span class="field-label">Адрес выгрузки</span><textarea class="field-input vitrine-editor-field" name="address" rows="3" maxlength="6000" required></textarea></label>
-    <label class="vitrine-editor-field-group"><span class="field-label">Телефон</span><input class="field-input vitrine-editor-field" type="text" inputmode="tel" name="phone" maxlength="100" required></label>
+    <label class="vitrine-editor-field-group"><span class="field-label">Контакты</span><input class="field-input vitrine-editor-field" type="text" name="contact" maxlength="6000" required></label>
     <div class="vitrine-editor-actions">
       <button class="btn btn-primary" type="submit">Сохранить</button>
       <button class="btn btn-secondary" type="button" data-client-unload-cancel>Отмена</button>
