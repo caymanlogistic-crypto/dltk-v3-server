@@ -3,28 +3,26 @@ declare(strict_types=1);
 $employeePage = $directory === 'employees';
 $employeeScope = $employeePage ? workspace_employee_editor_scope() : null;
 $archive = $catalogGrid['archive'];
-$toolbarUrl = '/vitrine?catalog='.$directory.match ($directory) {
-    'entries' => '&id='.$catalogGrid['id'],
-    'flight-statuses' => '&table='.$managementTable,
-    default => '',
+$searchPlaceholder = match ($directory) {
+    'clients'=>'Клиент или менеджер',
+    'employees'=>'ФИО, логин, email или роль',
+    'roles'=>'Название роли',
+    'entries'=>'Поиск по справочнику',
+    default=>'Название статуса',
 };
+$searchLabel = $directory === 'clients' ? 'Поиск по клиенту или менеджеру' : 'Поиск в справочнике';
 ?>
-<section class="vitrine-catalog-toolbar" aria-label="Управление справочником"<?= $directory === 'entries' ? ' data-catalog-id="'.(int)$catalogGrid['id'].'"' : '' ?>>
-  <h1><?= $escape($currentTable['title']) ?></h1>
-  <nav class="vitrine-catalog-tabs" aria-label="Записи справочника">
-    <a class="btn" href="<?= $escape($viewUrl($toolbarUrl)) ?>"<?= !$archive ? ' aria-current="page"' : '' ?>>Активные</a>
-    <a class="btn" href="<?= $escape($viewUrl($toolbarUrl.'&archive=1')) ?>"<?= $archive ? ' aria-current="page"' : '' ?>>Архив</a>
-  </nav>
+<section class="vitrine-catalog-toolbar" aria-label="Управление справочником"<?= isset($catalogGrid['id']) ? ' data-catalog-id="'.(int)$catalogGrid['id'].'"' : '' ?>>
+  <h1>Справочник: <strong><?= $escape($currentTable['title']) ?></strong></h1>
   <form class="vitrine-catalog-search" method="get" action="<?= $escape($viewUrl('/vitrine')) ?>">
     <input type="hidden" name="catalog" value="<?= $escape($directory) ?>">
     <?php if ($directory === 'entries'): ?><input type="hidden" name="id" value="<?= (int)$catalogGrid['id'] ?>"><?php endif; ?>
     <?php if ($directory === 'flight-statuses'): ?><input type="hidden" name="table" value="<?= $escape($managementTable) ?>"><?php endif; ?>
     <?php if ($archive): ?><input type="hidden" name="archive" value="1"><?php endif; ?>
     <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape($catalogGrid['search']) ?>"
-           aria-label="Поиск в справочнике" placeholder="<?= $employeePage ? 'ФИО, логин, email или роль' : ($directory === 'roles' ? 'Название роли' : 'Название статуса') ?>">
-    <button class="btn" type="submit">Найти</button>
+           aria-label="<?= $escape($searchLabel) ?>" placeholder="<?= $escape($searchPlaceholder) ?>">
   </form>
-  <?php if ($directory === 'entries' && !$archive && !empty($catalogGrid['syncLabel'])): ?>
+  <?php if ($catalogGrid['canEdit'] && !$archive && !empty($catalogGrid['syncLabel'])): ?>
   <button class="btn" type="button" id="client-catalog-sync"><?= $escape($catalogGrid['syncLabel']) ?></button>
   <?php endif; ?>
   <?php if ($directory === 'entries' && !empty($catalogGrid['hasDetails'])): ?>

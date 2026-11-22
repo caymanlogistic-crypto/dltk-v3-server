@@ -4,12 +4,19 @@
   if(!table||!body||!scroll)return;
   let ids=[];try{ids=JSON.parse(document.getElementById('vitrine-row-manifest').content);}catch{}
   const drafts=Array.from(document.querySelectorAll('[data-draft-slot]'));
+  const empty=document.getElementById('vitrine-empty');
+  const search=document.querySelector('.vitrine-catalog-search input[type="search"]');
+  let appliedSearch=search?.value.trim() ?? '', requestedSearch=appliedSearch;
   const draftIndex=cell=>drafts.indexOf(cell.closest?.('[data-draft-slot]'));
   const rowIndex=cell=>positions.get(cell.dataset.row) ?? ids.length+draftIndex(cell);
   function setCounts() {
     table.dataset.totalRows=String(ids.length);
     table.setAttribute('aria-rowcount',String(ids.length+drafts.length+1));
     drafts.forEach((row,index)=>row.setAttribute('aria-rowindex',String(ids.length+index+2)));
+    if (empty && search) {
+      empty.hidden = ids.length>0 || (drafts.length>0 && !appliedSearch);
+      empty.textContent = appliedSearch ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.';
+    }
   }
   const positions=new Map(ids.map((id,index)=>[String(id),index]));
   const remotePatches=new Map(),catalogPatches=new Map();
@@ -34,7 +41,7 @@
       const version=manifestVersion;
       const wanted=ids.slice(number*pageSize,(number+1)*pageSize);
       if(!wanted.length)return;
-      const response=await fetch(window.VitrineGridScope.url('/api/vitrine/rows',{rowFilters:true,ids:wanted}),{credentials:'same-origin'});
+      const response=await fetch(window.VitrineGridScope.url('/api/vitrine/rows',{rowFilters:true,ids:wanted,search:appliedSearch}),{credentials:'same-origin'});
       const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось загрузить строки.');
       if(version!==manifestVersion){queue();return;}
       if(!Array.isArray(result.rowIds)||typeof result.html!=='string')throw new Error('Не удалось прочитать строки таблицы.');
@@ -174,23 +181,36 @@
     refreshTask=(async()=>{
       do{
         refreshAgain=false;
-        const response=await fetch(window.VitrineGridScope.url('/api/workspace/manifest',{rowFilters:true}),{credentials:'same-origin'});
-        const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось обновить список строк.');
+        const query=requestedSearch;
+        const response=await fetch(window.VitrineGridScope.url('/api/workspace/manifest',{rowFilters:true,search:query}),{credentials:'same-origin'});
+        if(query!==requestedSearch){refreshAgain=true;continue;}
+        const result=await response.json();
+        if(query!==requestedSearch){refreshAgain=true;continue;}
+        if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось обновить список строк.');
         if(!Array.isArray(result.rowIds)||result.rowIds.some(id=>!Number.isInteger(id)))throw new Error('Некорректный список строк.');
         if(window.VitrineGrid?.editing()){manifestDeferred=true;return;}
         const next=[...new Set(result.rowIds)];
-        if(next.join(',')===ids.join(','))continue;
-        const anchorIndex=Math.min(ids.length-1,Math.max(0,Math.floor(scroll.scrollTop/height))),anchor=ids[anchorIndex],offset=scroll.scrollTop-anchorIndex*height;
+        const searchChanged=query!==appliedSearch;
+        if(!searchChanged && next.join(',')===ids.join(','))continue;
+        const anchorIndex=Math.max(0,Math.min(ids.length-1,Math.floor(scroll.scrollTop/height)));
+        const anchor=ids[anchorIndex],offset=scroll.scrollTop-anchorIndex*height;
         const chosen=table.querySelector('td.is-current-cell'),chosenRow=chosen?.dataset.row,chosenColumn=chosen?.dataset.column;
         ids=next;positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         manifestVersion++;generation++;navigationGeneration++;navigation=null;pending.clear();loaded.clear();first=last=-1;
-        const allowed=new Set(ids);for(const [id,row] of cache)if(!allowed.has(id)){row.remove();cache.delete(id);}
+        const allowed=new Set(ids);
+        for(const [id,row] of cache)if(searchChanged||!allowed.has(id)){row.remove();cache.delete(id);}
+        if(searchChanged){
+          appliedSearch=query;
+          const url=new URL(location.href);
+          if(query)url.searchParams.set('q',query);else url.searchParams.delete('q');
+          history.replaceState(history.state,'',url);
+        }
         setCounts();
-        const newAnchor=positions.has(String(anchor))?positions.get(String(anchor)):Math.min(Math.max(anchorIndex,0),Math.max(ids.length-1,0));
-        scroll.scrollTop=Math.max(0,newAnchor*height+offset);
+        const newAnchor=searchChanged?0:positions.get(String(anchor))??Math.min(anchorIndex,Math.max(ids.length-1,0));
+        scroll.scrollTop=searchChanged?0:Math.max(0,newAnchor*height+offset);
         await render(newAnchor);
         if(chosenRow&&!chosen?.closest('[data-draft-slot]')&&!positions.has(chosenRow)){
-          const candidate=body.querySelector('td[data-column="'+chosenColumn+'"]:not([hidden])')||body.querySelector('td[data-column]:not([hidden])');
+          const candidate=body.querySelector('td[data-column="'+chosenColumn+'"]:not([hidden])')||table.querySelector('tbody td[data-edit-cell]:not([hidden])');
           if(candidate)window.VitrineGrid?.select(candidate);
         }
       }while(refreshAgain);
@@ -200,6 +220,10 @@
   window.addEventListener('vitrine-editor-closed',()=>{if(manifestDeferred){manifestDeferred=false;refreshManifest().catch(report);}});
   window.VitrineRows=Object.freeze({
     refreshManifest,
+    filterDirectory(query){
+      requestedSearch=query;
+      if(query!==appliedSearch||refreshTask)return refreshManifest();
+    },
     catalogPatch(patch){
       if(!patch.catalogId||!patch.id||typeof patch.name!=='string')return;
       const key=patch.catalogId+':'+patch.id,old=catalogPatches.get(key);

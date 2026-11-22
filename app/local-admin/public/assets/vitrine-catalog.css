@@ -2,11 +2,11 @@
   display:flex; flex:none; align-items:center; flex-wrap:wrap; gap:10px 16px;
   padding:10px 16px; background:var(--surface-strong); border-bottom:1px solid var(--line);
 }
-.vitrine .vitrine-catalog-toolbar h1 { margin:0; font:600 18px var(--font); }
-.vitrine .vitrine-catalog-tabs, .vitrine .vitrine-catalog-search, .vitrine .vitrine-catalog-actions {
+.vitrine .vitrine-catalog-toolbar h1 { margin:0; font:400 18px var(--font); }
+.vitrine .vitrine-catalog-toolbar h1 strong { font-weight:700; }
+.vitrine .vitrine-catalog-search, .vitrine .vitrine-catalog-actions {
   display:flex; align-items:center; flex-wrap:wrap; gap:6px;
 }
-.vitrine .vitrine-catalog-tabs [aria-current="page"] { background:var(--table-row-selected); border-color:var(--accent); }
 .vitrine .vitrine-catalog-search { margin-inline-start:auto; }
 .vitrine .vitrine-catalog-search { max-inline-size:100%; }
 .vitrine .vitrine-catalog-search input[type="search"] { inline-size:245px; max-inline-size:100%; }
