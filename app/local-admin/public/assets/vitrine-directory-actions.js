@@ -5,6 +5,7 @@
   const remove = actions.querySelector('[data-directory-delete]');
   const related = actions.querySelector('[data-directory-related]');
   const archive = actions.hasAttribute('data-archive');
+  const archiveRows = actions.hasAttribute('data-archive-rows');
   const deleteDialog = document.querySelector('[data-directory-delete-dialog]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const endpoint = window.VitrineGridScope.url('/api/vitrine/cell');
@@ -237,14 +238,16 @@
     const cell = trigger?.closest('tr').querySelector('td[data-edit-cell]');
     if (!cell || pending) return;
     const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base};
-    const label = cell.closest('tr').querySelector('[data-column="A"]').textContent;
+    const label = cell.closest('tr').querySelector('[data-column="A"]').textContent ||
+      cell.closest('tr').querySelector('[data-column="B"]')?.textContent || '';
     closeMenu(true);
     pending = true;
     try {
-      const result = archive ? {name:label} : await request('check_delete',row);
+      const result = archive || archiveRows ? {name:label} : await request('check_delete',row);
       if (window.VitrineGrid.editing()) return;
       target = row;
-      deleteDialog.querySelector('[data-directory-delete-text]').textContent = (archive ? 'Восстановить' : 'Удалить')+' «'+result.name+'»?';
+      deleteDialog.querySelector('[data-directory-delete-text]').textContent =
+        (archive ? 'Восстановить' : archiveRows ? 'Перенести в архив' : 'Удалить')+' «'+result.name+'»?';
       deleteDialog.showModal();
     } catch (error) {
       onError(error);
@@ -253,7 +256,7 @@
     }
   });
   if (deleteDialog) bindForm(deleteDialog, async () => {
-    await request(archive ? 'restore' : 'delete',target);
-    refresh(archive ? 'Запись восстановлена.' : 'Запись удалена.');
+    await request(archive ? 'restore' : archiveRows ? 'archive' : 'delete',target);
+    refresh(archive ? 'Запись восстановлена.' : archiveRows ? 'Запись перенесена в архив.' : 'Запись удалена.');
   });
 })();

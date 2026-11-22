@@ -81,6 +81,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if (!empty($catalogGrid['clientUnloadCatalog'])): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-unload-points.js')) ?>"></script>
   <?php endif; ?>
+  <?php if (!empty($catalogGrid['clientManagers'])): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-managers.js')) ?>"></script>
+  <?php endif; ?>
   <?php if ($clientCatalog || $directory === 'entries'): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-catalog.js')) ?>"></script>
   <?php elseif ($directory === 'employees'): ?>
@@ -147,6 +150,10 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <?php foreach ($directoryLinks as $key => $label): ?>
           <a class="nav-sub-item<?= $directory === $key ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog='.$key)) ?>"<?= $directory === $key ? ' aria-current="page"' : '' ?>><?= $escape($label) ?></a>
           <?php endforeach; ?>
+          <?php $managerCatalog=workspace_manager_catalog_id(); if ($managerCatalog && workspace_can('catalog',(string)$managerCatalog,'view')):
+              $managerCurrent=$directory==='entries'&&($catalogGrid['id']??0)===$managerCatalog; ?>
+          <a class="nav-sub-item<?= $managerCurrent ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$managerCatalog)) ?>"<?= $managerCurrent ? ' aria-current="page"' : '' ?>>Менеджеры</a>
+          <?php endif; ?>
           <?php foreach ($boundCatalogMenu as $item):
             $current=$directory==='entries'&&($catalogGrid['id']??0)===$item['id'];
           ?>

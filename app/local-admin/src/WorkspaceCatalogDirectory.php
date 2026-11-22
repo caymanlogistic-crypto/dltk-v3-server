@@ -13,6 +13,7 @@ function workspace_catalog_directory_model(): array {
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
         'container-types'=>['A'=>'Тип контейнера'],
         'unload-points'=>['A'=>'Клиент','B'=>'Адрес','C'=>'Контакты'],
+        'managers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Роль','E'=>'Телефон','F'=>'Email'],
         default=>['A'=>'Название'],
     };
     $columns = [];
@@ -36,12 +37,17 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         default=>[],
     };
     $unload = $kind==='unload-points';
+    $managers=$kind==='managers';
+    $managerRoles=$managers ? array_keys(workspace_manager_roles()) : [];
     $clientCatalog=$unload ? workspace_client_grid_catalog() : null;
     $clientFilter=$unload && isset($_GET['client'])
         ? workspace_directory_client_filter((int)($clientCatalog['id']??0)) : null;
     $clientChoices=$unload ? array_column(workspace_unload_client_entries(),'name') : [];
-    $entries = $unload ? workspace_unload_points($id)
-        : wquery('SELECT id,name,color,revision,active FROM catalog_entries WHERE catalog_id=? AND active=? ORDER BY name,id',[$id,(int)!$archive])->fetchAll();
+    $entries = match (true) {
+        $unload=>workspace_unload_points($id),
+        $managers=>workspace_manager_entries($id),
+        default=>wquery('SELECT id,name,color,revision,active FROM catalog_entries WHERE catalog_id=? AND active=? ORDER BY name,id',[$id,(int)!$archive])->fetchAll(),
+    };
     $palette = array_column(workspace_palette(),'name','fill');
     $rows = $rowIds = [];
     $requested = $requestedRows === null ? null : array_fill_keys($requestedRows,true);
@@ -50,7 +56,11 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         if ($unload && !$archive && $entry['review_required']) continue;
         if ($clientFilter && (int)$entry['client_id']!==(int)$clientFilter['id']) continue;
         $entryId = (int)$entry['id'];
-        $values = $unload ? workspace_unload_point_values($entry) : ['A'=>$entry['name']];
+        $values = match (true) {
+            $unload=>workspace_unload_point_values($entry),
+            $managers=>workspace_manager_values($entry),
+            default=>['A'=>$entry['name']],
+        };
         if ($unload) $values['C']=workspace_unload_contact_summary(workspace_unload_primary($entry),(int)$entry['contact_count']);
         if (workspace_catalog_has_palette($kind)) $values['B'] = $palette[$entry['color']] ?? '';
         if (in_array($kind,['clients','carriers'],true)) $values['B'] = $valuesB[$entryId] ?? '';
@@ -65,6 +75,10 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $row['choices']['B']=$choices;
             $row['requiredChoices']['B']=true;
         }
+        if ($managers) {
+            $row['choices']['D']=$managerRoles;
+            $row['requiredChoices']['D']=true;
+        }
         if ($unload) {
             $row['singleLine']=['A'=>true];
             $row['readOnly']['A']='Клиент сохранённой точки закреплён.';
@@ -78,7 +92,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $details = wquery("SELECT COALESCE(JSON_LENGTH(JSON_EXTRACT(value,'$.unkeyed')),0) AS unkeyedCount
         FROM workspace_meta WHERE `key`=?",['catalog_details_'.$id])->fetch();
     return ['table'=>$model,'columns'=>$model['columns'],'rows'=>$rows,'rowIds'=>$rowIds,'palette'=>workspace_palette(),
-        'catalogGrid'=>['id'=>$id,'archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,
+        'catalogGrid'=>['id'=>$id,'archive'=>$archive,'archiveRows'=>in_array($kind,['clients','managers'],true),'search'=>$search,'canEdit'=>$canEdit,
             'syncLabel'=>$canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($id) : null,
             'hasDetails'=>(bool)$details,'unkeyedCount'=>(int)($details['unkeyedCount'] ?? 0),
             'unloadPoints'=>$unload,
@@ -87,7 +101,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             'draftVersion'=>$unload ? 'client-address' : '',
             'draftFields'=>$unload ? workspace_unload_draft_fields($clientFilter
                 ? array_values(array_intersect($clientChoices,[$clientFilter['name']])) : $clientChoices)
-                : workspace_directory_draft_fields('entries',catalogKind:$kind)]];
+                : ($managers ? workspace_manager_draft_fields($managerRoles) : workspace_directory_draft_fields('entries',catalogKind:$kind))]];
 }
 
 function workspace_catalog_directory_hash(int $catalogId,int $entryId): string {
@@ -108,6 +122,21 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     $entry = wquery('SELECT * FROM catalog_entries WHERE catalog_id=? AND id=? AND active=TRUE',[$id,$body['row']])->fetch();
     if (!$entry) throw new ApiError('not_found','Запись не найдена.',404);
     $kind = $model['catalogKind'];
+    if ($kind==='managers') {
+        $manager=array_column(workspace_manager_entries($id),null,'id')[$body['row']]??null;
+        if (!$manager) throw new ApiError('not_found','Менеджер не найден.',404);
+        $values=workspace_manager_values($manager);
+        $values[$column]=$body['value'];
+        $baseHash=workspace_catalog_directory_hash($id,$body['row']);
+        if ($pasteCheck) {
+            workspace_manager_validate($values);
+            json_response(['accepted'=>true]);
+        }
+        if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
+        $result=workspace_manager_save($id,$values,$body['row'],$body['revision']);
+        $value=$result['values'][$column];
+        json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);
+    }
     if ($kind==='unload-points') {
         if ($column==='A') throw new ApiError('fixed_unload_client','У сохранённой точки нельзя изменить клиента.',409);
         if ($column==='C') throw new ApiError('contact_editor','Откройте редактор контактов из ячейки «Контакты».');

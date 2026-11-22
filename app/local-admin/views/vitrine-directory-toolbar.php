@@ -69,6 +69,7 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
 <?php endif; ?>
 
 <?php if (!empty($catalogGrid['clientUnloadCatalog'])) require __DIR__.'/vitrine-client-unload-dialog.php'; ?>
+<?php if (!empty($catalogGrid['clientManagers'])) require __DIR__.'/vitrine-client-managers-dialog.php'; ?>
 <?php if (!empty($catalogGrid['unloadPoints'])): ?>
 <dialog class="vitrine-catalog-dialog" id="unload-contacts-dialog" data-catalog-id="<?= (int)$catalogGrid['id'] ?>" aria-labelledby="unload-contacts-title">
   <form>

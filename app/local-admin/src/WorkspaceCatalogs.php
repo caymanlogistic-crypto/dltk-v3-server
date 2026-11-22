@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/WorkspaceClientManagers.php';
+require_once __DIR__.'/WorkspaceManagerDirectory.php';
 require_once __DIR__.'/WorkspaceUnloadPoints.php';
 require_once __DIR__.'/WorkspaceClientUnloadPoints.php';
 require_once __DIR__.'/WorkspaceClientTransfer.php';
@@ -42,11 +43,12 @@ function workspace_catalog_save(array $b): array {
         $old=isset($b['id'])?wquery('SELECT * FROM catalog_entries WHERE id=? AND catalog_id=? FOR UPDATE',[(int)$b['id'],$cid])->fetch():null;
         if(isset($b['id'])&&!$old)throw new ApiError('not_found','Запись не найдена.',404);
         if($old&&(int)$old['revision']!==(int)($b['revision']??0))throw new ApiError('revision_conflict','Запись уже изменена. Откройте её заново; ваш ввод сохранён.',409);
-        if($catalog['kind']==='unload-points'&&(!$old||!isset($b['active'])||$name!==$old['name'])){
-            throw new ApiError('invalid_action','Откройте справочник «Точки выгрузки».');
+        $profileCatalog=in_array($catalog['kind'],['unload-points','managers'],true);
+        if($profileCatalog&&(!$old||!isset($b['active'])||$name!==$old['name'])){
+            throw new ApiError('invalid_action','Откройте справочник для редактирования записи.');
         }
         $active=array_key_exists('active',$b)?(bool)$b['active']:true;
-        $norm=$catalog['kind']==='unload-points'?$old['normalized']:mb_strtolower($name);
+        $norm=$profileCatalog?$old['normalized']:mb_strtolower($name);
         $revision=$old?(int)$old['revision']+1:1;
         if($catalog['kind']==='terminals-main'&&!array_key_exists('color',$b))$color=$old['color']??null;
         if(in_array($catalog['kind'],['clients','terminals-main'],true)){
@@ -56,7 +58,8 @@ function workspace_catalog_save(array $b): array {
                 throw new ApiError('duplicate_catalog','Это название уже использовалось для '.$ownerLabel.'.',409);
             }
         }
-        if ($old && $old['active'] && !$active) workspace_assert_catalog_entry_unused($catalog['kind'],$cid,$old);
+        $archive=($b['archive']??null)===true && in_array($catalog['kind'],['clients','managers'],true);
+        if ($old && $old['active'] && !$active && !$archive) workspace_assert_catalog_entry_unused($catalog['kind'],$cid,$old);
         $logists=$hasLogist?workspace_client_catalog_metadata('catalog_logists_'.$cid):[];
         $beforeLogist=$old?($logists[$old['id']]??''):'';
         $logistChanged=$hasLogist&&$beforeLogist!==$logist;
@@ -91,6 +94,10 @@ function workspace_catalogs_endpoint(string $method): never {
     if(!in_array($method,['GET','POST'],true))throw new ApiError('method','Метод не поддерживается.',405);
     if($method==='POST'){
         $b=wbody();
+        if (($b['action']??'')==='save_client_managers') {
+            if (!is_int($b['clientId']??null)) throw new ApiError('invalid_edit','Выберите клиента.');
+            json_response(workspace_client_manager_card($b['clientId'],$b));
+        }
         if (in_array($b['action']??null,['save_client_unload_point','delete_client_unload_point'],true)) {
             if (!is_int($b['clientId']??null)) throw new ApiError('invalid_edit','Выберите клиента.');
             json_response(workspace_client_unload_points($b['clientId'],$b));
@@ -115,6 +122,11 @@ function workspace_catalogs_endpoint(string $method): never {
         json_response(workspace_refresh_catalog_source($catalogId,(int)workspace_current_user()['id']));
     }
     json_response(workspace_catalog_save($b));}
+    if (isset($_GET['clientManagers'])) {
+        $clientId=filter_var($_GET['clientManagers'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+        if (!$clientId) throw new ApiError('invalid_edit','Выберите клиента.');
+        json_response(workspace_client_manager_card($clientId));
+    }
     if (isset($_GET['clientUnloadPoints'])) {
         $clientId=filter_var($_GET['clientUnloadPoints'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
         if (!$clientId) throw new ApiError('invalid_edit','Выберите клиента.');

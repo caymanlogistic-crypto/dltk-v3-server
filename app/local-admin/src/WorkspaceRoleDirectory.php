@@ -37,6 +37,10 @@ function workspace_role_row_action(array $body): array {
                 $reasons = [];
                 if ($members) $reasons[] = 'сотрудников с этой ролью — '.$members;
                 if ($rules) $reasons[] = 'правил доступа — '.$rules;
+                if (workspace_manager_catalog_id()) {
+                    $managers=(int)wquery('SELECT COUNT(*) FROM manager_profiles WHERE role_id=?',[$id])->fetchColumn();
+                    if ($managers) $reasons[] = 'менеджеров с этой ролью — '.$managers;
+                }
                 if (!str_starts_with($role['code'],'directory_')) $reasons[] = 'роль используется системой';
                 if ($reasons) throw new ApiError('entry_in_use','Роль «'.$name.'» используется: '.implode(', ',$reasons).'. Удалить её нельзя.',409);
             } elseif (in_array(vitrine_status_key($name),array_map('vitrine_status_key',array_column(workspace_employee_roles(),'name')),true)) {

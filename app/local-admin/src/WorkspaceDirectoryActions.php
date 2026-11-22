@@ -3,8 +3,11 @@ declare(strict_types=1);
 
 function workspace_directory_rows_endpoint(string $directory, array $body): never {
     $action = $body['action'];
-    if (!in_array($action,['add','check_delete','delete','restore'],true)) {
+    if (!in_array($action,['add','check_delete','delete','archive','restore'],true)) {
         throw new ApiError('invalid_action','Действие со строкой не поддерживается.');
+    }
+    if ($action==='archive' && !in_array($directory,['clients','entries'],true)) {
+        throw new ApiError('invalid_action','Архивирование доступно для клиентов и менеджеров.');
     }
     if ($action === 'add') {
         $values = $body['values'] ?? null;
@@ -44,9 +47,13 @@ function workspace_catalog_row_action(string $directory, array $body): array {
     }
     if (!$catalogId) throw new ApiError('not_found','Справочник не найден.',404);
     $action = $body['action'];
+    if ($action==='archive' && !in_array($kind,['clients','managers'],true)) {
+        throw new ApiError('invalid_action','Архивирование доступно для клиентов и менеджеров.');
+    }
     if ($action === 'add') {
         $values = $body['values'];
         if ($kind==='unload-points') return workspace_unload_save_point($catalogId,$values);
+        if ($kind==='managers') return workspace_manager_save($catalogId,$values);
         $name = workspace_catalog_validate_name($values['A'] ?? '');
         $payload = ['catalogId'=>$catalogId,'name'=>$name];
         if (workspace_catalog_has_palette($kind)) $payload['color'] = workspace_directory_color($values['B'] ?? '');
@@ -67,7 +74,7 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         return ['name'=>$entry['name']];
     }
     return workspace_catalog_save(['catalogId'=>$catalogId,'id'=>$body['row'],'revision'=>$body['revision'],
-        'name'=>$entry['name'],'color'=>$entry['color'],'active'=>$action === 'restore']);
+        'name'=>$entry['name'],'color'=>$entry['color'],'active'=>$action === 'restore','archive'=>$action==='archive']);
 }
 
 function workspace_directory_conflict(): never {
@@ -84,6 +91,10 @@ function workspace_assert_catalog_entry_unused(string $kind, int $catalogId, arr
         return;
     }
     $id = (int)$entry['id'];
+    if ($kind==='managers') {
+        $clients=(int)wquery('SELECT COUNT(*) FROM client_manager_links WHERE manager_id=?',[$id])->fetchColumn();
+        if ($clients) throw new ApiError('entry_in_use','Менеджер назначен у клиентов: '.$clients.'. Удалить его нельзя.',409);
+    }
     if ($kind==='clients' && workspace_unload_catalog_id()) {
         $points=(int)wquery('SELECT COUNT(*) FROM unload_points p JOIN catalog_entries e ON e.id=p.entry_id WHERE p.client_id=? AND e.active=TRUE',[$id])->fetchColumn();
         if ($points) throw new ApiError('entry_in_use','У клиента есть точки выгрузки: '.$points.'. Удалить его нельзя.',409);

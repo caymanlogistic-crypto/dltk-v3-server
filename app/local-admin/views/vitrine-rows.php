@@ -4,7 +4,7 @@
             <?php
               $letter = $column['letter'];
               $kind = $row['kinds'][$letter] ?? $column['kind'] ?? 'text';
-              $opensCard = in_array($kind,['unload-contacts','client-unload-points'],true);
+              $opensCard = in_array($kind,['unload-contacts','client-unload-points','client-managers'],true);
               $orderStatus = $letter==='B' && !isset($catalogGrid) ? ($row['orderStatus'] ?? null) : null;
               $orderFill = $letter==='B' ? ($row['orderFill'] ?? ($orderStatus ? workspace_client_order_status($orderStatus)['color'] : '')) : '';
               $cellStyle = $orderFill ? '--order-status-fill: '.$orderFill : '';
@@ -29,6 +29,7 @@
               if ($derivedSource !== null) $hint = $derivedSource . '. ' . ($value === '' ? $emptyLabel . '.' : $value);
               if ($kind === 'unload-contacts') $hint = !empty($row['draftSlot']) ? 'Сначала сохраните клиента и адрес.' : 'Щелчок — открыть контакты. ' . $value;
               if ($kind === 'client-unload-points') $hint = !empty($row['draftSlot']) ? 'Сначала сохраните клиента.' : 'Щелчок — открыть точки выгрузки. ' . $value;
+              if ($kind === 'client-managers') $hint = !empty($row['draftSlot']) ? 'Сначала сохраните клиента.' : 'Щелчок — открыть список менеджеров. ' . $value;
               $statusColor = $letter === 'A' ? (string)($row['statusColor'] ?? '') : '';
               $hasStatusColor = preg_match('/^#[0-9a-fA-F]{6}$/D', $statusColor) === 1;
               if ($hasStatusColor) $cellStyle = '--status-fill: '.$statusColor;

@@ -32,6 +32,10 @@
 .vitrine .vitrine-catalog-dialog .modal-body p { margin:0; color:var(--text-muted); }
 .vitrine.vitrine-catalog-page .vitrine-table { --vitrine-default-width-C:180px; }
 .vitrine .vitrine-client-unload-dialog { inset:auto; margin:0; max-height:calc(100dvh - 20px); width:570px; overflow:visible; }
+.vitrine .vitrine-client-manager-dialog { inset:auto; margin:0; max-height:calc(100dvh - 20px); overflow:visible; }
+.vitrine .vitrine-client-manager-dialog [hidden] { display:none; }
+.vitrine .vitrine-client-manager-list { display:grid; gap:6px; max-height:35dvh; overflow:auto; margin:8px 0; padding:0; list-style:none; }
+.vitrine .vitrine-client-manager-list li { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .vitrine .vitrine-client-unload-dialog [hidden] { display:none; }
 .vitrine .vitrine-client-unload-scroll { max-height:min(40dvh,310px); overflow:auto; margin-top:8px; border:1px solid var(--line); }
 .vitrine .vitrine-client-unload-table { width:100%; table-layout:fixed; border-spacing:0; font-size:12px; }
