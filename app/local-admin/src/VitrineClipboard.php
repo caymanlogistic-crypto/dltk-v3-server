@@ -44,6 +44,23 @@ function vitrine_time_input(string $value): ?string {
     return str_pad($value, strlen($value) + (strpos($value,':') === 1 ? 1 : 0), '0', STR_PAD_LEFT);
 }
 
+/** Normalize the digit masks used by the date and time columns in «Вывоз». */
+function vitrine_compact_input(string $value, string $kind): ?string {
+    $value = trim($value);
+    if ($value === '') return '';
+    if ($kind === 'time') {
+        $time = vitrine_time_input($value);
+        return $time !== null && strlen($time) === 5 ? $time : null;
+    }
+    if (preg_match('/^20([0-9]{2})-([0-9]{2})-([0-9]{2})$/D',$value,$iso)) {
+        $value = "$iso[3].$iso[2].$iso[1]";
+    }
+    if (!preg_match('/^([0-9]{2})([0-9]{2})([0-9]{2})$/D',$value,$date)
+        && !preg_match('/^([0-9]{2})\.([0-9]{2})\.(?:20)?([0-9]{2})$/D',$value,$date)) return null;
+    [, $day, $month, $year] = $date;
+    return checkdate((int)$month,(int)$day,2000+(int)$year) ? "$day.$month.$year" : null;
+}
+
 /** Normalize a slot request, ten digits, or the current/legacy display format. */
 function vitrine_slot_input(string $value): ?string {
     $value = trim($value);

@@ -10,6 +10,7 @@ function workspace_catalog_directory_model(): array {
         'clients'=>['A'=>'Клиент','B'=>'Менеджер'],
         'carriers'=>['A'=>'Перевозчик','B'=>'Логист'],
         'status'=>['A'=>'Статус','B'=>'Цвет'],
+        'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
         default=>['A'=>'Название'],
     };
     $columns = [];
@@ -37,7 +38,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     foreach (wquery('SELECT id,name,color,revision FROM catalog_entries WHERE catalog_id=? AND active=? ORDER BY name,id',[$id,(int)!$archive])->fetchAll() as $entry) {
         $entryId = (int)$entry['id'];
         $values = ['A'=>$entry['name']];
-        if ($kind === 'status') $values['B'] = $palette[$entry['color']] ?? '';
+        if (workspace_catalog_has_palette($kind)) $values['B'] = $palette[$entry['color']] ?? '';
         if (in_array($kind,['clients','carriers'],true)) $values['B'] = $valuesB[$entryId] ?? '';
         if ($search !== '' && mb_stripos(implode(' ',$values),$search) === false) continue;
         $rowIds[] = $entryId;
@@ -45,7 +46,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         $row = ['rowIndex'=>$entryId,'rowLabel'=>count($rowIds),'values'=>$values,'rowActions'=>$canEdit,
             'singleLine'=>array_fill_keys(array_keys($values),true),'baseHash'=>workspace_catalog_directory_hash($id,$entryId),
             'edits'=>array_fill_keys(array_keys($values),['revision'=>(int)$entry['revision']])];
-        if ($kind === 'status') {
+        if (workspace_catalog_has_palette($kind)) {
             $row['orderFill']=$entry['color'];
             $row['choices']['B']=$choices;
             $row['requiredChoices']['B']=true;
@@ -58,7 +59,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         'catalogGrid'=>['id'=>$id,'archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,
             'syncLabel'=>$canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($id) : null,
             'hasDetails'=>(bool)$details,'unkeyedCount'=>(int)($details['unkeyedCount'] ?? 0),
-            'draftFields'=>workspace_directory_draft_fields($kind==='status'?'flight-statuses':'entries',catalogKind:$kind)]];
+            'draftFields'=>workspace_directory_draft_fields('entries',catalogKind:$kind)]];
 }
 
 function workspace_catalog_directory_hash(int $catalogId,int $entryId): string {
@@ -83,7 +84,7 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     $value = $body['value'];
     $fill = null;
     if ($column === 'A') $payload['name'] = $value = workspace_catalog_validate_name($value);
-    elseif ($kind === 'status') $payload['color'] = $fill = workspace_directory_color($value);
+    elseif (workspace_catalog_has_palette($kind)) $payload['color'] = $fill = workspace_directory_color($value);
     else $payload[$kind === 'clients' ? 'manager' : 'logist'] = $value = workspace_client_validate_manager($value);
     if ($pasteCheck) json_response(['accepted'=>true]);
     $baseHash = workspace_catalog_directory_hash($id,$body['row']);

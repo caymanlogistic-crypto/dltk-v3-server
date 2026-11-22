@@ -52,7 +52,8 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
     if (!is_array($paste) || !array_key_exists('source',$paste)) throw new ApiError('invalid_clipboard','Не удалось определить содержимое буфера обмена.');
     vitrine_validate_single_line($body['value'],$target,$body['column']);
     $kind = $target['kinds'][$body['column']] ?? 'text';
-    if ($kind === 'time') $body['value'] = vitrine_time_input($body['value']) ?? $body['value'];
+    $compact = isset($target['compactInputs'][$body['column']]);
+    if (!$compact && $kind === 'time') $body['value'] = vitrine_time_input($body['value']) ?? $body['value'];
     $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','slot'=>'Слот','boolean'=>'TRUE/FALSE'];
     if ($paste['source'] !== null) {
         $source = $paste['source'];
@@ -63,7 +64,9 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
         $sourceKind = $sourceRow['kinds'][$source['column']];
         if ($sourceKind!==$kind) throw new ApiError('clipboard_type_mismatch','Форматы ячеек не совпадают: '.$labels[$sourceKind].' → '.$labels[$kind].'. Вставка отменена.');
     }
-    if (!vitrine_clipboard_accepts($body['value'],$kind,$target['choices'][$body['column']]??[])) throw new ApiError('clipboard_value_mismatch','Значение не подходит для формата «'.$labels[$kind].'» или заданного списка. Вставка отменена.');
+    $accepted = $compact ? vitrine_compact_input($body['value'],$kind) !== null
+        : vitrine_clipboard_accepts($body['value'],$kind,$target['choices'][$body['column']]??[]);
+    if (!$accepted) throw new ApiError('clipboard_value_mismatch','Значение не подходит для формата «'.$labels[$kind].'» или заданного списка. Вставка отменена.');
 }
 
 function vitrine_paste_check(): never {
@@ -105,7 +108,16 @@ function vitrine_save_cell(): never {
     $current = null;
     foreach ($data['rows'] as $row) if ($row['rowIndex'] === $body['row']) $current = $row;
     if ($current === null) throw new ApiError('row_not_visible','Строка больше не входит в текущую выборку. Обновите страницу.',409);
-    if (!$body['reset'] && ($current['kinds'][$body['column']] ?? '') === 'time') {
+    $compactKind = $current['compactInputs'][$body['column']] ?? null;
+    if (!$body['reset'] && $compactKind !== null) {
+        $normalized = vitrine_compact_input($body['value'],$compactKind);
+        if ($normalized === null && $body['value'] !== ($current['values'][$body['column']] ?? '')) {
+            $message = $compactKind === 'date' ? 'Введите действительную дату в формате ДДММГГ.'
+                : 'Введите время в формате ЧЧММ. Часы 00–23, минуты 00–59.';
+            throw new ApiError('invalid_'.$compactKind,$message);
+        }
+        if ($normalized !== null) $body['value'] = $normalized;
+    } elseif (!$body['reset'] && ($current['kinds'][$body['column']] ?? '') === 'time') {
         $normalized = vitrine_time_input($body['value']);
         if ($normalized === null && $body['value'] !== ($current['values'][$body['column']] ?? '')) throw new ApiError('invalid_time','Введите время: 800 или 0800 → 08:00. Часы 00–23, минуты 00–59.');
         if ($normalized !== null) $body['value'] = $normalized;

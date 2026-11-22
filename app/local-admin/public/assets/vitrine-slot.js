@@ -22,9 +22,9 @@
     return value;
   }
 
-  function bind(field) {
+  function bindDigits(field, {maxDigits, placeholder, format, read}) {
     field.inputMode = 'numeric';
-    field.placeholder = 'с 00 до 12 - 25.10.26';
+    field.placeholder = placeholder;
 
     function setValue(digits,caret) {
       field.value = format(digits);
@@ -65,5 +65,31 @@
     });
   }
 
-  window.VitrineSlot = Object.freeze({read,format,bind,requestLabel,isRequest});
+  function readDate(value) {
+    const input = value.trim();
+    if (/^[0-9]{1,6}$/.test(input)) return input;
+    const local = input.match(/^([0-9]{2})\.([0-9]{2})\.(?:20)?([0-9]{2})$/);
+    if (local) return local.slice(1).join('');
+    const iso = input.match(/^20([0-9]{2})-([0-9]{2})-([0-9]{2})$/);
+    return iso ? iso.slice(1).reverse().join('') : '';
+  }
+
+  function readTime(value) {
+    const input = value.trim();
+    if (/^[0-9]{1,4}$/.test(input)) return input;
+    const parts = input.match(/^([0-9]{1,2}):([0-9]{2})$/);
+    return parts ? parts[1].padStart(2,'0')+parts[2] : '';
+  }
+
+  function mask(maxDigits,placeholder,format,read) {
+    return {format,read,bind:field=>bindDigits(field,{maxDigits,placeholder,format,read})};
+  }
+  window.VitrineSlot = Object.freeze({
+    ...mask(maxDigits,'с 00 до 12 - 25.10.26',format,read),requestLabel,isRequest
+  });
+  window.VitrineCompactInput = Object.freeze({
+    date:mask(6,'25.10.26',digits=>digits.match(/.{1,2}/g)?.join('.') ?? '',readDate),
+    time:mask(4,'08:00',digits=>digits.length>2
+      ? digits.slice(0,-2)+':'+digits.slice(-2) : digits,readTime)
+  });
 })();

@@ -48,7 +48,7 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         $values = $body['values'];
         $name = workspace_catalog_validate_name($values['A'] ?? '');
         $payload = ['catalogId'=>$catalogId,'name'=>$name];
-        if ($kind === 'status') $payload['color'] = workspace_directory_color($values['B'] ?? '');
+        if (workspace_catalog_has_palette($kind)) $payload['color'] = workspace_directory_color($values['B'] ?? '');
         if ($kind === 'clients' && isset($values['B'])) $payload['manager'] = $values['B'];
         if ($kind === 'carriers' && isset($values['B'])) $payload['logist'] = $values['B'];
         $previous = wquery('SELECT id,revision FROM catalog_entries WHERE catalog_id=? AND normalized=? AND active=FALSE',

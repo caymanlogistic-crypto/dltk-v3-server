@@ -62,4 +62,17 @@ foreach (['001225102','001225102026','2412251026','0024251026','0012310426','001
     verify(vitrine_slot_input((string)$input)===null,'Invalid slot rejected '.$input);
     verify(!vitrine_clipboard_accepts((string)$input,'slot'),'Invalid slot paste rejected '.$input);
 }
+foreach (['251026'=>'25.10.26','25.10.26'=>'25.10.26','25.10.2026'=>'25.10.26',
+    '2026-10-25'=>'25.10.26','290200'=>'29.02.00',''=>''] as $input=>$expected) {
+    verify(vitrine_compact_input((string)$input,'date')===$expected,'Compact date normalizes '.$input);
+}
+foreach (['310426','290225','2510','25.10.1999','25.10.26 09:00'] as $input) {
+    verify(vitrine_compact_input($input,'date')===null,'Compact date rejects '.$input);
+}
+foreach (['0830'=>'08:30','800'=>'08:00','8:00'=>'08:00','23:59'=>'23:59',''=>''] as $input=>$expected) {
+    verify(vitrine_compact_input((string)$input,'time')===$expected,'Compact time normalizes '.$input);
+}
+foreach (['24:00','12:60','08','08:00:15'] as $input) {
+    verify(vitrine_compact_input($input,'time')===null,'Compact time rejects '.$input);
+}
 echo 'PASS '.$checks." clipboard format checks\n";

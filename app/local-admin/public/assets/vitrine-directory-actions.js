@@ -164,6 +164,7 @@
       const fill = choice(column,value)?.color;
       if (fill) cell.style.setProperty('--order-status-fill',fill);
       else cell.style.removeProperty('--order-status-fill');
+      window.VitrineDisplay?.paintCell(cell);
     }
     row.querySelector('.vitrine-draft-note').hidden = !Object.values(values).some(Boolean);
   }
