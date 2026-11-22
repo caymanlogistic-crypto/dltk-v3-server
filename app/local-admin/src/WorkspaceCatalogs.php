@@ -7,6 +7,9 @@ function workspace_catalogs(): array {
     $out=[];foreach(wquery('SELECT * FROM catalogs ORDER BY id')->fetchAll() as $c){if(!workspace_can('catalog',(string)$c['id'],'view'))continue;$c['id']=(int)$c['id'];$c['tableIds']=array_map('intval',wquery('SELECT DISTINCT table_id FROM catalog_bindings WHERE catalog_id=?',[$c['id']])->fetchAll(PDO::FETCH_COLUMN));$out[]=$c;}return $out;
 }
 function workspace_palette(): array {return [['name'=>'Красный','fill'=>'#F4D9DA'],['name'=>'Оранжевый','fill'=>'#F7E1CB'],['name'=>'Жёлтый','fill'=>'#F7F2D2'],['name'=>'Зелёный','fill'=>'#DCEAD4'],['name'=>'Бирюзовый','fill'=>'#CFE9E4'],['name'=>'Синий','fill'=>'#D8E6F4'],['name'=>'Фиолетовый','fill'=>'#DFDBF1'],['name'=>'Розовый','fill'=>'#EFD9E8'],['name'=>'Серый','fill'=>'#E7E7E7']];}
+function workspace_catalog_has_palette(string $kind): bool {
+    return in_array($kind,['status','terminals-main'],true);
+}
 function workspace_status_catalog(array $table): array {
     $id=wquery("SELECT c.id FROM catalogs c JOIN catalog_bindings b ON b.catalog_id=c.id WHERE b.table_id=? AND b.field_key='A' AND c.kind='status' LIMIT 1",[$table['id']])->fetchColumn();
     return ['id'=>(int)$id,'statuses'=>$id?wquery('SELECT id,name,color,revision FROM catalog_entries WHERE catalog_id=? AND active=TRUE ORDER BY id',[$id])->fetchAll():[],'palette'=>workspace_palette()];
@@ -20,8 +23,10 @@ function workspace_catalog_validate_name(string $value): string {
 function workspace_catalog_save(array $b): array {
     $cid=(int)($b['catalogId']??0);$catalog=wquery('SELECT * FROM catalogs WHERE id=?',[$cid])->fetch();if(!$catalog)throw new ApiError('not_found','Справочник не найден.',404);
     workspace_require('catalog',(string)$cid,'edit');$name=workspace_catalog_validate_name((string)($b['name']??''));$color=$b['color']??null;
-    if($catalog['kind']==='status'&&!in_array($color,array_column(workspace_palette(),'fill'),true))throw new ApiError('invalid_color','Выберите цвет из палитры.');
-    if($catalog['kind']!=='status')$color=null;
+    if(!workspace_catalog_has_palette($catalog['kind']))$color=null;
+    if(($catalog['kind']==='status'||$color!==null)&&!in_array($color,array_column(workspace_palette(),'fill'),true)){
+        throw new ApiError('invalid_color','Выберите цвет из палитры.');
+    }
     $hasManager=$catalog['kind']==='clients'&&array_key_exists('manager',$b);
     $manager=$hasManager?workspace_client_validate_manager($b['manager']):'';
     $hasLogist=$catalog['kind']==='carriers'&&array_key_exists('logist',$b);
@@ -31,10 +36,12 @@ function workspace_catalog_save(array $b): array {
         if(isset($b['id'])&&!$old)throw new ApiError('not_found','Запись не найдена.',404);
         if($old&&(int)$old['revision']!==(int)($b['revision']??0))throw new ApiError('revision_conflict','Запись уже изменена. Откройте её заново; ваш ввод сохранён.',409);
         $active=array_key_exists('active',$b)?(bool)$b['active']:true;$norm=mb_strtolower($name);$revision=$old?(int)$old['revision']+1:1;
-        if($catalog['kind']==='clients'){
+        if($catalog['kind']==='terminals-main'&&!array_key_exists('color',$b))$color=$old['color']??null;
+        if(in_array($catalog['kind'],['clients','terminals-main'],true)){
             $formerOwner=(int)(workspace_client_catalog_aliases($cid)[$norm]??0);
             if($formerOwner&&$formerOwner!==(int)($old['id']??0)){
-                throw new ApiError('duplicate_catalog','Это название уже использовалось для другого клиента.',409);
+                $ownerLabel=$catalog['kind']==='clients'?'другого клиента':'другого терминала';
+                throw new ApiError('duplicate_catalog','Это название уже использовалось для '.$ownerLabel.'.',409);
             }
         }
         if ($old && $old['active'] && !$active) workspace_assert_catalog_entry_unused($catalog['kind'],$cid,$old);

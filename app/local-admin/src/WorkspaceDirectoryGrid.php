@@ -124,13 +124,18 @@ function workspace_directory_palette_options(): array {
 
 function workspace_directory_draft_fields(string $directory, array $roles = [], string $catalogKind = ''): array {
     $name = ['required'=>true,'type'=>'text'];
+    $color = ['required'=>true,'type'=>'choice','choices'=>workspace_directory_palette_options()];
     $optionalAssignment = ['type'=>'text','required'=>true,'allowEmpty'=>true];
     return match ($directory) {
-        'flight-statuses','client-order-statuses'=>['A'=>$name,'B'=>['required'=>true,'type'=>'choice','choices'=>workspace_directory_palette_options()]],
+        'flight-statuses','client-order-statuses'=>['A'=>$name,'B'=>$color],
         'employees'=>['A'=>$name,'B'=>$name,'C'=>['required'=>true,'type'=>'password'],'D'=>['type'=>'email'],
             'E'=>['required'=>true,'type'=>'choice','choices'=>$roles]],
         'clients'=>['A'=>$name,'B'=>$optionalAssignment],
-        'entries'=>in_array($catalogKind,['clients','carriers'],true)?['A'=>$name,'B'=>$optionalAssignment]:['A'=>$name],
+        'entries'=>match (true) {
+            workspace_catalog_has_palette($catalogKind)=>['A'=>$name,'B'=>$color],
+            in_array($catalogKind,['clients','carriers'],true)=>['A'=>$name,'B'=>$optionalAssignment],
+            default=>['A'=>$name],
+        },
         default=>['A'=>$name],
     };
 }

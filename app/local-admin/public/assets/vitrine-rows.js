@@ -151,6 +151,7 @@
     const cell=row?.querySelector('td[data-column="'+patch.column+'"]');
     if(cell && Number(cell.dataset.revision||0)<Number(patch.revision))window.VitrineGrid?.applyRemote(cell,patch);
   }
+  const normalizedCatalogName = name => (name ?? '').trim().toLowerCase().replace(/\s+/gu,' ');
   function applyCatalogPatch(row,patch){
     if(!row)return;
     const active=window.VitrineGrid?.editingCell();
@@ -163,7 +164,18 @@
       choices=choices.filter(value=>!(patch.aliases||[patch.beforeName,patch.name]).includes(value));
       if(patch.active!==false&&patch.active!==0)choices.push(patch.name);
       cell.dataset.choices=JSON.stringify([...new Set(choices)]);
-      if(String(cell.dataset.referenceId)===String(patch.id)){
+      const matchesReference=String(cell.dataset.referenceId)===String(patch.id);
+      const pickup=cell.dataset.column==='E'&&document.body.dataset.workspaceTable==='vyvoz';
+      const legacyPickup=pickup&&!Number(cell.dataset.referenceId)&&cell.textContent!==''&&
+        [patch.name,patch.beforeName,...(patch.aliases||[])].some(name=>normalizedCatalogName(name)===normalizedCatalogName(cell.textContent));
+      if(pickup&&(matchesReference||legacyPickup)){
+        if(patch.color)cell.style.setProperty('--catalog-fill',patch.color);
+        else cell.style.removeProperty('--catalog-fill');
+        window.VitrineDisplay?.paintCell(cell);
+        const saved=remotePatches.get(cell.dataset.row+':'+cell.dataset.column);
+        if(saved)saved.catalogFill=patch.color;
+      }
+      if(matchesReference){
         const key='catalogRevision'+patch.id;
         if(Number(cell.dataset[key]||0)>Number(patch.revision||0))continue;
         cell.dataset[key]=String(patch.revision||0);cell.textContent=patch.name;

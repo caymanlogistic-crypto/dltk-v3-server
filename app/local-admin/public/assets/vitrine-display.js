@@ -71,6 +71,7 @@
   const palette = catalog.palette || [];
   const base = palette.map(item => item.fill.toUpperCase());
   const red = palette.find(item=>item.name==='Красный')?.fill;
+  const gray = palette.find(item=>item.name==='Серый')?.fill;
   const presets = [
     {id:'base',name:'Базовый',note:'Текущая мягкая палитра',colors:base},
     {id:'saturated',name:'Насыщенный',note:'Те же девять цветовых групп, более насыщенные',colors:['#E6ABAD','#EDBC8B','#EDE19A','#B2D1A0','#94CFC3','#A9C8E6','#B8AFE0','#DCAACD','#C9C9C9']},
@@ -109,7 +110,7 @@
   lastLocalSnapshot=copy(state);
   function color(fill) {
     const index = base.indexOf(String(fill).toUpperCase());
-    return index < 0 ? fill : presets.find(p => p.id === state.preset).colors[index];
+    return index < 0 ? '' : presets.find(p => p.id === state.preset).colors[index];
   }
   function ink(fill) {
     if (!/^#[0-9a-f]{6}$/i.test(fill || '')) return '#131210';
@@ -118,17 +119,31 @@
     return luminance < .179 ? '#FFFFFF' : '#131210';
   }
   function paintCell(cell) {
-    const fill = cell.dataset.statusColor || cell.style.getPropertyValue('--status-fill').trim();
-    if (!fill || !cell.classList.contains('has-status-color')) { cell.style.removeProperty('--status-display-fill'); cell.style.removeProperty('--status-display-text'); return; }
-    const shown = color(fill);
-    cell.style.setProperty('--status-display-fill',shown); cell.style.setProperty('--status-display-text',ink(shown));
+    const style = cell.style;
+    const namedFill = style.getPropertyValue('--catalog-fill').trim() || style.getPropertyValue('--order-status-fill').trim();
+    const shown = color(namedFill);
+    if (shown) {
+      style.setProperty('--preset-cell-fill',shown);
+      style.setProperty('--preset-cell-text',ink(shown));
+    } else {
+      style.removeProperty('--preset-cell-fill');
+      style.removeProperty('--preset-cell-text');
+    }
+    const status = cell.classList.contains('has-status-color')
+      ? color(cell.dataset.statusColor || style.getPropertyValue('--status-fill').trim()) : '';
+    style.setProperty('--status-display-fill',status);
+    style.setProperty('--status-display-text',status ? ink(status) : '');
   }
   function paint(node,fill) {
-    node.dataset.displayColor = fill; node.style.backgroundColor = color(fill); node.style.color = ink(color(fill));
+    const shown = color(fill);
+    node.dataset.displayColor = fill;
+    node.style.backgroundColor = shown;
+    node.style.color = shown ? ink(shown) : '';
   }
   function paintAll() {
     if (red) table.style.setProperty('--vitrine-preset-red',color(red));
-    table.querySelectorAll('td.has-status-color').forEach(paintCell);
+    if (gray) table.style.setProperty('--vitrine-preset-gray',color(gray));
+    table.querySelectorAll('td.has-status-color,td[style*="--catalog-fill"],td[style*="--order-status-fill"]').forEach(paintCell);
     document.querySelectorAll('[data-display-color]').forEach(node => paint(node,node.dataset.displayColor));
   }
   function applyOrder(order) {

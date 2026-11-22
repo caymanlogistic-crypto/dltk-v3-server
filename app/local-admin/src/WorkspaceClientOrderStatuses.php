@@ -5,8 +5,8 @@ function workspace_client_order_statuses(bool $refresh = false): array {
     static $statuses;
     if (isset($statuses) && !$refresh) return $statuses;
     $defaults = [
-        'preliminary'=>['id'=>1,'label'=>'Предварительный заказ','color'=>'#F7F2D2'],
-        'confirmed'=>['id'=>2,'label'=>'Подтверждённый заказ','color'=>'#DCEAD4'],
+        'preliminary'=>['id'=>1,'label'=>'Предварительный заказ','color'=>workspace_directory_color('Жёлтый')],
+        'confirmed'=>['id'=>2,'label'=>'Подтверждённый заказ','color'=>workspace_directory_color('Зелёный')],
     ];
     $saved = workspace_client_catalog_metadata('client_order_statuses');
     foreach ($defaults as $code=>$status) $saved[$code] = ($saved[$code] ?? []) + $status;

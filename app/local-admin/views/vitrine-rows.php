@@ -6,6 +6,8 @@
               $orderStatus = $letter==='B' && !isset($catalogGrid) ? ($row['orderStatus'] ?? null) : null;
               $orderFill = $letter==='B' ? ($row['orderFill'] ?? ($orderStatus ? workspace_client_order_status($orderStatus)['color'] : '')) : '';
               $cellStyle = $orderFill ? '--order-status-fill: '.$orderFill : '';
+              $catalogFill = $row['catalogFills'][$letter] ?? '';
+              if (preg_match('/^#[0-9a-fA-F]{6}$/D', $catalogFill)) $cellStyle = '--catalog-fill: '.$catalogFill;
               $catalogReadOnly = isset($catalogGrid) && ($catalogGrid['archive'] || !$catalogGrid['canEdit']);
               $value = $row['values'][$letter] ?? '';
               $derivedSource = $column['derivedSource'] ?? null;

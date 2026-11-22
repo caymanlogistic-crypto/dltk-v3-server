@@ -122,6 +122,10 @@
       cell.dataset.orderStatus = result.orderStatus;
       cell.style.setProperty('--order-status-fill',orderStatuses[result.orderStatus]?.color || '');
     }
+    if (Object.hasOwn(result,'catalogFill')) {
+      if (result.catalogFill) cell.style.setProperty('--catalog-fill',result.catalogFill);
+      else cell.style.removeProperty('--catalog-fill');
+    }
     if (result.orderFill) cell.style.setProperty('--order-status-fill',result.orderFill);
     if (cell.dataset.kind === 'status') {
       cell.dataset.statusId = result.statusId ?? '';
@@ -267,7 +271,9 @@
     const isStatus = cell.dataset.kind === 'status';
     const isSlot = cell.dataset.kind === 'slot';
     const isSingleLine = cell.hasAttribute('data-single-line');
-    const catalogEditor = ['B', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz';
+    const pickupEditor = cell.dataset.column === 'E' && Number(cell.dataset.catalogId) > 0 &&
+      document.body.dataset.workspaceTable === 'vyvoz';
+    const catalogEditor = pickupEditor || (['B', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
     if (isSlot || isSingleLine || isStatus || catalogEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
@@ -282,7 +288,7 @@
     try { choices = JSON.parse(cell.dataset.choices || '[]'); } catch {}
     if (!Array.isArray(choices)) choices = [];
     const useCustom = !isSlot && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
-    const searchableClient = cell.hasAttribute('data-order-status');
+    const searchableCatalog = pickupEditor || cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');
@@ -290,7 +296,7 @@
       const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(option => option && typeof option === 'object' ? option : {value:String(option),label:String(option)});
       if (!required && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
       options.push(...items.filter(item => item.value !== ''));
-      control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableClient});
+      control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableCatalog});
     }
     const field = control?.field || element(isSlot || isSingleLine ? 'input' : 'textarea', 'field-input');
     field.classList.add('vitrine-editor-field');
@@ -389,7 +395,7 @@
     field.addEventListener('input',fitEditor);
     fitEditor();
     (field.disabled ? requestField : field).focus();
-    if (searchableClient) field.select();
+    if (searchableCatalog) field.select();
     else field.setSelectionRange(field.value.length, field.value.length);
   }
   window.addEventListener('vitrine-statuses-updated', event => {
