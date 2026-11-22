@@ -14,11 +14,16 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
 ?>
 <section class="vitrine-catalog-toolbar" aria-label="Управление справочником"<?= isset($catalogGrid['id']) ? ' data-catalog-id="'.(int)$catalogGrid['id'].'"' : '' ?>>
   <h1>Справочник: <strong><?= $escape($currentTable['title']) ?></strong></h1>
+  <?php if (!empty($catalogGrid['clientFilter'])): ?>
+  <span>Клиент: <strong><?= $escape($catalogGrid['clientFilter']['name']) ?></strong></span>
+  <a href="<?= $escape($viewUrl($directoryUrl.($archive ? '&archive=1' : ''))) ?>"><?= $directory==='clients' ? 'Все клиенты' : 'Все точки выгрузки' ?></a>
+  <?php endif; ?>
   <form class="vitrine-catalog-search" method="get" action="<?= $escape($viewUrl('/vitrine')) ?>">
     <input type="hidden" name="catalog" value="<?= $escape($directory) ?>">
     <?php if ($directory === 'entries'): ?><input type="hidden" name="id" value="<?= (int)$catalogGrid['id'] ?>"><?php endif; ?>
     <?php if ($directory === 'flight-statuses'): ?><input type="hidden" name="table" value="<?= $escape($managementTable) ?>"><?php endif; ?>
     <?php if ($archive): ?><input type="hidden" name="archive" value="1"><?php endif; ?>
+    <?php if (!empty($catalogGrid['clientFilter'])): ?><input type="hidden" name="client" value="<?= (int)$catalogGrid['clientFilter']['id'] ?>"><?php endif; ?>
     <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape($catalogGrid['search']) ?>"
            aria-label="<?= $escape($searchLabel) ?>" placeholder="<?= $escape($searchPlaceholder) ?>">
   </form>

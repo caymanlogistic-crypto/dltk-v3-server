@@ -3,6 +3,7 @@
   const actions = document.querySelector('[data-directory-row-actions]');
   if (!actions) return;
   const remove = actions.querySelector('[data-directory-delete]');
+  const related = actions.querySelector('[data-directory-related]');
   const archive = actions.hasAttribute('data-archive');
   const deleteDialog = document.querySelector('[data-directory-delete-dialog]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
@@ -31,6 +32,12 @@
     window.VitrineGrid.select(cell);
     trigger = button;
     returnFocus = cell;
+    if (related) {
+      const href = cell.parentElement.dataset.relatedUrl;
+      related.hidden = !href;
+      if (href) related.setAttribute('href',href);
+      else related.removeAttribute('href');
+    }
     button.setAttribute('aria-expanded','true');
     actions.hidden = false;
     const bounds = button.getBoundingClientRect();
@@ -38,7 +45,7 @@
     const y = bounds.bottom+actions.offsetHeight+8 <= innerHeight ? bounds.bottom : bounds.top-actions.offsetHeight;
     actions.style.left = Math.max(8,x)+'px';
     actions.style.top = Math.max(8,y)+'px';
-    remove.focus({preventScroll:true});
+    actions.querySelector('[role="menuitem"]:not([hidden])')?.focus({preventScroll:true});
   }
 
   table.addEventListener('click', event => {
@@ -58,6 +65,13 @@
     openMenu(button,cell);
   });
   actions.addEventListener('keydown',event=>{
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      const items = [...actions.querySelectorAll('[role="menuitem"]:not([hidden])')];
+      const offset = event.key === 'ArrowDown' ? 1 : -1;
+      items[(items.indexOf(document.activeElement)+offset+items.length)%items.length]?.focus();
+      return;
+    }
     if (event.key !== 'Escape' && event.key !== 'Tab') return;
     event.preventDefault();
     event.stopPropagation();
@@ -219,7 +233,7 @@
     },
   });
 
-  remove.addEventListener('click', async () => {
+  remove?.addEventListener('click', async () => {
     const cell = trigger?.closest('tr').querySelector('td[data-edit-cell]');
     if (!cell || pending) return;
     const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base};
@@ -238,7 +252,7 @@
       pending = false;
     }
   });
-  bindForm(deleteDialog, async () => {
+  if (deleteDialog) bindForm(deleteDialog, async () => {
     await request(archive ? 'restore' : 'delete',target);
     refresh(archive ? 'Запись восстановлена.' : 'Запись удалена.');
   });

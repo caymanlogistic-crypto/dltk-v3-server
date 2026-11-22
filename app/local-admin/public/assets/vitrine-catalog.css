@@ -52,7 +52,10 @@
 .vitrine .vitrine-directory-row-menu .ctx-item {
   width:100%; border:0; background:transparent; font-family:inherit; text-align:left; cursor:pointer;
 }
-.vitrine .vitrine-directory-row-menu .ctx-item:is(:hover,:focus-visible) { background:var(--danger-bg); }
+.vitrine .vitrine-directory-row-menu .ctx-item[href] { text-decoration:none; }
+.vitrine .vitrine-directory-row-menu .ctx-item[hidden] { display:none; }
+.vitrine .vitrine-directory-row-menu .ctx-item:is(:hover,:focus-visible) { background:var(--surface-muted); }
+.vitrine .vitrine-directory-row-menu .ctx-item.is-danger:is(:hover,:focus-visible) { background:var(--danger-bg); }
 
 .vitrine .vitrine-table td.vitrine-draft-note {
   width:auto; min-width:0; max-width:none; padding:0 10px; border:0;

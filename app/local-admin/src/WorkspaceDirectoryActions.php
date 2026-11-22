@@ -84,6 +84,10 @@ function workspace_assert_catalog_entry_unused(string $kind, int $catalogId, arr
         return;
     }
     $id = (int)$entry['id'];
+    if ($kind==='clients' && workspace_unload_catalog_id()) {
+        $points=(int)wquery('SELECT COUNT(*) FROM unload_points p JOIN catalog_entries e ON e.id=p.entry_id WHERE p.client_id=? AND e.active=TRUE',[$id])->fetchColumn();
+        if ($points) throw new ApiError('entry_in_use','У клиента есть точки выгрузки: '.$points.'. Удалить его нельзя.',409);
+    }
     $names = [$entry['normalized']];
     foreach (workspace_client_catalog_aliases($catalogId) as $alias=>$owner) {
         if ((int)$owner === $id) $names[] = $alias;

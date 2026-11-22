@@ -1,9 +1,15 @@
 <?php
 declare(strict_types=1);
 
+function workspace_unload_catalog_id(): int {
+    return (int)wquery("SELECT c.id FROM catalogs c JOIN catalog_bindings b ON c.id=b.catalog_id
+        JOIN table_definitions t ON t.id=b.table_id
+        WHERE t.slug='vyvoz' AND b.field_key='K' AND c.kind='unload-points' ORDER BY c.id LIMIT 1")->fetchColumn();
+}
+
 function workspace_unload_points(int $catalogId): array {
     $rows = wquery("SELECT e.id,e.name,e.active,e.revision,p.client_id,
-        COALESCE(client.name,p.client_label) AS client,p.address,p.schedule,p.instruction,
+        COALESCE(client.name,p.client_label) AS client,client.active AS client_active,p.address,p.schedule,p.instruction,
         contact.name AS contact_name,contact.phone,contact.email,contact.original,
         (SELECT COUNT(*) FROM unload_point_contacts c WHERE c.entry_id=e.id) AS contact_count
         FROM catalog_entries e JOIN unload_points p ON p.entry_id=e.id
@@ -92,6 +98,10 @@ function workspace_unload_save_point(int $catalogId,array $values,?int $entryId=
         if ($old && (int)$old['revision']!==$revision) workspace_directory_conflict();
         $point=workspace_unload_validate_point($values,$old);
         $client=$point['client_id']===null ? null : (int)$point['client_id'];
+        if ($client!==null && (!$old || $client!==(int)$old['client_id'])) {
+            $active=wquery('SELECT active FROM catalog_entries WHERE id=? FOR SHARE',[$client])->fetchColumn();
+            if (!$active) throw new ApiError('invalid_unload_client','Выберите действующего клиента.');
+        }
         if ($old && workspace_unload_client_key($client,$point['client'])!==
             workspace_unload_client_key($old['client_id']===null?null:(int)$old['client_id'],$old['client'])) {
             workspace_assert_unload_point_unused($entryId,$old['address']);

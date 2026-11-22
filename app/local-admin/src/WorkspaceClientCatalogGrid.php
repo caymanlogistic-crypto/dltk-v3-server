@@ -23,11 +23,22 @@ function workspace_client_grid_model(): array {
     ];
 }
 
+function workspace_directory_client_filter(int $catalogId): ?array {
+    if (!isset($_GET['client'])) return null;
+    $id=filter_var($_GET['client'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+    $client=$id ? wquery('SELECT id,name FROM catalog_entries WHERE catalog_id=? AND id=?',[$catalogId,$id])->fetch() : null;
+    if (!$client) throw new ApiError('not_found','Клиент не найден в справочнике.',404);
+    return $client;
+}
+
 function workspace_client_grid_data(?array $requestedRows = null): array {
     $table = workspace_client_grid_model();
     $catalogId = $table['catalogId'];
     $canEdit = workspace_can('catalog', (string)$catalogId, 'edit');
     $archive = ($_GET['archive'] ?? null) === '1';
+    $clientFilter=workspace_directory_client_filter($catalogId);
+    $unloadCatalog=workspace_unload_catalog_id();
+    $canViewUnload=$unloadCatalog && workspace_can('catalog',(string)$unloadCatalog,'view');
     $search = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']), 0, 160) : '';
     $managers = workspace_client_manager_values($catalogId);
     $entries = wquery(
@@ -39,6 +50,7 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
     $requested = $requestedRows === null ? null : array_fill_keys($requestedRows, true);
     foreach ($entries as $entry) {
         $entryId = (int)$entry['id'];
+        if ($clientFilter && $entryId!==(int)$clientFilter['id']) continue;
         $manager = $managers[$entryId] ?? '';
         $name = $entry['name'];
         if ($search !== '' && mb_stripos($name, $search) === false && mb_stripos($manager, $search) === false) continue;
@@ -47,15 +59,19 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
         $values = ['A'=>$name, 'B'=>$manager];
         $kinds = ['A'=>'text', 'B'=>'text'];
         $version = ['revision'=>(int)$entry['revision']];
+        $relatedUrl=$canViewUnload ? '/vitrine?catalog=entries&id='.$unloadCatalog.'&client='.$entryId : null;
         $rows[] = [
             'rowIndex'=>$entryId, 'rowLabel'=>count($rowIds), 'values'=>$values,
             'originalValues'=>$values, 'baseHash'=>workspace_client_grid_hash($entryId),
-            'kinds'=>$kinds, 'rowActions'=>$canEdit, 'singleLine'=>['A'=>true,'B'=>true], 'edits'=>['A'=>$version, 'B'=>$version],
+            'kinds'=>$kinds, 'rowActions'=>$canEdit || $relatedUrl, 'relatedUrl'=>$relatedUrl,
+            'singleLine'=>['A'=>true,'B'=>true], 'edits'=>['A'=>$version, 'B'=>$version],
         ];
     }
     $syncLabel = $canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($catalogId) : null;
     return [
-        'catalogGrid'=>['id'=>$catalogId, 'archive'=>$archive, 'search'=>$search, 'canEdit'=>$canEdit, 'syncLabel'=>$syncLabel, 'draftFields'=>workspace_directory_draft_fields('clients')],
+        'catalogGrid'=>['id'=>$catalogId, 'archive'=>$archive, 'search'=>$search, 'canEdit'=>$canEdit, 'syncLabel'=>$syncLabel,
+            'relatedLabel'=>$canViewUnload ? 'Точки выгрузки' : null,'clientFilter'=>$clientFilter,
+            'draftFields'=>workspace_directory_draft_fields('clients')],
         'table'=>$table,
         'sheetTitle'=>$table['title'],
         'columns'=>$table['columns'],

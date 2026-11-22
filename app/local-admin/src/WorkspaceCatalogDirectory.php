@@ -36,6 +36,9 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         default=>[],
     };
     $unload = $kind==='unload-points';
+    $clientCatalog=$unload ? workspace_client_grid_catalog() : null;
+    $clientFilter=$unload && isset($_GET['client'])
+        ? workspace_directory_client_filter((int)($clientCatalog['id']??0)) : null;
     $clientChoices=$unload ? array_column(workspace_unload_client_entries(),'name') : [];
     $entries = $unload ? workspace_unload_points($id)
         : wquery('SELECT id,name,color,revision,active FROM catalog_entries WHERE catalog_id=? AND active=? ORDER BY name,id',[$id,(int)!$archive])->fetchAll();
@@ -45,6 +48,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     foreach ($entries as $entry) {
         if ((bool)$entry['active']===$archive) continue;
         if ($unload && !$archive && $entry['review_required']) continue;
+        if ($clientFilter && (int)$entry['client_id']!==(int)$clientFilter['id']) continue;
         $entryId = (int)$entry['id'];
         $values = $unload ? workspace_unload_point_values($entry) : ['A'=>$entry['name']];
         if ($unload) $values['C']=workspace_unload_contact_summary(workspace_unload_primary($entry),(int)$entry['contact_count']);
@@ -65,6 +69,10 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $row['singleLine']=['A'=>true];
             $row['choices']['A']=$clientChoices;
             $row['requiredChoices']['A']=true;
+            if ($clientCatalog && $entry['client_id']) {
+                $row['relatedUrl']='/vitrine?catalog=clients&client='.(int)$entry['client_id'].($entry['client_active']?'':'&archive=1');
+                $row['rowActions']=true;
+            }
         }
         $rows[] = $row;
     }
@@ -75,8 +83,11 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             'syncLabel'=>$canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($id) : null,
             'hasDetails'=>(bool)$details,'unkeyedCount'=>(int)($details['unkeyedCount'] ?? 0),
             'unloadPoints'=>$unload,
+            'relatedLabel'=>$clientCatalog ? 'Открыть клиента' : null,
+            'clientFilter'=>$clientFilter,
             'draftVersion'=>$unload ? 'client-address' : '',
-            'draftFields'=>$unload ? workspace_unload_draft_fields($clientChoices)
+            'draftFields'=>$unload ? workspace_unload_draft_fields($clientFilter
+                ? array_values(array_intersect($clientChoices,[$clientFilter['name']])) : $clientChoices)
                 : workspace_directory_draft_fields('entries',catalogKind:$kind)]];
 }
 
