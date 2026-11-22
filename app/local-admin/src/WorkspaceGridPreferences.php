@@ -34,6 +34,19 @@ function workspace_catalog_preferences_key(array $grid, int $userId): string {
     return 'catalog_preferences_'.$userId.'_'.$grid['catalogId'];
 }
 
+function workspace_prune_preference_columns(array $settings,array $columns): array {
+    foreach (['order','hidden'] as $key) {
+        if (isset($settings[$key]) && is_array($settings[$key])) {
+            $settings[$key]=array_values(array_filter($settings[$key],
+                static fn($column): bool=>in_array($column,$columns,true)));
+        }
+    }
+    if (isset($settings['widths']) && is_array($settings['widths'])) {
+        $settings['widths']=array_intersect_key($settings['widths'],array_fill_keys($columns,true));
+    }
+    return $settings;
+}
+
 function workspace_validate_preferences(mixed $settings, array $columns): void {
     if (!is_array($settings) || strlen(wjson($settings)) > 40000) throw new ApiError('invalid_preferences', 'Некорректные настройки отображения.');
     foreach (['order', 'hidden'] as $key) {
@@ -72,7 +85,8 @@ function workspace_preferences(array $grid, ?array $body = null): array {
         if ($patch === null && isset($body['expectedVersion']) && (int)$body['expectedVersion'] !== $version) {
             throw new ApiError('preference_conflict', 'Настройки изменены в другом окне. Повторите изменение.', 409);
         }
-        $settings = $patch === null ? ($body['settings'] ?? null) : workspace_merge_preferences($previous['settings'] ?? $defaults, $patch);
+        $prior=workspace_prune_preference_columns($previous['settings']??$defaults,$columns);
+        $settings = $patch === null ? ($body['settings'] ?? null) : workspace_merge_preferences($prior,$patch);
         workspace_validate_preferences($settings, $columns);
         $result = ['settings'=>$settings, 'version'=>$version+1];
         if (isset($grid['catalogId']) || isset($grid['directoryKey'])) {

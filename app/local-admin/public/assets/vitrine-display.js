@@ -38,8 +38,11 @@
     if(!bufferedRemote||Number(result.version)>=Number(bufferedRemote.version))bufferedRemote=result;
     applyBuffered();
   }
+  function hasOpenEditor() {
+    return document.querySelector('.vitrine-editor:not(dialog):not([hidden]), dialog.vitrine-editor[open], .vitrine-time-inline:not([hidden])')!==null;
+  }
   function applyBuffered(){
-    if(!bufferedRemote||inFlight||Object.keys(pendingChanges).length||document.querySelector('.vitrine-display-dialog[open],.vitrine-editor,.vitrine-time-inline')||document.body.classList.contains('is-column-resizing'))return;
+    if(!bufferedRemote||inFlight||Object.keys(pendingChanges).length||document.querySelector('.vitrine-display-dialog[open]')||hasOpenEditor()||document.body.classList.contains('is-column-resizing'))return;
     const incoming=bufferedRemote;bufferedRemote=null;
     if(Number(incoming.version)<preferenceVersion)return;
     preferenceVersion=Number(incoming.version);const saved=incoming.settings;
@@ -198,7 +201,7 @@
     }
     grip.addEventListener('pointerdown',event=>{
       if(event.button!==0)return;event.preventDefault();event.stopPropagation();
-      if(document.querySelector('.vitrine-editor,.vitrine-time-inline')){window.PlanexNotifications.show({tone:'warning',message:'Сначала сохраните правку ячейки или нажмите «Отмена».'});return;}
+      if(hasOpenEditor()){window.PlanexNotifications.show({tone:'warning',message:'Сначала сохраните правку ячейки или нажмите «Отмена».'});return;}
       drag={x:event.clientX,startWidth:header.getBoundingClientRect().width,width:Math.round(header.getBoundingClientRect().width)};grip.setPointerCapture(event.pointerId);document.body.classList.add('is-column-resizing');
     });
     grip.addEventListener('pointermove',event=>{if(!drag)return;event.stopPropagation();drag.width=Math.max(44,Math.min(1200,Math.round(drag.startWidth+event.clientX-drag.x)));if(!frame)frame=requestAnimationFrame(preview);});
@@ -335,7 +338,7 @@
   };
   document.querySelectorAll('[data-display-open]').forEach(trigger=>trigger.addEventListener('click',event=>{
     event.preventDefault();
-    if(document.querySelector('.vitrine-editor,.vitrine-time-inline')){window.PlanexNotifications.show({tone:'warning',message:'Сначала сохраните правку ячейки или нажмите «Отмена».'});return;}
+    if(hasOpenEditor()){window.PlanexNotifications.show({tone:'warning',message:'Сначала сохраните правку ячейки или нажмите «Отмена».'});return;}
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder=>folder.open=false);
     createDialog();opener=trigger;mode=trigger.dataset.displayOpen;draft=copy(state);
     const options=dialogModes[mode];
