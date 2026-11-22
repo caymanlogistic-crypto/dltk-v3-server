@@ -71,8 +71,9 @@
     returnFocus=button;
     address.value=point?.address??'';
     contact.value=point?.contact??'';
+    contact.required=!point || Boolean(point.contact);
     showOnly(addressForm);
-    (button.dataset.unloadContact ? contact : address).focus();
+    (button.dataset.unloadContact ? contact : address).focus({preventScroll:true});
   }
   function askDelete(point,button) {
     selectedPoint=point;
@@ -151,6 +152,7 @@
   async function submit(form,payload,message) {
     if (busy) return;
     const controls=[...form.querySelectorAll('button, textarea, input')].filter(control=>!control.disabled);
+    const previousFocus=document.activeElement;
     busy=true;
     controls.forEach(control=>control.disabled=true);
     try {
@@ -163,7 +165,11 @@
         focusList(savedId);
       }
       notice(message,'success');
-    } catch (error) { notice(error.message,'info'); }
+    } catch (error) {
+      controls.forEach(control=>control.disabled=false);
+      previousFocus.focus({preventScroll:true});
+      notice(error.message,'info');
+    }
     finally { busy=false;controls.forEach(control=>control.disabled=false); }
   }
   addressForm.addEventListener('submit',event=>{

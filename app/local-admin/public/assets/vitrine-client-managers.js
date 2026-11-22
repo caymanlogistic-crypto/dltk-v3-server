@@ -5,14 +5,17 @@
   const list=dialog.querySelector('[data-client-manager-list]');
   const rows=dialog.querySelector('[data-client-manager-rows]');
   const add=dialog.querySelector('[data-client-manager-add]');
+  const create=dialog.querySelector('[data-client-manager-create]');
   const close=dialog.querySelector('[data-client-manager-close]');
   const form=dialog.querySelector('[data-client-manager-form]');
+  const createForm=dialog.querySelector('[data-client-manager-create-form]');
   const picker=dialog.querySelector('[data-client-manager-picker]');
   const removeForm=dialog.querySelector('[data-client-manager-remove-form]');
   const menu=dialog.querySelector('[data-client-manager-menu]');
+  const editProfile=menu.querySelector('[data-client-manager-edit-profile]');
   const title=dialog.querySelector('h2');
   const csrf=document.querySelector('meta[name="csrf-token"]').content;
-  let opener,clientId,data,selected,returnFocus,menuTrigger,menuManager,menuReturnFocus,control,available,initialValue;
+  let opener,clientId,data,selected,returnFocus,menuTrigger,menuManager,menuReturnFocus,control,available,initialValue,profile;
   let busy=false,restoreFocus=true;
 
   const notice=(message,tone='danger')=>window.PlanexNotifications.show({message,tone});
@@ -32,7 +35,7 @@
     if (dialog.open && opener?.isConnected) window.VitrineGrid.positionPanel(dialog,opener);
   }
   function show(section) {
-    for (const part of [list,form,removeForm]) part.hidden=part!==section;
+    for (const part of [list,form,createForm,removeForm]) part.hidden=part!==section;
     if (section!==form) picker.replaceChildren();
     position();
   }
@@ -50,14 +53,15 @@
     menuReturnFocus=dialog.contains(document.activeElement) ? document.activeElement : button;
     menuManager=manager;
     button.setAttribute('aria-expanded','true');
+    editProfile.hidden=!data.canEditProfiles || !manager.active;
     menu.hidden=false;
     window.VitrineGrid.positionPanel(menu,button);
-    menu.querySelector('button').focus({preventScroll:true});
+    menu.querySelector('button:not([hidden])').focus({preventScroll:true});
   }
   function focusList(savedId) {
     if (savedId && keyboard.focusRow(savedId,1)) return;
     if (returnFocus?.isConnected) { returnFocus.focus({preventScroll:true});return; }
-    keyboard.focusFirst(add.hidden ? close : add);
+    keyboard.focusFirst(add.hidden ? (create.hidden ? close : create) : add);
   }
   async function request(body=null) {
     const path='/api/workspace/catalogs'+(body?'':'?clientManagers='+clientId);
@@ -90,6 +94,7 @@
     const byId=new Map(data.options.map(option=>[option.id,option]));
     title.textContent='Менеджеры · '+data.client;
     add.hidden=!data.canEdit || !data.options.some(option=>option.active&&!data.managerIds.includes(option.id));
+    create.hidden=!data.canCreate;
     rows.replaceChildren();
     for (const id of data.managerIds) {
       const manager=byId.get(id);
@@ -110,12 +115,18 @@
       if (data.canEdit) name.title='Щелчок — изменить менеджера';
       cell.append(name);
       row.append(actions,cell);
+      for (const value of [manager.phone,manager.email]) {
+        const detail=node('td');
+        detail.append(node('span',value||'—','vitrine-client-relations-cell'));
+        detail.title=value||'';
+        row.append(detail);
+      }
       rows.append(row);
     }
     if (!rows.children.length) {
       const row=node('tr');
       const empty=node('td','Менеджеры не назначены.','vitrine-client-relations-empty');
-      empty.colSpan=2;
+      empty.colSpan=4;
       row.append(empty);
       rows.append(row);
     }
@@ -139,31 +150,58 @@
     } catch (error) { notice(error.message); }
     finally { busy=false;cell.removeAttribute('aria-busy'); }
   }
-  async function submit(section,managerIds,savedId=null) {
+  async function submit(section,payload,savedId=null) {
     if (busy) return;
     const fields=[...section.querySelectorAll('button,input')];
+    const previousFocus=document.activeElement;
     busy=true;
     fields.forEach(field=>field.disabled=true);
     try {
-      data=await request({managerIds,revision:data.revision});
+      data=await request({...payload,revision:data.revision});
       const cell=window.VitrineRows?.resolveCell(opener)??opener;
       for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) sibling.dataset.revision=String(data.revision);
       cell.textContent=cell.dataset.original=data.summary;
       cell.title='Щелчок — открыть список менеджеров. '+data.summary;
       if (section===removeForm) dialog.close();
-      else { render();show(list);focusList(savedId); }
+      else { render();show(list);focusList(data.createdId??savedId); }
       notice('Менеджеры клиента сохранены.','success');
-    } catch (error) { notice(error.message); }
+    } catch (error) {
+      fields.forEach(field=>field.disabled=false);
+      previousFocus.focus({preventScroll:true});
+      notice(error.message);
+    }
     finally { busy=false;fields.forEach(field=>field.disabled=false); }
   }
   add.addEventListener('click',()=>edit(null,add));
+  function openProfile(employee,button) {
+    profile=employee;
+    returnFocus=button;
+    createForm.reset();
+    for (const key of ['surname','name','patronymic','phone','email']) {
+      createForm.elements[key].value=employee?.[key]??'';
+    }
+    show(createForm);
+    createForm.elements.surname.focus({preventScroll:true});
+  }
+  create.addEventListener('click',()=>openProfile(null,create));
+  editProfile.addEventListener('click',()=>{
+    const button=menuReturnFocus??menuTrigger;
+    closeMenu();
+    openProfile(menuManager,button);
+  });
   close.addEventListener('click',()=>dialog.close());
   form.addEventListener('submit',event=>{
     event.preventDefault();
     const option=available.find(item=>item.value===control.resolveValue());
     if (!option) { notice('Выберите менеджера из списка.','info');return; }
     const ids=selected ? data.managerIds.map(id=>id===selected.id ? option.id : id) : [...data.managerIds,option.id];
-    submit(form,ids,option.id);
+    submit(form,{managerIds:ids},option.id);
+  });
+  createForm.addEventListener('submit',event=>{
+    event.preventDefault();
+    const employee=Object.fromEntries(new FormData(createForm));
+    if (profile) Object.assign(employee,{id:profile.id,revision:profile.revision});
+    submit(createForm,{employee},profile?.id);
   });
   menu.querySelector('[data-client-manager-remove]').addEventListener('click',()=>{
     selected=menuManager;
@@ -175,7 +213,7 @@
   });
   removeForm.addEventListener('submit',event=>{
     event.preventDefault();
-    submit(removeForm,data.managerIds.filter(id=>id!==selected.id));
+    submit(removeForm,{managerIds:data.managerIds.filter(id=>id!==selected.id)});
   });
   for (const cancel of dialog.querySelectorAll('[data-client-manager-cancel]')) {
     cancel.addEventListener('click',()=>{show(list);focusList();});
@@ -197,7 +235,8 @@
       if (menuTrigger && !menu.contains(event.target) && !menuTrigger.contains(event.target)) closeMenu();
       return;
     }
-    const hasDraft=!form.hidden && control.field.value!==initialValue;
+    const hasDraft=(!form.hidden && control.field.value!==initialValue) ||
+      (!createForm.hidden && [...new FormData(createForm)].some(([key,value])=>value.trim()!==(profile?.[key]??'')));
     if (busy || hasDraft) {
       event.preventDefault();
       event.stopImmediatePropagation();

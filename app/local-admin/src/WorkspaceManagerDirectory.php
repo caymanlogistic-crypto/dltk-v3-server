@@ -42,11 +42,11 @@ function workspace_manager_validate(array $values): array {
     return compact('surname','name','patronymic','phone','email')+['role_id'=>$role['id'],'role_name'=>$role['name']];
 }
 
-function workspace_manager_save(int $catalogId,array $values,?int $entryId=null,?int $revision=null): array {
+function workspace_manager_write(int $catalogId,array $values,?int $entryId=null,?int $revision=null): array {
     if ($catalogId!==workspace_manager_catalog_id()) throw new ApiError('not_found','Справочник «Сотрудники» не найден.',404);
     workspace_require('catalog',(string)$catalogId,'edit');
-    workspace_begin();
     try {
+        if ($entryId) wquery('SELECT id FROM catalog_entries WHERE catalog_id=? AND id=? FOR UPDATE',[$catalogId,$entryId]);
         $old=$entryId ? (array_column(workspace_manager_entries($catalogId),null,'id')[$entryId]??null) : null;
         if ($entryId && (!$old || !$old['active'] || (int)$old['revision']!==$revision)) workspace_directory_conflict();
         $manager=workspace_manager_validate($values);
@@ -63,13 +63,23 @@ function workspace_manager_save(int $catalogId,array $values,?int $entryId=null,
             [$entryId,$manager['surname'],$manager['patronymic'],$manager['role_id'],$manager['phone'],$manager['email']]);
         workspace_audit(['category'=>'catalog','label'=>'Сотрудники','before'=>$old?['id'=>$entryId]+workspace_manager_values($old):null,
             'after'=>['id'=>$entryId]+workspace_manager_values($manager),'action'=>$old?'edit':'create']);
-        workspace_db()->commit();
         return ['id'=>$entryId,'revision'=>$revision,'values'=>workspace_manager_values($manager)];
     } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
         if ($error instanceof PDOException && $error->getCode()==='23000') {
             throw new ApiError('duplicate_catalog','Менеджер с таким именем уже есть в справочнике.',409);
         }
+        throw $error;
+    }
+}
+
+function workspace_manager_save(int $catalogId,array $values,?int $entryId=null,?int $revision=null): array {
+    workspace_begin();
+    try {
+        $result=workspace_manager_write($catalogId,$values,$entryId,$revision);
+        workspace_db()->commit();
+        return $result;
+    } catch (Throwable $error) {
+        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
         throw $error;
     }
 }

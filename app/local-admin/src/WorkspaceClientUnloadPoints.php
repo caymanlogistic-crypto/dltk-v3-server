@@ -44,7 +44,9 @@ function workspace_client_unload_points(int $clientId,?array $body=null): array 
         if ($entryId!==null && !$point) throw new ApiError('not_found','Точка клиента не найдена.',404);
         if ($body['action']==='save_client_unload_point') {
             $contact=workspace_unload_text($body['contact']??'',6000);
-            if ($contact==='') throw new ApiError('invalid_unload_contact','Укажите контакты точки выгрузки.');
+            if ($contact==='' && (!$point || workspace_unload_contact_line(workspace_unload_primary($point))!=='')) {
+                throw new ApiError('invalid_unload_contact','Укажите контакты точки выгрузки.');
+            }
             workspace_unload_save_point($catalogId,['B'=>$body['address']??null],$entryId,$revision,$clientId,$contact);
         } elseif ($body['action']==='delete_client_unload_point' && $point) {
             workspace_catalog_save(['catalogId'=>$catalogId,'id'=>$entryId,'revision'=>$revision,

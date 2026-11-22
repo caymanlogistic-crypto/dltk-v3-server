@@ -10,6 +10,8 @@
   const rowControls=row=>[...row.querySelectorAll('td button')].filter(visible);
 
   function bind(dialog,{rows,menu,closeMenu,isBusy,onEscape}) {
+    const list=rows.closest('section');
+    const listActions=()=>[...list.querySelectorAll('.vitrine-editor-actions button')].filter(visible);
     function focusRow(id,column=1) {
       const row=[...rows.rows].find(item=>item.dataset.relationId===String(id));
       const preferred=row?.cells[column]?.querySelector('button');
@@ -47,6 +49,7 @@
       const next=event.key==='Home' ? 0 : event.key==='End' ? relevant.length-1 :
         index+(event.key==='ArrowUp'?-1:1);
       if (relevant[next]) focusRow(relevant[next].dataset.relationId,column);
+      else if (event.key==='ArrowDown') focus(listActions()[0]);
     }
     dialog.addEventListener('keydown',event=>{
       if (event.defaultPrevented || event.isComposing) return;
@@ -59,6 +62,26 @@
       }
       if (event.key==='Tab') { moveTab(event);return; }
       if (isBusy() || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (menu.contains(event.target) && ['ArrowUp','ArrowDown','Home','End'].includes(event.key)) {
+        const items=[...menu.querySelectorAll('[role="menuitem"]')].filter(visible);
+        const index=items.indexOf(event.target);
+        const next=event.key==='Home' ? 0 : event.key==='End' ? items.length-1 :
+          (index+(event.key==='ArrowDown'?1:-1)+items.length)%items.length;
+        event.preventDefault();
+        focus(items[next]);
+        return;
+      }
+      const actions=listActions();
+      if (actions.includes(event.target) && !event.shiftKey) {
+        if (event.key==='ArrowUp') {
+          const last=[...rows.rows].findLast(row=>rowControls(row).length);
+          if (last) { event.preventDefault();focusRow(last.dataset.relationId); }
+        } else if (event.key==='ArrowLeft' || event.key==='ArrowRight') {
+          const next=actions.indexOf(event.target)+(event.key==='ArrowLeft'?-1:1);
+          event.preventDefault();
+          focus(actions[next]);
+        }
+      }
       const cell=event.target.closest('td');
       const row=cell?.parentElement;
       if (row?.parentElement!==rows) return;

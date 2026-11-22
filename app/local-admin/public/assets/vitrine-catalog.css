@@ -37,6 +37,9 @@
 .vitrine .vitrine-client-relations-table { width:100%; table-layout:fixed; border-spacing:0; font-size:12px; }
 .vitrine .vitrine-client-relations-table th { position:sticky; top:0; z-index:1; background:var(--surface-muted); text-align:left; padding:6px 8px; }
 .vitrine .vitrine-client-relations-table th:first-child { width:30px; }
+.vitrine #client-managers-dialog th:nth-child(3) { width:25%; }
+.vitrine #client-managers-dialog th:nth-child(4) { width:32%; }
+.vitrine [data-client-manager-create-form] { max-height:calc(100dvh - 80px); overflow:auto; }
 .vitrine .vitrine-client-unload-dialog .vitrine-client-relations-table th:last-child { width:32%; }
 .vitrine .vitrine-client-relations-table td { border-top:1px solid var(--line-soft); vertical-align:top; overflow-wrap:anywhere; }
 .vitrine .vitrine-client-relations-table tr:hover td { background:var(--surface-muted); }
