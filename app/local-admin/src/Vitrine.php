@@ -40,10 +40,17 @@ function vitrine_rows_endpoint(): never {
     json_response(['html'=>$html,'rowIds'=>array_column($rows,'rowIndex')]);
 }
 
+function vitrine_validate_single_line(string $value, array $row, string $column): void {
+    if (!empty($row['singleLine'][$column]) && preg_match('/\R/u',$value)) {
+        throw new ApiError('invalid_single_line','Введите текст одной строкой, без переносов.');
+    }
+}
+
 function vitrine_validate_paste(array $body, array $data, array $target): void {
     vitrine_require_manual_field($data['table'],$body['column']);
     $paste = $body['paste'] ?? null;
     if (!is_array($paste) || !array_key_exists('source',$paste)) throw new ApiError('invalid_clipboard','Не удалось определить содержимое буфера обмена.');
+    vitrine_validate_single_line($body['value'],$target,$body['column']);
     $kind = $target['kinds'][$body['column']] ?? 'text';
     if ($kind === 'time') $body['value'] = vitrine_time_input($body['value']) ?? $body['value'];
     $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','slot'=>'Слот','boolean'=>'TRUE/FALSE'];
@@ -110,7 +117,10 @@ function vitrine_save_cell(): never {
         }
         $body['value'] = $normalized;
     }
-    if (isset($body['paste']) && !$body['reset']) vitrine_validate_paste($body,$data,$current);
+    if (!$body['reset']) {
+        if (isset($body['paste'])) vitrine_validate_paste($body,$data,$current);
+        else vitrine_validate_single_line($body['value'],$current,$body['column']);
+    }
     $original = $current['originalValues'][$body['column']] ?? '';
     $statusId = null;
     if ($body['column']==='A' && !$body['reset'] && $body['value']!=='') {

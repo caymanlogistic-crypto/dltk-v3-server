@@ -265,9 +265,10 @@
     const panel = element('section', 'vitrine-editor');
     panel.setAttribute('role', 'dialog');
     const isSlot = cell.dataset.kind === 'slot';
+    const isSingleLine = cell.hasAttribute('data-single-line');
     const catalogEditor = ['B', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz';
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
-    if (isSlot || catalogEditor || catalog) {
+    if (isSlot || isSingleLine || catalogEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
     } else {
       const title = element('h2', 'vitrine-editor-title', dialogName);
@@ -280,7 +281,7 @@
     try { choices = JSON.parse(cell.dataset.choices || '[]'); } catch {}
     if (!Array.isArray(choices)) choices = [];
     const isStatus = cell.dataset.kind === 'status';
-    const useCustom = !isSlot && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
+    const useCustom = !isSlot && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
     const searchableClient = cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
@@ -291,7 +292,7 @@
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableClient});
     }
-    const field = control?.field || element(isSlot || cell.hasAttribute('data-single-line') ? 'input' : 'textarea', 'field-input');
+    const field = control?.field || element(isSlot || isSingleLine ? 'input' : 'textarea', 'field-input');
     field.classList.add('vitrine-editor-field');
     field.id = 'vitrine-editor-field';
     field.setAttribute('aria-label', 'Значение ячейки');
@@ -305,7 +306,7 @@
     if (draftType === 'password') field.type = 'password';
     if (draftType === 'email') field.inputMode = 'email';
     if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
-    field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : cell.hasAttribute('data-single-line') ? 160 : 20000;
+    field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : isSingleLine && catalog ? 160 : 20000;
     field.value = isSlot && firstCharacter !== null ? window.VitrineSlot.format(firstCharacter) : firstCharacter ?? initialValue;
     if (useCustom) field.dataset.customSelect = 'true';
     let orderField = null;
@@ -342,7 +343,7 @@
         field.disabled = requestField.checked;
       });
     } else panel.append(control?.element || field);
-    if (!isSlot && !catalog && !orderField) panel.append(element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить · Esc — отменить'));
+    if (!isSlot && !isSingleLine && !catalog && !orderField) panel.append(element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить · Esc — отменить'));
     const error = element('p', 'vitrine-editor-error');
     error.setAttribute('role', 'alert'); error.hidden = true; panel.append(error);
     const actions = element('div', 'vitrine-editor-actions');
@@ -369,7 +370,7 @@
       const directions = {ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[-1,0],ArrowDown:[1,0]};
       if (!directions[event.key] || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.isComposing || active?.saving) return;
       if (field.dataset.customSelect && (field.getAttribute('aria-expanded') === 'true' || event.key === 'ArrowDown' || event.key === 'ArrowUp')) return;
-      if (isSlot || orderField || cell.hasAttribute('data-single-line') || hasDraft(active)) return;
+      if (isSlot || orderField || isSingleLine || hasDraft(active)) return;
       event.preventDefault(); event.stopImmediatePropagation();
       close(); move(cell,...directions[event.key],false);
     }, true);
@@ -520,7 +521,7 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
-    if (catalog && cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line')
+    if (cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line')
       && !cell.hasAttribute('data-required-choice') && cell.dataset.choices === '[]'
       && !cell.hasAttribute('data-readonly-cell') && !event.defaultPrevented && !event.isComposing
       && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))
