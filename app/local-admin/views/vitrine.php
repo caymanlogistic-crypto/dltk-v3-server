@@ -9,6 +9,8 @@ $viewUrl = static fn(string $path): string => function_exists('app_url_path') ? 
 $currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Сотрудники','roles'=>'Роли','client-order-statuses'=>'Статусы клиентов'][$directory]] : workspace_table());
 $managementTable = $directory ? 'vyvoz' : $currentTable['slug'];
 $workspaceTables=workspace_tables();
+$canOpenStatuses = !$directory || in_array('vyvoz',array_column($workspaceTables,'slug'),true);
+$canViewClientColors = workspace_can('system','client-order-statuses','view');
 $preferences=empty($error) ? workspace_preferences($currentTable) : [];
 $defaultGridWidth = $currentTable['defaultGridWidth'] ?? 'full';
 $gridWidth = $preferences['settings']['layoutWidth'] ?? $defaultGridWidth;
@@ -84,7 +86,6 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=reports')) ?>">Сводные</a>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=catalogs&table='.$managementTable)) ?>">Управление справочниками</a>
           <?php if (!$directory): ?>
-          <a class="nav-sub-item" id="vitrine-open-statuses" href="#statuses">Статусы</a>
           <button class="nav-sub-item" type="button" id="workspace-new-row">Добавить строку</button>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>" id="workspace-row-history">История строки</a>
           <?php endif; ?>
@@ -101,14 +102,26 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <a class="nav-sub-item" href="#grid-width" data-display-open="width">Ширина блока</a>
         </div>
       </details>
+      <?php if ($canOpenStatuses || $canViewClientColors): ?>
+      <details class="vitrine-folder" id="vitrine-cell-colors">
+        <summary class="nav-item is-parent<?= $directory === 'client-order-statuses' ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Цвета ячеек</span><?= $navChevron ?></summary>
+        <div class="vitrine-dropdown" aria-label="Цвета ячеек">
+          <?php if ($canOpenStatuses): ?>
+          <a class="nav-sub-item"<?= !$directory ? ' id="vitrine-open-statuses"' : '' ?> href="<?= $escape($directory ? $viewUrl('/vitrine?table=vyvoz').'#statuses' : '#statuses') ?>">Статусы</a>
+          <?php endif; ?>
+          <?php if ($canViewClientColors): ?>
+          <a class="nav-sub-item<?= $directory === 'client-order-statuses' ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=client-order-statuses')) ?>"<?= $directory === 'client-order-statuses' ? ' aria-current="page"' : '' ?>>Клиенты</a>
+          <?php endif; ?>
+        </div>
+      </details>
+      <?php endif; ?>
       <details class="vitrine-folder" id="vitrine-catalogs">
-        <summary class="nav-item is-parent<?= $directory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
+        <summary class="nav-item is-parent<?= $directory && $directory !== 'client-order-statuses' ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
-          <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Сотрудники', 'roles'=>'Роли', 'client-order-statuses'=>'Статусы клиентов']; ?>
+          <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Сотрудники', 'roles'=>'Роли']; ?>
           <?php if (!workspace_client_grid_catalog()) unset($directoryLinks['clients']); ?>
           <?php if (!workspace_can('system','users','view')) unset($directoryLinks['employees']); ?>
           <?php if (!workspace_can('system','roles','view')) unset($directoryLinks['roles']); ?>
-          <?php if (!workspace_can('system','client-order-statuses','view')) unset($directoryLinks['client-order-statuses']); ?>
           <?php foreach ($directoryLinks as $key => $label): ?>
           <a class="nav-sub-item<?= $directory === $key ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog='.$key)) ?>"<?= $directory === $key ? ' aria-current="page"' : '' ?>><?= $escape($label) ?></a>
           <?php endforeach; ?>

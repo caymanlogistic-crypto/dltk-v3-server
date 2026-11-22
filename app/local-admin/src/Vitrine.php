@@ -98,7 +98,7 @@ function vitrine_save_cell(): never {
     $statusId = null;
     if ($body['column']==='A' && !$body['reset'] && $body['value']!=='') {
         foreach ($data['statuses'] as $status) if (vitrine_status_key($status['name'])===vitrine_status_key($body['value'])) { $statusId=$status['id']; $body['value']=$status['name']; }
-        if ($statusId===null && $body['value']!==$original && $body['value']!==($current['values']['A']??'')) throw new ApiError('unknown_status','Выберите статус из справочника или добавьте новый в «Справочники → Статусы».');
+        if ($statusId===null && $body['value']!==$original && $body['value']!==($current['values']['A']??'')) throw new ApiError('unknown_status','Выберите статус из справочника или добавьте новый в «Цвета ячеек → Статусы».');
     }
     $orderEdit=[];
     if (array_key_exists('orderStatus',$body)) {

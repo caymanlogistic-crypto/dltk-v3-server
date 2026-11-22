@@ -118,9 +118,10 @@
     event.preventDefault();
     if (document.querySelector('.vitrine-editor,.vitrine-time-inline')) { notify('Сначала сохраните правку ячейки или нажмите «Отмена».'); return; }
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder => { folder.open = false; });
-    makeDialog(); opener = trigger; title.textContent = 'Статусы'; body.replaceChildren(el('p','','Загружаю справочник…')); footer.replaceChildren(); formActive = false;
+    makeDialog(); opener = trigger.closest('details')?.querySelector('summary') || trigger; title.textContent = 'Статусы'; body.replaceChildren(el('p','','Загружаю справочник…')); footer.replaceChildren(); formActive = false;
     if (!dialog.open) dialog.showModal();
     try { await request(); if (dialog.open) renderList(); }
     catch (failure) { if (dialog.open) { notify(failure.message,'danger'); body.replaceChildren(); body.append(button('Повторить','btn-secondary',() => { close(); trigger.click(); })); } }
   });
+  if (trigger && location.hash === '#statuses') trigger.click();
 })();
