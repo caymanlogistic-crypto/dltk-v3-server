@@ -30,3 +30,5 @@
 @media(max-width:700px) {
   .vitrine .vitrine-catalog-search { margin-inline-start:0; }
 }
+
+.vitrine .vitrine-directory-field { display:grid; row-gap:6px; }

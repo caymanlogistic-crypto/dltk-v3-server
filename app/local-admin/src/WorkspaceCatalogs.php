@@ -35,6 +35,9 @@ function workspace_catalog_save(array $b): array {
                 throw new ApiError('duplicate_catalog','Это название уже использовалось для другого клиента.',409);
             }
         }
+        if ($catalog['kind']==='status' && $old && $old['active'] && !$active) {
+            workspace_assert_flight_status_unused($cid,$old);
+        }
         $beforeManager=$old&&$hasManager?(workspace_client_manager_values($cid)[$old['id']]??''):'';
         $managerChanged=$hasManager&&$beforeManager!==$manager;
         if($old&&$old['name']===$name&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged){workspace_db()->commit();return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}

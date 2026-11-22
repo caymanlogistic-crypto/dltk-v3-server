@@ -3,6 +3,7 @@ declare(strict_types=1);
 $employeePage = $directory === 'employees';
 $employeeScope = $employeePage ? workspace_employee_editor_scope() : null;
 $archive = $catalogGrid['archive'];
+$hasRowActions = $directory === 'flight-statuses' && $catalogGrid['canEdit'];
 ?>
 <section class="vitrine-catalog-toolbar" aria-label="Управление справочником">
   <h1><?= $escape($currentTable['title']) ?></h1>
@@ -20,9 +21,7 @@ $archive = $catalogGrid['archive'];
            aria-label="Поиск в справочнике" placeholder="<?= $employeePage ? 'ФИО, логин, email или роль' : ($directory === 'roles' ? 'Название роли' : 'Название статуса') ?>">
     <button class="btn" type="submit">Найти</button>
   </form>
-  <?php if ($directory === 'flight-statuses' && $catalogGrid['canEdit']): ?>
-  <button class="btn btn-primary" type="button" id="vitrine-open-statuses" data-status-table="<?= $escape($managementTable) ?>" data-add-only>Добавить статус</button>
-  <?php endif; ?>
+  <?php if ($hasRowActions) require __DIR__.'/vitrine-directory-row-actions.php'; ?>
   <?php if ($employeeScope): ?>
   <div class="vitrine-catalog-actions">
     <?php if (!$archive): ?><button class="btn btn-primary" type="button" id="employee-add">Добавить сотрудника</button><?php endif; ?>
@@ -30,6 +29,7 @@ $archive = $catalogGrid['archive'];
   </div>
   <?php endif; ?>
 </section>
+<?php if ($hasRowActions) require __DIR__.'/vitrine-directory-row-dialogs.php'; ?>
 <?php if ($employeeScope): ?>
 <dialog class="vitrine-catalog-dialog" id="employee-dialog" data-roles="<?= $escape(wjson(workspace_employee_role_options($employeeScope))) ?>" aria-labelledby="employee-dialog-title">
   <form>
