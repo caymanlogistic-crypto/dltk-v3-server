@@ -5,6 +5,11 @@ require_once __DIR__.'/WorkspaceClientCatalogGrid.php';
 require_once __DIR__.'/WorkspaceEmployees.php';
 require_once __DIR__.'/WorkspaceEmployeeGrid.php';
 require_once __DIR__.'/WorkspaceDirectoryGrid.php';
+require_once __DIR__.'/WorkspaceDirectoryActions.php';
+require_once __DIR__.'/WorkspaceRoleDirectory.php';
+require_once __DIR__.'/WorkspaceCatalogDirectory.php';
+require_once __DIR__.'/WorkspaceClientOrderStatuses.php';
+require_once __DIR__.'/WorkspaceFlightStatusGrid.php';
 require_once __DIR__.'/WorkspaceGridPreferences.php';
 
 function workspace_database_dsn(array $config): string {

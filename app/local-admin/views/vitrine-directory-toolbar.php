@@ -3,25 +3,36 @@ declare(strict_types=1);
 $employeePage = $directory === 'employees';
 $employeeScope = $employeePage ? workspace_employee_editor_scope() : null;
 $archive = $catalogGrid['archive'];
+$searchPlaceholder = match ($directory) {
+    'clients'=>'Клиент или менеджер',
+    'employees'=>'ФИО, логин, email или роль',
+    'roles'=>'Название роли',
+    'entries'=>'Поиск по справочнику',
+    default=>'Название статуса',
+};
+$searchLabel = $directory === 'clients' ? 'Поиск по клиенту или менеджеру' : 'Поиск в справочнике';
 ?>
-<section class="vitrine-catalog-toolbar" aria-label="Управление справочником">
-  <h1><?= $escape($currentTable['title']) ?></h1>
-  <?php if ($employeePage): ?>
-  <nav class="vitrine-catalog-tabs" aria-label="Записи справочника">
-    <a class="btn" href="<?= $escape($viewUrl('/vitrine?catalog=employees')) ?>"<?= !$archive ? ' aria-current="page"' : '' ?>>Активные</a>
-    <a class="btn" href="<?= $escape($viewUrl('/vitrine?catalog=employees&archive=1')) ?>"<?= $archive ? ' aria-current="page"' : '' ?>>Архив</a>
-  </nav>
-  <?php endif; ?>
+<section class="vitrine-catalog-toolbar" aria-label="Управление справочником"<?= isset($catalogGrid['id']) ? ' data-catalog-id="'.(int)$catalogGrid['id'].'"' : '' ?>>
+  <h1>Справочник: <strong><?= $escape($currentTable['title']) ?></strong></h1>
   <form class="vitrine-catalog-search" method="get" action="<?= $escape($viewUrl('/vitrine')) ?>">
     <input type="hidden" name="catalog" value="<?= $escape($directory) ?>">
+    <?php if ($directory === 'entries'): ?><input type="hidden" name="id" value="<?= (int)$catalogGrid['id'] ?>"><?php endif; ?>
+    <?php if ($directory === 'flight-statuses'): ?><input type="hidden" name="table" value="<?= $escape($managementTable) ?>"><?php endif; ?>
     <?php if ($archive): ?><input type="hidden" name="archive" value="1"><?php endif; ?>
     <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape($catalogGrid['search']) ?>"
-           aria-label="Поиск в справочнике" placeholder="<?= $employeePage ? 'ФИО, логин, email или роль' : 'Название роли' ?>">
-    <button class="btn" type="submit">Найти</button>
+           aria-label="<?= $escape($searchLabel) ?>" placeholder="<?= $escape($searchPlaceholder) ?>">
   </form>
+  <?php if ($catalogGrid['canEdit'] && !$archive && !empty($catalogGrid['syncLabel'])): ?>
+  <button class="btn" type="button" id="client-catalog-sync"><?= $escape($catalogGrid['syncLabel']) ?></button>
+  <?php endif; ?>
+  <?php if ($directory === 'entries' && !empty($catalogGrid['hasDetails'])): ?>
+  <button class="btn" type="button" data-directory-details>Реквизиты</button>
+  <?php if (!empty($catalogGrid['unkeyedCount'])): ?>
+  <button class="btn" type="button" data-directory-details data-unkeyed>Строки без названия (<?= (int)$catalogGrid['unkeyedCount'] ?>)</button>
+  <?php endif; ?>
+  <?php endif; ?>
   <?php if ($employeeScope): ?>
   <div class="vitrine-catalog-actions">
-    <?php if (!$archive): ?><button class="btn btn-primary" type="button" id="employee-add">Добавить сотрудника</button><?php endif; ?>
     <button class="btn btn-secondary" type="button" id="employee-edit" disabled>Изменить сотрудника</button>
   </div>
   <?php endif; ?>
@@ -41,5 +52,13 @@ $archive = $catalogGrid['archive'];
     </div>
     <footer class="modal-foot"><button class="btn btn-primary" type="submit">Сохранить</button><button class="btn btn-secondary" type="button" data-close>Отмена</button></footer>
   </form>
+</dialog>
+<?php endif; ?>
+
+<?php if ($directory === 'entries' && !empty($catalogGrid['hasDetails'])): ?>
+<dialog class="vitrine-catalog-dialog" data-directory-details-dialog aria-labelledby="directory-details-title">
+  <header class="modal-head"><h2 class="modal-title" id="directory-details-title">Реквизиты записи</h2></header>
+  <div class="modal-body"></div>
+  <footer class="modal-foot"><button class="btn btn-secondary" type="button" data-close autofocus>Закрыть</button></footer>
 </dialog>
 <?php endif; ?>

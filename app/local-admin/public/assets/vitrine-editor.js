@@ -2,8 +2,12 @@
 (() => {
   let active = null;
   const catalog = document.body.dataset.vitrineCatalog;
-  const scope = catalog ? 'catalog=' + encodeURIComponent(catalog) : 'table=' + encodeURIComponent(document.body.dataset.workspaceTable || 'vyvoz');
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+  const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
+  const orderLabels = Object.fromEntries(Object.entries(orderStatuses).map(([code,status])=>[status.label,code]));
+  function hasDraft(editor) {
+    return editor.field.value !== editor.initialValue || (editor.orderField && editor.orderField.value !== editor.initialOrder);
+  }
   function report(text, tone = 'warning') {
     window.PlanexNotifications.show({ tone, message:text });
   }
@@ -110,6 +114,11 @@
     if(Object.hasOwn(result,'referenceId'))cell.dataset.referenceId=String(result.referenceId||'');
     if(Object.hasOwn(result,'catalogId'))cell.dataset.catalogId=String(result.catalogId||'');
     cell.dataset.base = result.baseHash;
+    if (Object.hasOwn(result,'orderStatus')) {
+      cell.dataset.orderStatus = result.orderStatus;
+      cell.style.setProperty('--order-status-fill',orderStatuses[result.orderStatus]?.color || '');
+    }
+    if (result.orderFill) cell.style.setProperty('--order-status-fill',result.orderFill);
     if (cell.dataset.kind === 'status') {
       cell.dataset.statusId = result.statusId ?? '';
       cell.dataset.statusColor = result.statusColor ?? '';
@@ -127,14 +136,16 @@
       return;
     }
     cell.title = (result.edited ? 'Изменено в БД. ' : '') + 'Щелчок — изменить. ' + result.value;
+    if (cell.dataset.orderStatus) cell.title += ' · ' + (orderStatuses[cell.dataset.orderStatus]?.label || '');
     if (cell.dataset.kind === 'time') cell.title = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' + result.value;
   }
-  async function writeCell(cell, value, reset = false, paste = null, editAction = null) {
-    const response = await fetch(window.DltkPaths.path('/api/vitrine/cell?'+scope), {
+  async function writeCell(cell, value, reset = false, paste = null, editAction = null, orderStatus = undefined) {
+    if (cell.closest('[data-draft-slot]')) return window.VitrineDirectoryDrafts.write(cell,value);
+    const response = await fetch(window.VitrineGridScope.url('/api/vitrine/cell'), {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
       body:JSON.stringify({row:Number(cell.dataset.row),column:cell.dataset.column,value,
-        revision:Number(cell.dataset.revision || 0),baseHash:cell.dataset.base,reset,requestId:crypto.randomUUID(),editAction:editAction||(reset?'reset':paste?'paste':'edit'),...(paste ? {paste} : {})})
+        revision:Number(cell.dataset.revision || 0),baseHash:cell.dataset.base,reset,requestId:crypto.randomUUID(),editAction:editAction||(reset?'reset':paste?'paste':'edit'),...(paste ? {paste} : {}),orderStatus})
     });
     const result = await response.json();
     if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось сохранить ячейку.');
@@ -187,27 +198,39 @@
   async function save(reset = false, advance = null) {
     if (!active || active.saving) return;
     const editor = active;
+    const value = editor.resolveValue ? editor.resolveValue() : editor.field.value;
+    if (!reset && value === null) {
+      report('Выберите клиента из подсказок.','danger');
+      editor.field.focus();
+      return;
+    }
     editor.saving = true;
     editor.error.hidden = true;
     editor.buttons.forEach(button => { button.disabled = true; });
     editor.field.disabled = true;
+    if (editor.orderField) editor.orderField.disabled = true;
     editor.saveButton.textContent = 'Сохраняю…';
     editor.panel.setAttribute('aria-busy', 'true');
     const cell = editor.cell;
     const before = snapshot(cell);
     try {
-      const result = await writeCell(cell, editor.field.value, reset, reset ? null : editor.paste);
+      const result = await writeCell(cell, value, reset, reset ? null : editor.paste,null,!reset && editor.orderField ? (orderLabels[editor.orderField.value] || '') : undefined);
       applyResult(cell,result);
-      if (!reset && editor.paste) rememberPaste(before,result);
+      if (!reset && editor.paste && !result.draft) rememberPaste(before,result);
       editor.saving = false;
       close();
-      flash(cell);
+      if (result.draftSaved) {
+        await window.VitrineDirectoryDrafts.finish(cell,result.draftSaved);
+        return;
+      }
+      if (!result.draft) flash(cell);
       if (advance) move(cell, advance.row, advance.column);
-      if (reset || !editor.paste) report(reset ? 'Исходное значение восстановлено' : 'Локальная правка сохранена', 'success');
+      if (!result.draft && (reset || !editor.paste)) report(reset ? 'Исходное значение восстановлено' : 'Локальная правка сохранена', 'success');
     } catch (error) {
       editor.saving = false;
       editor.buttons.forEach(button => { button.disabled = false; });
       editor.field.disabled = false;
+      if (editor.orderField) editor.orderField.disabled = false;
       editor.saveButton.textContent = 'Сохранить';
       editor.panel.removeAttribute('aria-busy');
       editor.error.textContent = error instanceof TypeError ? 'Нет связи с сервером. Текст сохранён в поле — повторите попытку.' : error.message;
@@ -216,7 +239,7 @@
       editor.field.focus();
     }
   }
-  function open(cell) {
+  function open(cell, firstCharacter = null) {
     if (cell.hasAttribute('data-readonly-cell')) {
       report(cell.dataset.readonlyCell, 'info');
       return;
@@ -251,23 +274,47 @@
     if (!Array.isArray(choices)) choices = [];
     const isStatus = cell.dataset.kind === 'status';
     const useCustom = isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0;
+    const searchableClient = cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');
       const options = required ? [] : [{value:'',label:'Не выбран'}];
-      const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(value => ({value:String(value),label:String(value)}));
+      const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(option => option && typeof option === 'object' ? option : {value:String(option),label:String(option)});
       if (!required && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
       options.push(...items.filter(item => item.value !== ''));
-      control = window.VitrineSelect.create(options,cell.textContent);
+      control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableClient});
     }
-    const field = control?.field || element('textarea', 'field-input');
+    const field = control?.field || element(cell.hasAttribute('data-single-line') ? 'input' : 'textarea', 'field-input');
     field.classList.add('vitrine-editor-field');
     field.id = 'vitrine-editor-field';
     field.setAttribute('aria-label', 'Значение ячейки');
-    field.autocomplete = 'off'; field.maxLength = 20000; field.value = cell.textContent;
+    const draftType = cell.dataset.draftType;
+    const initialValue = draftType === 'password' ? window.VitrineDirectoryDrafts.secret(cell) : cell.textContent;
+    field.autocomplete = draftType === 'password' ? 'new-password' : 'off';
+    if (draftType === 'password') field.type = 'password';
+    if (draftType === 'email') field.inputMode = 'email';
+    if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
+    field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : cell.hasAttribute('data-single-line') ? 160 : 20000;
+    field.value = firstCharacter ?? initialValue;
     if (useCustom) field.dataset.customSelect = 'true';
-    panel.append(control?.element || field);
-    if (!catalog) panel.append(element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить и вниз · Shift+Enter — новая строка'));
+    let orderField = null;
+    if (cell.hasAttribute('data-order-status')) {
+      field.setAttribute('aria-label','Клиент');
+      const clientGroup = element('div','vitrine-editor-order-field');
+      clientGroup.append(element('div','field-label','Клиент'),control?.element || field);
+      panel.append(clientGroup);
+      const options = [{value:'',label:'Без статуса'},...Object.values(orderStatuses).map(status=>({
+        value:status.label,label:status.label,color:status.color
+      }))];
+      const picker = window.VitrineSelect.create(options,orderStatuses[cell.dataset.orderStatus]?.label || '');
+      orderField = picker.field;
+      orderField.setAttribute('aria-label','Статус заказа');
+      orderField.classList.add('vitrine-editor-field');
+      const statusGroup = element('div','vitrine-editor-order-field');
+      statusGroup.append(element('div','field-label','Статус заказа'),picker.element);
+      panel.append(statusGroup);
+    } else panel.append(control?.element || field);
+    if (!catalog && !orderField) panel.append(element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить и вниз · Shift+Enter — новая строка'));
     const error = element('p', 'vitrine-editor-error');
     error.setAttribute('role', 'alert'); error.hidden = true; panel.append(error);
     const actions = element('div', 'vitrine-editor-actions');
@@ -278,7 +325,7 @@
     saveButton.addEventListener('click', () => save());
     cancelButton.addEventListener('click', close);
     actions.append(saveButton, cancelButton);
-    if (cell.classList.contains('local-edited')) {
+    if (!orderField && cell.classList.contains('local-edited')) {
       const resetButton = element('button', 'btn btn-secondary vitrine-editor-reset', 'Исходное');
       resetButton.type = 'button'; resetButton.addEventListener('click', () => save(true));
       buttons.push(resetButton); actions.append(resetButton);
@@ -287,22 +334,22 @@
     document.body.append(panel);
     cell.classList.add('is-editing');
     select(cell);
-    active = { panel, cell, field, initialValue:field.value, buttons, saveButton, error, saving:false };
+    active = { panel, cell, field, initialValue, orderField, initialOrder:orderField?.value, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
     window.dispatchEvent(new CustomEvent('vitrine-editor-opened',{detail:{row:Number(cell.dataset.row),column:cell.dataset.column}}));
     table?.classList.add('has-editor');
     panel.addEventListener('keydown', event => {
       const directions = {ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[-1,0],ArrowDown:[1,0]};
       if (!directions[event.key] || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.isComposing || active?.saving) return;
       if (field.dataset.customSelect && (field.getAttribute('aria-expanded') === 'true' || event.key === 'ArrowDown' || event.key === 'ArrowUp')) return;
-      if (field.value !== active.initialValue) return;
+      if (orderField || cell.hasAttribute('data-single-line') || hasDraft(active)) return;
       event.preventDefault(); event.stopImmediatePropagation();
       close(); move(cell,...directions[event.key],false);
     }, true);
     panel.addEventListener('keydown', event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
-      if (event.key === 'Enter' && event.target === field && !event.shiftKey && !event.isComposing) { event.preventDefault(); save(false,{row:1,column:0}); }
+      if (event.key === 'Enter' && (event.target === field || event.target === orderField) && !event.shiftKey && !event.isComposing) { event.preventDefault(); save(false,{row:1,column:0}); }
       if (event.key === 'Tab') {
-        const focusable = [field, ...buttons].filter(node => !node.disabled);
+        const focusable = [field, orderField, ...buttons].filter(node => node && !node.disabled);
         const first = focusable[0], last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
@@ -310,7 +357,8 @@
     });
     field.addEventListener('input',fitEditor);
     fitEditor(); field.focus();
-    field.setSelectionRange(field.value.length, field.value.length);
+    if (searchableClient) field.select();
+    else field.setSelectionRange(field.value.length, field.value.length);
   }
   window.addEventListener('vitrine-statuses-updated', event => {
     const statuses = event.detail.statuses;
@@ -348,7 +396,7 @@
   });
   document.addEventListener('click', event => {
     if (!active || active.panel.contains(event.target) || active.cell.contains(event.target)) return;
-    if (!active.saving && active.field.value === active.initialValue) {
+    if (!active.saving && !hasDraft(active)) {
       close();
       return;
     }
@@ -443,6 +491,17 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
+    if (catalog && cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line')
+      && !cell.hasAttribute('data-required-choice') && cell.dataset.choices === '[]'
+      && !cell.hasAttribute('data-readonly-cell') && !event.defaultPrevented && !event.isComposing
+      && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))
+      && /^\S$/u.test(event.key)) {
+      event.preventDefault();
+      const startTyping = target => open(target,event.key);
+      if (window.VitrineRows && !cell.isConnected) window.VitrineRows.activate(cell,startTyping);
+      else startTyping(cell);
+      return;
+    }
     if (cell.dataset.kind === 'time' && /^[0-9]$/.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault(); if(window.VitrineRows&&!cell.isConnected)window.VitrineRows.activate(cell,next=>editTime(next,event.key));else editTime(cell,event.key); return;
     }
@@ -463,17 +522,22 @@
   document.addEventListener('copy', event => {
     const cell = eventCell(event);
     if (active || !cell || !event.clipboardData) return;
-    copied = {row:Number(cell.dataset.row),column:cell.dataset.column,revision:Number(cell.dataset.revision),baseHash:cell.dataset.base,value:cell.textContent};
+    copied = cell.closest('[data-draft-slot]') ? null : {row:Number(cell.dataset.row),column:cell.dataset.column,revision:Number(cell.dataset.revision),baseHash:cell.dataset.base,value:cell.textContent};
     event.preventDefault(); event.clipboardData.setData('text/plain',cell.textContent);
-    event.clipboardData.setData('application/x-dltk-cell',JSON.stringify(copied));
+    if (copied) event.clipboardData.setData('application/x-dltk-cell',JSON.stringify(copied));
   });
   document.addEventListener('paste', async event => {
     let cell = eventCell(event);
     const inEditor = active && event.target === active.field;
     if ((!cell && !inEditor) || !event.clipboardData) return;
+    if (inEditor && (active.field.getAttribute('aria-autocomplete') === 'list' || active.cell.closest('[data-draft-slot]'))) return;
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
+    if (!inEditor && target.dataset.draftType === 'password') {
+      report('Откройте поле пароля для вставки.','info');
+      return;
+    }
     if (target.dataset.derivedSource) { notifyDerivedCell(); return; }
     if (target.hasAttribute('data-readonly-cell')) { report(target.dataset.readonlyCell, 'info'); return; }
     if (pendingCells.has(target) || active?.saving) { report('Дождитесь сохранения ячейки.'); return; }
@@ -486,7 +550,7 @@
     if (inEditor) {
       const editor = active;
       try {
-        const response = await fetch(window.DltkPaths.path('/api/vitrine/paste-check?'+scope),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
+        const response = await fetch(window.VitrineGridScope.url('/api/vitrine/paste-check'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
         const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'Не удалось проверить формат.');
         if (active !== editor) return;
         if (active.field.dataset.customSelect) active.field.value = value;
@@ -500,8 +564,10 @@
     pendingCells.add(target); target.setAttribute('aria-busy','true');
     const before = snapshot(target);
     try {
-      const result = await writeCell(target,value,false,paste); applyResult(target,result); flash(target);
-      rememberPaste(before,result);
+      const result = await writeCell(target,value,false,paste);
+      applyResult(target,result);
+      if (result.draftSaved) await window.VitrineDirectoryDrafts.finish(target,result.draftSaved);
+      if (!result.draft) { flash(target); rememberPaste(before,result); }
     } catch(error) { report(error instanceof TypeError ? 'Нет связи с сервером. Вставка не выполнена.' : error.message,'danger'); }
     finally { pendingCells.delete(target); target.removeAttribute('aria-busy'); target.focus({preventScroll:true}); }
   });

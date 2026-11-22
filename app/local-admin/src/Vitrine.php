@@ -61,8 +61,11 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
 
 function vitrine_paste_check(): never {
     $directory = vitrine_directory_requested();
+    if ($directory === 'entries') workspace_catalog_directory_cell(true);
     if ($directory === 'clients') workspace_client_grid_endpoint(true);
     if ($directory === 'employees') workspace_employee_grid_endpoint(true);
+    if ($directory === 'client-order-statuses') workspace_client_order_status_grid_endpoint(true);
+    if ($directory === 'flight-statuses') workspace_flight_status_grid_endpoint(true);
     if ($directory !== null) throw new ApiError('readonly','Запись доступна только для просмотра.',403);
     if ($_SERVER['REQUEST_METHOD']!=='POST') throw new ApiError('method','Метод не поддерживается.',405);
     $body=json_decode((string)file_get_contents('php://input',false,null,0,100000),true);
@@ -76,8 +79,15 @@ function vitrine_paste_check(): never {
 
 function vitrine_save_cell(): never {
     $directory = vitrine_directory_requested();
+    if ($directory !== null && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+        $directoryBody = wbody();
+        if (isset($directoryBody['action'])) workspace_directory_rows_endpoint($directory,$directoryBody);
+    }
+    if ($directory === 'entries') workspace_catalog_directory_cell();
     if ($directory === 'clients') workspace_client_grid_endpoint();
     if ($directory === 'employees') workspace_employee_grid_endpoint();
+    if ($directory === 'client-order-statuses') workspace_client_order_status_grid_endpoint();
+    if ($directory === 'flight-statuses') workspace_flight_status_grid_endpoint();
     if ($directory !== null) throw new ApiError('readonly','Запись доступна только для просмотра.',403);
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method','Метод не поддерживается.',405);
     $raw = file_get_contents('php://input', false, null, 0, 100000);
@@ -98,9 +108,20 @@ function vitrine_save_cell(): never {
     $statusId = null;
     if ($body['column']==='A' && !$body['reset'] && $body['value']!=='') {
         foreach ($data['statuses'] as $status) if (vitrine_status_key($status['name'])===vitrine_status_key($body['value'])) { $statusId=$status['id']; $body['value']=$status['name']; }
-        if ($statusId===null && $body['value']!==$original && $body['value']!==($current['values']['A']??'')) throw new ApiError('unknown_status','Выберите статус из справочника или добавьте новый в «Справочники → Статусы».');
+        if ($statusId===null && $body['value']!==$original && $body['value']!==($current['values']['A']??'')) throw new ApiError('unknown_status','Выберите статус из справочника или добавьте новый в «Цвета ячеек → Статусы».');
     }
-    $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'']);
+    $orderEdit=[];
+    if (array_key_exists('orderStatus',$body)) {
+        $code=$body['orderStatus'];
+        if ($body['column']!=='B' || !isset(vitrine_catalog_links($data['table'])['B']) || !workspace_client_order_status_can_view($data['table'])) {
+            throw new ApiError('invalid_order_status','Статус заказа доступен в поле B «Клиент».',403);
+        }
+        if (!is_string($code) || ($code!=='' && !isset(workspace_active_client_order_statuses()[$code]))) {
+            throw new ApiError('invalid_order_status','Выберите статус из справочника.');
+        }
+        $orderEdit=['orderStatus'=>$code];
+    }
+    $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'']+$orderEdit);
     $statusColor = null; $resultStatusId = null;
     if ($body['column']==='A') foreach ($data['statuses'] as $status) if (vitrine_status_key($status['name'])===vitrine_status_key($result['value'])) { $statusColor=$status['color']; $resultStatusId=$status['id']; }
     json_response($result + ['original'=>$original,'baseHash'=>$current['baseHash'],'conflict'=>false,'statusColor'=>$statusColor,'statusId'=>$resultStatusId]);

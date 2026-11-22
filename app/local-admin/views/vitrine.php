@@ -5,16 +5,27 @@ $currentUser=workspace_current_user();
 $directory = $directory ?? null;
 $clientCatalog = $directory === 'clients';
 $catalogGrid = $data['catalogGrid'] ?? null;
+$canManageDirectory = $catalogGrid['canEdit'] ?? false;
+$showDraftRows = $canManageDirectory && !$catalogGrid['archive'];
 $viewUrl = static fn(string $path): string => function_exists('app_url_path') ? app_url_path($path) : $path;
-$currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Сотрудники','roles'=>'Роли'][$directory]] : workspace_table());
-$managementTable = $directory ? 'vyvoz' : $currentTable['slug'];
+$currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Сотрудники','roles'=>'Роли','client-order-statuses'=>'Статусы клиентов','flight-statuses'=>'Статусы рейса','entries'=>'Справочник'][$directory]] : workspace_table());
+$managementTable = $currentTable['sourceTable'] ?? ($directory ? 'vyvoz' : $currentTable['slug']);
+$directoryUrl = $catalogGrid ? '/vitrine?catalog='.$directory.match ($directory) {
+    'entries' => '&id='.$catalogGrid['id'],
+    'flight-statuses' => '&table='.$managementTable,
+    default => '',
+} : null;
 $workspaceTables=workspace_tables();
+$canOpenStatuses = !$directory || in_array('vyvoz',array_column($workspaceTables,'slug'),true);
+$canViewClientColors = workspace_can('system','client-order-statuses','view');
 $preferences=empty($error) ? workspace_preferences($currentTable) : [];
 $defaultGridWidth = $currentTable['defaultGridWidth'] ?? 'full';
 $gridWidth = $preferences['settings']['layoutWidth'] ?? $defaultGridWidth;
 $columns = $data['columns'] ?? [];
 $rows = $data['rows'] ?? [];
 $columnClass = static fn(array $column): string => mb_strtolower(trim($column['label'])) === 'время' ? ' vitrine-time-column' : '';
+$navFolder = '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2H5a2 2 0 0 1 -2 -2V6a2 2 0 0 1 2 -2z"/></svg>';
+$navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6 -6 6"/></svg>';
 ?>
 <!doctype html>
 <html lang="ru">
@@ -24,6 +35,7 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
   <meta name="color-scheme" content="light">
   <meta name="csrf-token" content="<?= $escape(csrf_token()) ?>">
   <meta id="vitrine-status-data" name="vitrine-status-data" content="<?= $escape(json_encode(['statuses'=>$data['statuses'] ?? [], 'palette'=>$data['palette'] ?? []], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE)) ?>">
+  <meta id="vitrine-order-statuses" content="<?= $escape(wjson(workspace_active_client_order_statuses())) ?>">
   <meta id="vitrine-row-manifest" name="vitrine-row-manifest" content="<?= $escape(json_encode($data['rowIds'] ?? [])) ?>">
   <meta id="workspace-preferences" name="workspace-preferences" content="<?= $escape(wjson($preferences)) ?>">
   <meta name="workspace-event-cursor" content="<?= (int)$eventCursor ?>">
@@ -56,8 +68,12 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
   <?php endif; ?>
   <?php if ($directory): ?>
   <link rel="stylesheet" href="<?= $escape($viewUrl('/assets/vitrine-catalog.css')) ?>">
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-search.js')) ?>"></script>
   <?php endif; ?>
-  <?php if ($clientCatalog): ?>
+  <?php if ($canManageDirectory): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js')) ?>"></script>
+  <?php endif; ?>
+  <?php if ($clientCatalog || $directory === 'entries'): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-catalog.js')) ?>"></script>
   <?php elseif ($directory === 'employees'): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-employees.js')) ?>"></script>
@@ -71,17 +87,19 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
     <nav class="vitrine-topnav" aria-label="Основная навигация">
       <div class="vitrine-nav-start">
       <?php foreach($workspaceTables as $table): ?>
-        <a class="nav-item <?= $currentTable['id']===$table['id']?'is-active':'' ?>" href="<?= htmlspecialchars(app_url_path('/vitrine?table='),ENT_QUOTES,'UTF-8') ?><?= $escape($table['slug']) ?>" title="<?= $escape($table['title']) ?>"><span class="nav-label"><?= $escape($table['title']) ?></span></a>
+        <a class="nav-item <?= $currentTable['id']===$table['id']?'is-active':'' ?>" href="<?= htmlspecialchars(app_url_path('/vitrine?table='),ENT_QUOTES,'UTF-8') ?><?= $escape($table['slug']) ?>" title="<?= $escape($table['title']) ?>"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 10h18M10 3v18"/></svg><span class="nav-label"><?= $escape($table['title']) ?></span></a>
       <?php endforeach; ?>
       </div>
       <details class="vitrine-folder">
-        <summary class="nav-item is-parent"><span class="nav-label">Система</span></summary>
+        <summary class="nav-item is-parent"><?= $navFolder ?><span class="nav-label">Система</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown">
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>">Журнал изменений</a>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=reports')) ?>">Сводные</a>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=catalogs&table='.$managementTable)) ?>">Управление справочниками</a>
+          <?php if ($directoryUrl): ?>
+          <a class="nav-sub-item" href="<?= $escape($viewUrl($directoryUrl.($catalogGrid['archive'] ? '' : '&archive=1'))) ?>"><?= $catalogGrid['archive'] ? 'Вернуться к справочнику' : 'Архив справочника' ?></a>
+          <?php endif; ?>
           <?php if (!$directory): ?>
-          <a class="nav-sub-item" id="vitrine-open-statuses" href="#statuses">Статусы</a>
           <button class="nav-sub-item" type="button" id="workspace-new-row">Добавить строку</button>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>" id="workspace-row-history">История строки</a>
           <?php endif; ?>
@@ -90,7 +108,7 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
         </div>
       </details>
       <details class="vitrine-folder" id="vitrine-display-menu">
-        <summary class="nav-item is-parent"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7V4h6l2 3h10v13H3z"/></svg><span class="nav-label">Отображение данных</span><svg class="vitrine-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></summary>
+        <summary class="nav-item is-parent"><?= $navFolder ?><span class="nav-label">Отображение данных</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Отображение данных">
           <a class="nav-sub-item" href="#column-order" data-display-open="columns">Порядок столбцов</a>
           <a class="nav-sub-item" href="#color-presets" data-display-open="colors">Цветовые пресеты</a>
@@ -98,8 +116,21 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
           <a class="nav-sub-item" href="#grid-width" data-display-open="width">Ширина блока</a>
         </div>
       </details>
+      <?php if ($canOpenStatuses || $canViewClientColors): ?>
+      <details class="vitrine-folder" id="vitrine-cell-colors">
+        <summary class="nav-item is-parent<?= in_array($directory,['client-order-statuses','flight-statuses'],true) ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Цвета ячеек</span><?= $navChevron ?></summary>
+        <div class="vitrine-dropdown" aria-label="Цвета ячеек">
+          <?php if ($canOpenStatuses): ?>
+          <a class="nav-sub-item<?= $directory === 'flight-statuses' ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=flight-statuses&table='.$managementTable)) ?>"<?= $directory === 'flight-statuses' ? ' aria-current="page"' : '' ?>>Статусы</a>
+          <?php endif; ?>
+          <?php if ($canViewClientColors): ?>
+          <a class="nav-sub-item<?= $directory === 'client-order-statuses' ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=client-order-statuses')) ?>"<?= $directory === 'client-order-statuses' ? ' aria-current="page"' : '' ?>>Клиенты</a>
+          <?php endif; ?>
+        </div>
+      </details>
+      <?php endif; ?>
       <details class="vitrine-folder" id="vitrine-catalogs">
-        <summary class="nav-item is-parent"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7V4h6l2 3h10v13H3z"/></svg><span class="nav-label">Справочники</span><svg class="vitrine-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></summary>
+        <summary class="nav-item is-parent<?= $directory && !in_array($directory,['client-order-statuses','flight-statuses'],true) ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
           <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Сотрудники', 'roles'=>'Роли']; ?>
           <?php if (!workspace_client_grid_catalog()) unset($directoryLinks['clients']); ?>
@@ -116,8 +147,11 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
     <?php if (!empty($error)): ?>
     <section class="vitrine-message" role="alert"><h2>Не удалось загрузить таблицу</h2><p><?= $escape($error) ?></p><p>Обновите страницу, чтобы повторить загрузку.</p></section>
     <?php else: ?>
-    <?php if ($clientCatalog): require __DIR__.'/vitrine-client-toolbar.php';
-    elseif ($directory): require __DIR__.'/vitrine-directory-toolbar.php'; endif; ?>
+    <?php if ($directory) require __DIR__.'/vitrine-directory-toolbar.php';
+    if ($canManageDirectory) {
+        require __DIR__.'/vitrine-directory-row-actions.php';
+        require __DIR__.'/vitrine-directory-row-dialogs.php';
+    } ?>
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
       <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
@@ -138,8 +172,9 @@ $columnClass = static fn(array $column): string => mb_strtolower(trim($column['l
           <tbody id="vitrine-rows">
           <?php require __DIR__.'/vitrine-rows.php'; ?>
           </tbody>
+          <?php if ($showDraftRows) require __DIR__.'/vitrine-directory-drafts.php'; ?>
         </table>
-        <div class="vitrine-message vitrine-empty" id="vitrine-empty" <?= count($rows) ? 'hidden' : '' ?> role="status"><?= ($catalogGrid ? $catalogGrid['search'] !== '' : count($rows) > 0) ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.' ?></div>
+        <div class="vitrine-message vitrine-empty" id="vitrine-empty" <?= count($rows) || ($showDraftRows && $catalogGrid['search'] === '') ? 'hidden' : '' ?> role="status"><?= ($catalogGrid ? $catalogGrid['search'] !== '' : count($rows) > 0) ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.' ?></div>
       </div>
     </section>
     </div>

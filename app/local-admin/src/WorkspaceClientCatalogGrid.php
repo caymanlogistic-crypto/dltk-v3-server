@@ -50,12 +50,12 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
         $rows[] = [
             'rowIndex'=>$entryId, 'rowLabel'=>count($rowIds), 'values'=>$values,
             'originalValues'=>$values, 'baseHash'=>workspace_client_grid_hash($entryId),
-            'kinds'=>$kinds, 'edits'=>['A'=>$version, 'B'=>$version],
+            'kinds'=>$kinds, 'rowActions'=>$canEdit, 'singleLine'=>['A'=>true,'B'=>true], 'edits'=>['A'=>$version, 'B'=>$version],
         ];
     }
     $syncLabel = $canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($catalogId) : null;
     return [
-        'catalogGrid'=>['id'=>$catalogId, 'archive'=>$archive, 'search'=>$search, 'canEdit'=>$canEdit, 'syncLabel'=>$syncLabel],
+        'catalogGrid'=>['id'=>$catalogId, 'archive'=>$archive, 'search'=>$search, 'canEdit'=>$canEdit, 'syncLabel'=>$syncLabel, 'draftFields'=>workspace_directory_draft_fields('clients')],
         'table'=>$table,
         'sheetTitle'=>$table['title'],
         'columns'=>$table['columns'],

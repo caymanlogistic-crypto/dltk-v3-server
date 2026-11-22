@@ -3,6 +3,21 @@
   const table=document.querySelector('.vitrine-table'),body=document.getElementById('vitrine-rows'),scroll=document.querySelector('.vitrine-table-scroll');
   if(!table||!body||!scroll)return;
   let ids=[];try{ids=JSON.parse(document.getElementById('vitrine-row-manifest').content);}catch{}
+  const drafts=Array.from(document.querySelectorAll('[data-draft-slot]'));
+  const empty=document.getElementById('vitrine-empty');
+  const search=document.querySelector('.vitrine-catalog-search input[type="search"]');
+  let appliedSearch=search?.value.trim() ?? '', requestedSearch=appliedSearch;
+  const draftIndex=cell=>drafts.indexOf(cell.closest?.('[data-draft-slot]'));
+  const rowIndex=cell=>positions.get(cell.dataset.row) ?? ids.length+draftIndex(cell);
+  function setCounts() {
+    table.dataset.totalRows=String(ids.length);
+    table.setAttribute('aria-rowcount',String(ids.length+drafts.length+1));
+    drafts.forEach((row,index)=>row.setAttribute('aria-rowindex',String(ids.length+index+2)));
+    if (empty && search) {
+      empty.hidden = ids.length>0 || (drafts.length>0 && !appliedSearch);
+      empty.textContent = appliedSearch ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.';
+    }
+  }
   const positions=new Map(ids.map((id,index)=>[String(id),index]));
   const remotePatches=new Map(),catalogPatches=new Map();
   const pageSize=100,cache=new Map(),loaded=new Map(),pending=new Map();
@@ -12,7 +27,8 @@
   let height=initial[0]?.getBoundingClientRect().height||32,headHeight=table.querySelector('thead').getBoundingClientRect().height,generation=0,frame=0,first=-1,last=-1,navigation=null,navigationGeneration=0,mounts=0,lastScrollTop=scroll.scrollTop,manifestVersion=0;
   const top=document.createElement('tr'),bottom=document.createElement('tr');
   for(const spacer of [top,bottom]){spacer.dataset.virtualSpacer='';spacer.setAttribute('aria-hidden','true');const cell=document.createElement('td');cell.colSpan=table.querySelectorAll('thead th:not([hidden])').length;spacer.append(cell);}
-  table.setAttribute('aria-rowcount',String(ids.length+1));table.setAttribute('aria-colcount',String(table.querySelectorAll('thead th').length));table.dataset.totalRows=String(ids.length);
+  setCounts();
+  table.setAttribute('aria-colcount',String(table.querySelectorAll('thead th').length));
   function report(error){window.PlanexNotifications.show({tone:'danger',message:error.message||'Не удалось загрузить строки. Повторите прокрутку.'});}
   function prune(){
     while(loaded.size>3){const page=loaded.keys().next().value;loaded.delete(page);for(const id of ids.slice(page*pageSize,(page+1)*pageSize)){const row=cache.get(id);if(row&&!row.isConnected)cache.delete(id);}}
@@ -25,7 +41,7 @@
       const version=manifestVersion;
       const wanted=ids.slice(number*pageSize,(number+1)*pageSize);
       if(!wanted.length)return;
-      const response=await fetch(window.VitrineGridScope.url('/api/vitrine/rows',{rowFilters:true,ids:wanted}),{credentials:'same-origin'});
+      const response=await fetch(window.VitrineGridScope.url('/api/vitrine/rows',{rowFilters:true,ids:wanted,search:appliedSearch}),{credentials:'same-origin'});
       const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось загрузить строки.');
       if(version!==manifestVersion){queue();return;}
       if(!Array.isArray(result.rowIds)||typeof result.html!=='string')throw new Error('Не удалось прочитать строки таблицы.');
@@ -34,7 +50,7 @@
         ids=ids.filter(id=>!missing.has(id));positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         for(const id of missing)cache.delete(id);
         loaded.clear();manifestVersion++;generation++;navigationGeneration++;navigation=null;first=last=-1;
-        table.dataset.totalRows=String(ids.length);table.setAttribute('aria-rowcount',String(ids.length+1));table.removeAttribute('aria-busy');
+        setCounts();table.removeAttribute('aria-busy');
         queue();return;
       }
       const template=document.createElement('template');template.innerHTML='<table><tbody>'+result.html+'</tbody></table>';
@@ -94,6 +110,10 @@
     else if((index+1)*height>scroll.scrollTop+available)scroll.scrollTop=Math.max(0,(index+1)*height-available);
   }
   async function activate(cell,action){
+    if(draftIndex(cell)>=0){
+      window.VitrineGrid.select(cell);cell.focus({preventScroll:true});window.VitrineGrid.reveal(cell);action?.(cell);
+      return cell;
+    }
     const index=positions.get(cell.dataset.row);if(index===undefined)return null;
     const ticket=++navigationGeneration;
     await page(Math.floor(index/pageSize));if(ticket!==navigationGeneration)return null;
@@ -103,7 +123,14 @@
     return target;
   }
   function go(cell,r,c){
-    const columns=visibleColumns();if(r<0||r>=ids.length||c<0||c>=columns.length)return false;
+    const columns=visibleColumns();if(r<0||r>=ids.length+drafts.length||c<0||c>=columns.length)return false;
+    if(r>=ids.length){
+      const target=drafts[r-ids.length].querySelector('td[data-column="'+columns[c]+'"]');
+      if(!target)return false;
+      navigationGeneration++;
+      activate(target);
+      return true;
+    }
     navigation={r,c};const ticket=++navigationGeneration;
     const ready=cache.get(ids[r])?.querySelector('td[data-column="'+columns[c]+'"]');
     if(ready?.isConnected){
@@ -154,23 +181,36 @@
     refreshTask=(async()=>{
       do{
         refreshAgain=false;
-        const response=await fetch(window.VitrineGridScope.url('/api/workspace/manifest',{rowFilters:true}),{credentials:'same-origin'});
-        const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось обновить список строк.');
+        const query=requestedSearch;
+        const response=await fetch(window.VitrineGridScope.url('/api/workspace/manifest',{rowFilters:true,search:query}),{credentials:'same-origin'});
+        if(query!==requestedSearch){refreshAgain=true;continue;}
+        const result=await response.json();
+        if(query!==requestedSearch){refreshAgain=true;continue;}
+        if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось обновить список строк.');
         if(!Array.isArray(result.rowIds)||result.rowIds.some(id=>!Number.isInteger(id)))throw new Error('Некорректный список строк.');
         if(window.VitrineGrid?.editing()){manifestDeferred=true;return;}
         const next=[...new Set(result.rowIds)];
-        if(next.join(',')===ids.join(','))continue;
-        const anchorIndex=Math.min(ids.length-1,Math.max(0,Math.floor(scroll.scrollTop/height))),anchor=ids[anchorIndex],offset=scroll.scrollTop-anchorIndex*height;
+        const searchChanged=query!==appliedSearch;
+        if(!searchChanged && next.join(',')===ids.join(','))continue;
+        const anchorIndex=Math.max(0,Math.min(ids.length-1,Math.floor(scroll.scrollTop/height)));
+        const anchor=ids[anchorIndex],offset=scroll.scrollTop-anchorIndex*height;
         const chosen=table.querySelector('td.is-current-cell'),chosenRow=chosen?.dataset.row,chosenColumn=chosen?.dataset.column;
         ids=next;positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         manifestVersion++;generation++;navigationGeneration++;navigation=null;pending.clear();loaded.clear();first=last=-1;
-        const allowed=new Set(ids);for(const [id,row] of cache)if(!allowed.has(id)){row.remove();cache.delete(id);}
-        table.dataset.totalRows=String(ids.length);table.setAttribute('aria-rowcount',String(ids.length+1));
-        const newAnchor=positions.has(String(anchor))?positions.get(String(anchor)):Math.min(Math.max(anchorIndex,0),Math.max(ids.length-1,0));
-        scroll.scrollTop=Math.max(0,newAnchor*height+offset);
+        const allowed=new Set(ids);
+        for(const [id,row] of cache)if(searchChanged||!allowed.has(id)){row.remove();cache.delete(id);}
+        if(searchChanged){
+          appliedSearch=query;
+          const url=new URL(location.href);
+          if(query)url.searchParams.set('q',query);else url.searchParams.delete('q');
+          history.replaceState(history.state,'',url);
+        }
+        setCounts();
+        const newAnchor=searchChanged?0:positions.get(String(anchor))??Math.min(anchorIndex,Math.max(ids.length-1,0));
+        scroll.scrollTop=searchChanged?0:Math.max(0,newAnchor*height+offset);
         await render(newAnchor);
-        if(chosenRow&&!positions.has(chosenRow)){
-          const candidate=body.querySelector('td[data-column="'+chosenColumn+'"]:not([hidden])')||body.querySelector('td[data-column]:not([hidden])');
+        if(chosenRow&&!chosen?.closest('[data-draft-slot]')&&!positions.has(chosenRow)){
+          const candidate=body.querySelector('td[data-column="'+chosenColumn+'"]:not([hidden])')||table.querySelector('tbody td[data-edit-cell]:not([hidden])');
           if(candidate)window.VitrineGrid?.select(candidate);
         }
       }while(refreshAgain);
@@ -180,6 +220,10 @@
   window.addEventListener('vitrine-editor-closed',()=>{if(manifestDeferred){manifestDeferred=false;refreshManifest().catch(report);}});
   window.VitrineRows=Object.freeze({
     refreshManifest,
+    filterDirectory(query){
+      requestedSearch=query;
+      if(query!==appliedSearch||refreshTask)return refreshManifest();
+    },
     catalogPatch(patch){
       if(!patch.catalogId||!patch.id||typeof patch.name!=='string')return;
       const key=patch.catalogId+':'+patch.id,old=catalogPatches.get(key);
@@ -190,8 +234,8 @@
     patch(patch){const key=patch.row+':'+patch.column,old=remotePatches.get(key);if(!old||Number(old.revision)<Number(patch.revision))remotePatches.set(key,patch);const row=cache.get(Number(patch.row));applyPatch(row,patch);for(const item of catalogPatches.values())applyCatalogPatch(row,item);},
     activate:(cell,action)=>activate(cell,action).catch(report),
     resolveCell:cell=>cache.get(Number(cell.dataset.row))?.querySelector('td[data-column="'+cell.dataset.column+'"]')||cell,
-    move(cell,dr,dc,wrap){const columns=visibleColumns();let r=(navigation?.r??positions.get(cell.dataset.row))+dr,c=(navigation?.c??columns.indexOf(cell.dataset.column))+dc;if(wrap&&c<0){r--;c=columns.length-1;}if(wrap&&c>=columns.length){r++;c=0;}return go(cell,r,c);},
-    edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?ids.length-1:0):positions.get(cell.dataset.row),end?columns.length-1:0);},
+    move(cell,dr,dc,wrap){const columns=visibleColumns();let r=(navigation?.r??rowIndex(cell))+dr,c=(navigation?.c??columns.indexOf(cell.dataset.column))+dc;if(wrap&&c<0){r--;c=columns.length-1;}if(wrap&&c>=columns.length){r++;c=0;}return go(cell,r,c);},
+    edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?ids.length+drafts.length-1:0):rowIndex(cell),end?columns.length-1:0);},
     get total(){return ids.length;}
   });
   render();

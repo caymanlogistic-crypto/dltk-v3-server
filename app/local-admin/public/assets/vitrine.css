@@ -66,41 +66,52 @@
   .vitrine .pagination { flex-wrap:wrap; gap:5px; padding:8px; }
 }
 
-/* Горизонтальная навигация в оформлении текущей витрины. */
-.vitrine .app.app--workspace { grid-template-columns:minmax(0,1fr); grid-template-rows:48px minmax(0,1fr); }
-.vitrine .app--workspace > .content { grid-column:1; grid-row:2; padding:0; gap:0; }
-.vitrine .vitrine-topbar { display:flex; align-items:stretch; min-width:0; grid-column:1; grid-row:1; z-index:30; background:var(--nav-bg); color:var(--nav-text); border-bottom:1px solid var(--nav-divider); }
-.vitrine .vitrine-brand { flex:0 0 auto; height:auto; border-bottom:0; border-right:1px solid var(--nav-divider); text-decoration:none; }
-.vitrine .vitrine-topnav { --vitrine-menu-width:166px; display:flex; flex:1; align-items:stretch; min-width:0; }
-.vitrine .vitrine-topnav > .nav-item, .vitrine .vitrine-topnav > .vitrine-folder { box-sizing:border-box; flex:0 0 var(--vitrine-menu-width); width:var(--vitrine-menu-width); }
-.vitrine .vitrine-topnav > .nav-item, .vitrine .vitrine-folder > summary { display:flex; align-items:center; gap:9px; height:100%; min-height:48px; padding:0 18px; margin:0; cursor:pointer; }
-.vitrine .vitrine-topnav .nav-label { flex:0 0 auto; }
-.vitrine .vitrine-topnav > .nav-item.is-active::before { display:none; }
-.vitrine .vitrine-folder { position:relative; margin-left:auto; }
-.vitrine .vitrine-folder > summary { box-sizing:border-box; width:100%; list-style:none; }
-.vitrine .vitrine-folder > summary::-webkit-details-marker { display:none; }
-.vitrine .vitrine-folder[open] > summary { background:var(--nav-hover); color:var(--nav-text-act); }
-.vitrine .vitrine-chevron { width:14px; height:14px; }
-.vitrine .vitrine-folder[open] .vitrine-chevron { transform:rotate(180deg); }
-.vitrine .vitrine-dropdown { box-sizing:border-box; position:absolute; top:100%; left:0; width:100%; padding:6px 0; background:var(--nav-bg); border:1px solid var(--nav-divider); border-radius:2px; overflow:hidden; box-shadow:0 8px 18px rgb(0 0 0 / .2); }
-.vitrine .vitrine-dropdown .nav-sub-item { display:flex; align-items:center; gap:22px; height:36px; padding:0 18px; margin:0; }
-.vitrine .vitrine-dropdown .nav-sub-item::before, .vitrine .vitrine-dropdown .nav-sub-item::after { display:none; }
-.vitrine .vitrine-placeholder-label { font-size:10px; color:var(--nav-sub-text); font-weight:400; }
-@media(max-width:500px) {
- .vitrine .vitrine-brand { gap:6px; padding:0 9px; }
- .vitrine .vitrine-brand .brand-tag { display:none; }
- .vitrine .vitrine-topnav > .nav-item, .vitrine .vitrine-folder > summary { gap:6px; padding:0 10px; font-size:11px; }
- .vitrine .vitrine-dropdown { left:0; right:auto; width:100%; }
+/* Горизонтальная раскладка стандартных пунктов Витрины. */
+.vitrine .app.app--workspace {
+  --vitrine-topbar-height:38px;
+  grid-template-columns:minmax(0,1fr);
+  grid-template-rows:var(--vitrine-topbar-height) minmax(0,1fr);
 }
-
-/* Дополнительные образцы меню; узкие окна прокручивают только левую группу. */
-.vitrine .vitrine-nav-start { display:flex; flex:1; min-width:0; min-height:0; align-items:stretch; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
-.vitrine .vitrine-nav-start::-webkit-scrollbar { display:none; }
-.vitrine .vitrine-nav-start > .nav-item, .vitrine .vitrine-nav-start > .vitrine-folder { box-sizing:border-box; flex:0 0 var(--vitrine-menu-width); width:var(--vitrine-menu-width); }
-.vitrine .vitrine-nav-start > .nav-item { display:flex; align-items:center; gap:9px; min-height:48px; padding:0 18px; margin:0; }
-.vitrine .vitrine-nav-start > .nav-item.is-active::before { display:none; }
-.vitrine .vitrine-nav-start > .vitrine-folder { margin-left:0; }
-.vitrine .vitrine-demo-folder .vitrine-dropdown { position:fixed; top:48px; width:var(--vitrine-menu-width); z-index:50; }
-.vitrine #vitrine-catalogs { margin-left:0; }
-
-.vitrine .vitrine-topnav > .vitrine-folder { margin-left:0; }
+.vitrine .app--workspace > .content { grid-column:1; grid-row:2; padding:0; gap:0; }
+.vitrine .vitrine-topbar {
+  display:flex; align-items:center; min-width:0;
+  grid-column:1; grid-row:1; z-index:30;
+  background:var(--nav-bg); border-bottom:1px solid var(--nav-divider);
+}
+.vitrine .vitrine-brand {
+  flex:0 0 auto; height:100%; border-bottom:0;
+  border-inline-end:1px solid var(--nav-divider); text-decoration:none;
+}
+.vitrine .vitrine-topnav { display:flex; flex:1; align-items:center; min-width:0; height:100%; }
+.vitrine .vitrine-nav-start {
+  display:flex; flex:1; align-items:center; min-width:0;
+  overflow-x:auto; scrollbar-width:none;
+}
+.vitrine .vitrine-topnav .nav-item { flex:none; cursor:pointer; }
+.vitrine .vitrine-topnav .nav-item:focus-visible { outline-offset:-2px; }
+.vitrine .vitrine-folder {
+  position:relative; flex:none; align-self:stretch; align-content:center;
+}
+.vitrine .vitrine-folder > summary { list-style:none; }
+.vitrine .vitrine-folder > summary::-webkit-details-marker { display:none; }
+.vitrine .vitrine-folder[open] > summary,
+.vitrine .vitrine-folder > summary.is-active { color:var(--nav-text-act); }
+.vitrine .vitrine-folder[open] > summary .nav-icon { opacity:.8; }
+.vitrine .vitrine-folder[open] > summary .nav-chevron { transform:rotate(90deg); opacity:.45; }
+.vitrine .vitrine-dropdown {
+  position:absolute; inset-block-start:100%; inset-inline-end:0;
+  min-inline-size:100%; inline-size:max-content; max-inline-size:100vw;
+  background:var(--nav-bg); border:1px solid var(--nav-divider);
+  box-shadow:0 8px 18px rgb(0 0 0 / .2);
+}
+.vitrine .vitrine-dropdown .nav-sub-item { text-decoration:none; white-space:nowrap; }
+.vitrine .vitrine-dropdown :is(a,button).nav-sub-item { width:100%; cursor:pointer; }
+.vitrine .vitrine-dropdown [data-live-status] { margin-inline-start:6px; }
+@media(max-width:650px) {
+  .vitrine .vitrine-topnav { overflow-x:auto; scrollbar-width:none; }
+  .vitrine .vitrine-nav-start { flex:none; overflow:visible; }
+  .vitrine .vitrine-dropdown {
+    position:fixed; inset-block-start:var(--vitrine-topbar-height);
+    min-inline-size:0;
+  }
+}
