@@ -6,8 +6,8 @@ $directory = $directory ?? null;
 $clientCatalog = $directory === 'clients';
 $catalogGrid = $data['catalogGrid'] ?? null;
 $viewUrl = static fn(string $path): string => function_exists('app_url_path') ? app_url_path($path) : $path;
-$currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Сотрудники','roles'=>'Роли','client-order-statuses'=>'Статусы клиентов'][$directory]] : workspace_table());
-$managementTable = $directory ? 'vyvoz' : $currentTable['slug'];
+$currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Сотрудники','roles'=>'Роли','client-order-statuses'=>'Статусы клиентов','flight-statuses'=>'Статусы рейса'][$directory]] : workspace_table());
+$managementTable = $currentTable['sourceTable'] ?? ($directory ? 'vyvoz' : $currentTable['slug']);
 $workspaceTables=workspace_tables();
 $canOpenStatuses = !$directory || in_array('vyvoz',array_column($workspaceTables,'slug'),true);
 $canViewClientColors = workspace_can('system','client-order-statuses','view');
@@ -48,7 +48,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-paths.js'),ENT_QUOTES,'UTF-8') ?>"></script><script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-notifications.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.js'),ENT_QUOTES,'UTF-8') ?>"></script>
-  <?php if (!$directory): ?>
+  <?php if (!$directory || $directory === 'flight-statuses'): ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-statuses.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-select.js'),ENT_QUOTES,'UTF-8') ?>"></script>
@@ -104,10 +104,10 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
       </details>
       <?php if ($canOpenStatuses || $canViewClientColors): ?>
       <details class="vitrine-folder" id="vitrine-cell-colors">
-        <summary class="nav-item is-parent<?= $directory === 'client-order-statuses' ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Цвета ячеек</span><?= $navChevron ?></summary>
+        <summary class="nav-item is-parent<?= in_array($directory,['client-order-statuses','flight-statuses'],true) ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Цвета ячеек</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Цвета ячеек">
           <?php if ($canOpenStatuses): ?>
-          <a class="nav-sub-item"<?= !$directory ? ' id="vitrine-open-statuses"' : '' ?> href="<?= $escape($directory ? $viewUrl('/vitrine?table=vyvoz').'#statuses' : '#statuses') ?>">Статусы</a>
+          <a class="nav-sub-item<?= $directory === 'flight-statuses' ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=flight-statuses&table='.$managementTable)) ?>"<?= $directory === 'flight-statuses' ? ' aria-current="page"' : '' ?>>Статусы</a>
           <?php endif; ?>
           <?php if ($canViewClientColors): ?>
           <a class="nav-sub-item<?= $directory === 'client-order-statuses' ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=client-order-statuses')) ?>"<?= $directory === 'client-order-statuses' ? ' aria-current="page"' : '' ?>>Клиенты</a>
@@ -116,7 +116,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
       </details>
       <?php endif; ?>
       <details class="vitrine-folder" id="vitrine-catalogs">
-        <summary class="nav-item is-parent<?= $directory && $directory !== 'client-order-statuses' ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
+        <summary class="nav-item is-parent<?= $directory && !in_array($directory,['client-order-statuses','flight-statuses'],true) ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
           <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Сотрудники', 'roles'=>'Роли']; ?>
           <?php if (!workspace_client_grid_catalog()) unset($directoryLinks['clients']); ?>

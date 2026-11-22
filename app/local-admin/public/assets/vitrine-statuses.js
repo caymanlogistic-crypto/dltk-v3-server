@@ -1,6 +1,7 @@
 'use strict';
 (() => {
   const trigger = document.getElementById('vitrine-open-statuses');
+  const addOnly = trigger?.hasAttribute('data-add-only');
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   let initial = { statuses:[], palette:[] };
   try { initial = JSON.parse(document.getElementById('vitrine-status-data')?.content || '{}'); } catch {}
@@ -22,13 +23,13 @@
 
   function publish(result) {
     window.vitrineStatusCatalog = { statuses:result.statuses, palette:result.palette };
-    window.dispatchEvent(new CustomEvent('vitrine-statuses-updated', { detail:window.vitrineStatusCatalog }));
+    if (!addOnly) window.dispatchEvent(new CustomEvent('vitrine-statuses-updated', { detail:window.vitrineStatusCatalog }));
   }
   async function request(payload) {
     const options = payload === undefined ? { credentials:'same-origin' } : {
       method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRF-Token':csrf}, body:JSON.stringify(payload)
     };
-    const response = await fetch(window.DltkPaths.path('/api/vitrine/statuses?table='+encodeURIComponent(document.body.dataset.workspaceTable||'vyvoz')),options);
+    const response = await fetch(window.DltkPaths.path('/api/vitrine/statuses?table='+encodeURIComponent(trigger?.dataset.statusTable || document.body.dataset.workspaceTable || 'vyvoz')),options);
     const result = await response.json();
     if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось прочитать справочник.');
     if (!Array.isArray(result.statuses) || !Array.isArray(result.palette)) throw new Error('Сервер вернул неполный справочник.');
@@ -45,7 +46,7 @@
     title = el('h2','modal-title','Статусы'); title.id = 'vitrine-status-title';
     closeButton = el('button','modal-close','×'); closeButton.type = 'button'; closeButton.setAttribute('aria-label','Закрыть'); closeButton.addEventListener('click',close);
     head.append(title,closeButton); body = el('div','modal-body vitrine-status-body'); footer = el('footer','modal-foot'); dialog.append(head,body,footer); document.body.append(dialog);
-    dialog.addEventListener('cancel',event => { event.preventDefault(); if (saving) return; if (formActive) renderList(); else close(); });
+    dialog.addEventListener('cancel',event => { event.preventDefault(); if (saving) return; if (formActive && !addOnly) renderList(); else close(); });
     dialog.addEventListener('keydown',event => {
       if (event.key !== 'Tab') return;
       const nodes = Array.from(dialog.querySelectorAll('button:not(:disabled),input:not(:disabled),[tabindex="0"]')).filter(node => node.getClientRects().length);
@@ -97,7 +98,7 @@
     colors.append(grid); name.addEventListener('input',updatePreview); updatePreview();
     const actions = el('div','modal-foot-actions');
     const save = el('button','btn btn-primary','Сохранить'); save.type = 'submit'; save.setAttribute('form',form.id);
-    const cancel = button('Отмена','btn-secondary',() => renderList()); actions.append(save,cancel);
+    const cancel = button('Отмена','btn-secondary',() => addOnly ? close() : renderList()); actions.append(save,cancel);
     form.append(error,label,colors,preview); body.append(form); footer.replaceChildren(actions); name.focus(); name.select();
     form.addEventListener('submit',async event => {
       event.preventDefault(); if (saving) return;
@@ -106,6 +107,7 @@
       Array.from(form.elements).forEach(node => { node.disabled = true; }); save.textContent = 'Сохраняю…';
       try {
         await request({ id:status?.id ?? null, name:name.value.trim(), color, revision:status?.revision ?? 0 });
+        if (addOnly) { location.reload(); return; }
         saving = false; closeButton.disabled = false; renderList(); notify('Статус сохранён','success');
       } catch (failure) {
         saving = false; closeButton.disabled = false; cancel.disabled = false; Array.from(form.elements).forEach(node => { node.disabled = false; });
@@ -120,8 +122,11 @@
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder => { folder.open = false; });
     makeDialog(); opener = trigger.closest('details')?.querySelector('summary') || trigger; title.textContent = 'Статусы'; body.replaceChildren(el('p','','Загружаю справочник…')); footer.replaceChildren(); formActive = false;
     if (!dialog.open) dialog.showModal();
-    try { await request(); if (dialog.open) renderList(); }
+    try { await request(); if (dialog.open) addOnly ? renderForm(null) : renderList(); }
     catch (failure) { if (dialog.open) { notify(failure.message,'danger'); body.replaceChildren(); body.append(button('Повторить','btn-secondary',() => { close(); trigger.click(); })); } }
   });
-  if (trigger && location.hash === '#statuses') trigger.click();
+  if (!trigger && location.hash === '#statuses') {
+    const link = document.querySelector('#vitrine-cell-colors a[href*="catalog=flight-statuses"]');
+    if (link) location.replace(link.href);
+  }
 })();

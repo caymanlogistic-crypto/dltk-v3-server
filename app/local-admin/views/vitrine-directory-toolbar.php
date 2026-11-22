@@ -14,11 +14,15 @@ $archive = $catalogGrid['archive'];
   <?php endif; ?>
   <form class="vitrine-catalog-search" method="get" action="<?= $escape($viewUrl('/vitrine')) ?>">
     <input type="hidden" name="catalog" value="<?= $escape($directory) ?>">
+    <?php if ($directory === 'flight-statuses'): ?><input type="hidden" name="table" value="<?= $escape($managementTable) ?>"><?php endif; ?>
     <?php if ($archive): ?><input type="hidden" name="archive" value="1"><?php endif; ?>
     <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape($catalogGrid['search']) ?>"
            aria-label="Поиск в справочнике" placeholder="<?= $employeePage ? 'ФИО, логин, email или роль' : ($directory === 'roles' ? 'Название роли' : 'Название статуса') ?>">
     <button class="btn" type="submit">Найти</button>
   </form>
+  <?php if ($directory === 'flight-statuses' && $catalogGrid['canEdit']): ?>
+  <button class="btn btn-primary" type="button" id="vitrine-open-statuses" data-status-table="<?= $escape($managementTable) ?>" data-add-only>Добавить статус</button>
+  <?php endif; ?>
   <?php if ($employeeScope): ?>
   <div class="vitrine-catalog-actions">
     <?php if (!$archive): ?><button class="btn btn-primary" type="button" id="employee-add">Добавить сотрудника</button><?php endif; ?>

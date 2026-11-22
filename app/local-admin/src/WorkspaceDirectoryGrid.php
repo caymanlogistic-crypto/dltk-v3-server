@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 function vitrine_directory_requested(): ?string {
     if (!isset($_GET['catalog'])) return null;
-    if (!in_array($_GET['catalog'],['clients','employees','roles','client-order-statuses'],true)) {
+    if (!in_array($_GET['catalog'],['clients','employees','roles','client-order-statuses','flight-statuses'],true)) {
         throw new ApiError('not_found','Страница справочника не найдена.',404);
     }
     return $_GET['catalog'];
@@ -11,6 +11,12 @@ function vitrine_directory_requested(): ?string {
 
 function workspace_directory_grid_model(string $directory): array {
     if ($directory === 'clients') return workspace_client_grid_model();
+    if ($directory === 'flight-statuses') {
+        [$table] = workspace_flight_status_grid();
+        $key = $directory.'-'.$table['slug'];
+        return ['id'=>0,'directoryKey'=>$key,'slug'=>'catalog-'.$key,'sourceTable'=>$table['slug'],'title'=>'Статусы рейса',
+            'columns'=>[['letter'=>'A','label'=>'Статус рейса'],['letter'=>'B','label'=>'Цвет']]];
+    }
     if ($directory === 'client-order-statuses') {
         workspace_require('system','client-order-statuses','view');
         return ['id'=>0,'directoryKey'=>$directory,'slug'=>'catalog-'.$directory,'title'=>'Статусы клиентов',
@@ -33,15 +39,29 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     $employees = $directory === 'employees';
     $archive = $employees && ($_GET['archive'] ?? null) === '1';
     $search = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']),0,160) : '';
-    $orderStatuses = $directory === 'client-order-statuses';
+    $flightStatuses = $directory === 'flight-statuses';
+    $orderStatuses = $directory === 'client-order-statuses' || $flightStatuses;
+    $canEditStatuses = false;
     $entries = $employees ? workspace_employee_records(active: !$archive) : workspace_employee_roles();
     $palette = workspace_palette();
     if ($orderStatuses) {
         $colorOptions = array_map(static fn(array $color): array=>['value'=>$color['name'],'label'=>$color['name'],'color'=>$color['fill']],$palette);
         $colorNames = array_column($palette,'name','fill');
         $entries = [];
-        foreach (workspace_client_order_statuses() as $code=>$status) {
-            $entries[] = ['id'=>$status['id'],'name'=>$status['label'],'orderStatus'=>$code,'color'=>$status['color'],'revision'=>$status['revision']];
+        if ($flightStatuses) {
+            [$table,$catalog] = workspace_flight_status_grid();
+            $canEditStatuses = $catalog['id'] && workspace_can('catalog',(string)$catalog['id'],'edit',$table['id']);
+            foreach ($catalog['statuses'] as $status) {
+                $status['id'] = (int)$status['id'];
+                $status['baseHash'] = workspace_flight_status_hash($catalog['id'],$status['id']);
+                $entries[] = $status;
+            }
+        } else {
+            $canEditStatuses = workspace_can('system','client-order-statuses','edit');
+            foreach (workspace_client_order_statuses() as $code=>$status) {
+                $entries[] = ['id'=>$status['id'],'name'=>$status['label'],'color'=>$status['color'],
+                    'revision'=>$status['revision'],'baseHash'=>hash('sha256','client-order-status:'.$code)];
+            }
         }
     }
     $scope = $employees ? workspace_employee_editor_scope() : null;
@@ -73,8 +93,9 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         }
         if ($orderStatuses) {
             $row['orderFill'] = $entry['color'];
-            $row['baseHash'] = hash('sha256','client-order-status:'.$entry['orderStatus']);
-            $row['edits'] = array_fill_keys(['A','B'],['revision'=>$entry['revision']]);
+            $row['baseHash'] = $entry['baseHash'];
+            $row['singleLine']['A'] = true;
+            $row['edits'] = array_fill_keys(['A','B'],['revision'=>(int)$entry['revision']]);
             $row['choices']['B'] = $colorOptions;
             $row['requiredChoices']['B'] = true;
         }
@@ -82,6 +103,6 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     }
     return [
         'table'=>$model, 'columns'=>$model['columns'], 'rows'=>$rows, 'rowIds'=>$rowIds,
-        'palette'=>$palette, 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$scope !== null || ($orderStatuses && workspace_can('system','client-order-statuses','edit'))],
+        'palette'=>$palette, 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$scope !== null || $canEditStatuses],
     ];
 }

@@ -6,6 +6,7 @@ require_once __DIR__.'/WorkspaceEmployees.php';
 require_once __DIR__.'/WorkspaceEmployeeGrid.php';
 require_once __DIR__.'/WorkspaceDirectoryGrid.php';
 require_once __DIR__.'/WorkspaceClientOrderStatuses.php';
+require_once __DIR__.'/WorkspaceFlightStatusGrid.php';
 require_once __DIR__.'/WorkspaceGridPreferences.php';
 
 function workspace_database_dsn(array $config): string {

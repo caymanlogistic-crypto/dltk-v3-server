@@ -2,7 +2,8 @@
 (() => {
   let active = null;
   const catalog = document.body.dataset.vitrineCatalog;
-  const scope = catalog ? 'catalog=' + encodeURIComponent(catalog) : 'table=' + encodeURIComponent(document.body.dataset.workspaceTable || 'vyvoz');
+  const tableFilter = catalog === 'flight-statuses' ? '&table='+encodeURIComponent(new URLSearchParams(location.search).get('table') || 'vyvoz') : '';
+  const scope = catalog ? 'catalog=' + encodeURIComponent(catalog) + tableFilter : 'table=' + encodeURIComponent(document.body.dataset.workspaceTable || 'vyvoz');
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
   const orderLabels = Object.fromEntries(Object.entries(orderStatuses).map(([code,status])=>[status.label,code]));
@@ -280,11 +281,11 @@
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableClient});
     }
-    const field = control?.field || element('textarea', 'field-input');
+    const field = control?.field || element(cell.hasAttribute('data-single-line') ? 'input' : 'textarea', 'field-input');
     field.classList.add('vitrine-editor-field');
     field.id = 'vitrine-editor-field';
     field.setAttribute('aria-label', 'Значение ячейки');
-    field.autocomplete = 'off'; field.maxLength = 20000; field.value = cell.textContent;
+    field.autocomplete = 'off'; field.maxLength = cell.hasAttribute('data-single-line') ? 160 : 20000; field.value = cell.textContent;
     if (useCustom) field.dataset.customSelect = 'true';
     let orderField = null;
     if (cell.hasAttribute('data-order-status')) {
@@ -330,7 +331,7 @@
       const directions = {ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[-1,0],ArrowDown:[1,0]};
       if (!directions[event.key] || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.isComposing || active?.saving) return;
       if (field.dataset.customSelect && (field.getAttribute('aria-expanded') === 'true' || event.key === 'ArrowDown' || event.key === 'ArrowUp')) return;
-      if (orderField || hasDraft(active)) return;
+      if (orderField || cell.hasAttribute('data-single-line') || hasDraft(active)) return;
       event.preventDefault(); event.stopImmediatePropagation();
       close(); move(cell,...directions[event.key],false);
     }, true);
