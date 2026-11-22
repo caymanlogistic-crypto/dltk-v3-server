@@ -316,8 +316,7 @@
     const useCustom = !mask && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
     const typeEditor = isContainerTypeCell(cell);
     const unloadEditor = isUnloadingCell(cell);
-    const unloadClient = cell.dataset.column==='A' && document.querySelector('[data-unload-contacts]')!==null;
-    const searchableCatalog = pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
+    const searchableCatalog = pickupEditor || typeEditor || unloadEditor || cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');

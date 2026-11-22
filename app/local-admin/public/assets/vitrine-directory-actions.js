@@ -114,7 +114,8 @@
 
   const draftBody = document.getElementById('vitrine-draft-rows');
   const fields = JSON.parse(draftBody?.dataset.draftFields || '{}');
-  const draftKey = 'dltk-v3.directory-drafts.' + document.body.dataset.workspaceUser + '.' + document.body.dataset.workspaceTable;
+  const draftKey = ['dltk-v3.directory-drafts', document.body.dataset.workspaceUser,
+    document.body.dataset.workspaceTable, draftBody?.dataset.draftVersion].filter(Boolean).join('.');
   const legacyKey = draftKey.replace('directory-drafts','flight-status-drafts');
   const isFlight = document.body.dataset.vitrineCatalog === 'flight-statuses';
   let stored = {};

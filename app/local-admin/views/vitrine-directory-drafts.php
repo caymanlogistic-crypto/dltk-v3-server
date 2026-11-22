@@ -2,6 +2,7 @@
 declare(strict_types=1);
 ?>
 <tbody id="vitrine-draft-rows" aria-label="Новые записи справочника"
+       data-draft-version="<?= $escape($catalogGrid['draftVersion'] ?? '') ?>"
        data-draft-fields="<?= $escape(wjson($catalogGrid['draftFields'])) ?>">
 <?php
 (static function (array $columns, array $fields, Closure $escape, Closure $columnClass): void {

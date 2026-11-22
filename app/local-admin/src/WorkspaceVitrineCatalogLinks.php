@@ -12,7 +12,7 @@ function vitrine_catalog_links(array $table): array {
         'B'=>['kind'=>'clients','target'=>'AL','meta'=>'catalog_managers_','source'=>'Из справочника клиентов','empty'=>'У клиента не указан менеджер','invalid'=>'Выберите клиента из справочника.'],
         'E'=>['kind'=>'terminals-main','invalid'=>'Выберите терминал постановки из справочника.'],
         'I'=>['kind'=>'container-types','invalid'=>'Выберите тип контейнера из справочника.'],
-        'K'=>['kind'=>'unload-points','target'=>'L','source'=>'Контакт из справочника точек выгрузки','empty'=>'У точки не указан контакт','invalid'=>'Выберите точку выгрузки этого клиента.'],
+        'K'=>['kind'=>'unload-points','target'=>'L','source'=>'Контакт из справочника точек выгрузки','empty'=>'У точки не указан контакт','invalid'=>'Выберите точку выгрузки из списка.'],
         'S'=>['kind'=>'carriers','target'=>'AM','meta'=>'catalog_logists_','source'=>'Из справочника перевозчиков','empty'=>'У перевозчика не указан логист','invalid'=>'Выберите перевозчика из справочника.'],
     ];
     $links=[];
@@ -67,14 +67,18 @@ function vitrine_find_unload_point(array $table,array $record,array $values,int 
     $clientCatalog=vitrine_catalog_links($table)['B']['id']??0;
     $clientId=isset($oldLinks['B']) ? (int)$oldLinks['B'] : ($clientCatalog?(int)(vitrine_find_catalog_entry($clientCatalog,$clientName,true)['id']??0):0);
     $clientKey=workspace_unload_client_key($clientId?:null,$clientName);
+    $commonKey=workspace_unload_client_key(null,'');
     $input=vitrine_catalog_key($value);
+    $common=null;
     foreach (workspace_unload_points($catalogId) as $point) {
         if (!$point['active']) continue;
+        if ($input!==vitrine_catalog_key(workspace_unload_option($point)) &&
+            $input!==vitrine_catalog_key($point['address'])) continue;
         $key=workspace_unload_client_key($point['client_id']===null?null:(int)$point['client_id'],$point['client']);
-        if ($key!==$clientKey && (int)$point['id']!==(int)($oldLinks['K']??0)) continue;
-        if ($input===vitrine_catalog_key(workspace_unload_option($point)) || $input===vitrine_catalog_key($point['address'])) return $point;
+        if ($key===$clientKey || (int)$point['id']===(int)($oldLinks['K']??0)) return $point;
+        if ($key===$commonKey) $common??=$point;
     }
-    return null;
+    return $common;
 }
 
 function vitrine_unload_original_contact(array $record): string {
