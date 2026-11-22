@@ -6,6 +6,10 @@
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
   const orderLabels = Object.fromEntries(Object.entries(orderStatuses).map(([code,status])=>[status.label,code]));
   const normalizeContainer = value => value.replace(/[ \t\u00a0\u202f-]+/g,'').toUpperCase();
+  function isContainerTypeCell(cell) {
+    return cell.dataset.column === 'I' && Number(cell.dataset.catalogId) > 0 &&
+      document.body.dataset.workspaceTable === 'vyvoz';
+  }
   function hasDraft(editor) {
     return editor.field.value !== editor.initialValue
       || (editor.orderField && editor.orderField.value !== editor.initialOrder)
@@ -217,7 +221,8 @@
     const value = editor.requestField?.checked ? window.VitrineSlot.requestLabel
       : editor.resolveValue ? editor.resolveValue() : editor.field.value;
     if (!reset && value === null) {
-      report('Выберите клиента из подсказок.','danger');
+      report(isContainerTypeCell(editor.cell)
+        ? 'Выберите тип контейнера из подсказок.' : 'Выберите клиента из подсказок.','danger');
       editor.field.focus();
       return;
     }
@@ -298,13 +303,14 @@
     try { choices = JSON.parse(cell.dataset.choices || '[]'); } catch {}
     if (!Array.isArray(choices)) choices = [];
     const useCustom = !mask && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
-    const searchableCatalog = pickupEditor || cell.hasAttribute('data-order-status');
+    const typeEditor = isContainerTypeCell(cell);
+    const searchableCatalog = pickupEditor || typeEditor || cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');
       const options = required ? [] : [{value:'',label:'Не выбран'}];
       const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(option => option && typeof option === 'object' ? option : {value:String(option),label:String(option)});
-      if (!required && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
+      if (!required && !typeEditor && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableCatalog});
     }
@@ -440,8 +446,11 @@
     field.addEventListener('input',fitEditor);
     fitEditor();
     field.focus();
-    if (searchableCatalog || (replaceLegacyValue && firstCharacter === null)) field.select();
+    if (firstCharacter === null && (searchableCatalog || replaceLegacyValue)) field.select();
     else field.setSelectionRange(field.value.length, field.value.length);
+    if (typeEditor && firstCharacter !== null) {
+      field.dispatchEvent(new InputEvent('input',{inputType:'insertText',bubbles:true}));
+    }
   }
   window.addEventListener('vitrine-statuses-updated', event => {
     const statuses = event.detail.statuses;
@@ -576,8 +585,9 @@
     if (!cell) return;
     const typedText = cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line') && /^\S$/u.test(event.key);
     const typedContainer = cell.dataset.kind === 'container' && /^[a-z]$/i.test(event.key);
-    if ((typedText || typedContainer)
-      && !cell.hasAttribute('data-required-choice') && cell.dataset.choices === '[]'
+    const typedType = isContainerTypeCell(cell) && /^[\p{L}0-9]$/u.test(event.key);
+    if ((typedType || ((typedText || typedContainer) && cell.dataset.choices === '[]'))
+      && !cell.hasAttribute('data-required-choice')
       && !cell.hasAttribute('data-readonly-cell') && !event.defaultPrevented && !event.isComposing
       && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))) {
       event.preventDefault();
