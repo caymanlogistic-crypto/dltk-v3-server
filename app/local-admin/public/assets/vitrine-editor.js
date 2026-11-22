@@ -242,7 +242,7 @@
       editor.field.focus();
     }
   }
-  function open(cell) {
+  function open(cell, firstCharacter = null) {
     if (cell.hasAttribute('data-readonly-cell')) {
       report(cell.dataset.readonlyCell, 'info');
       return;
@@ -291,7 +291,7 @@
     field.classList.add('vitrine-editor-field');
     field.id = 'vitrine-editor-field';
     field.setAttribute('aria-label', 'Значение ячейки');
-    field.autocomplete = 'off'; field.maxLength = cell.hasAttribute('data-single-line') ? 160 : 20000; field.value = cell.textContent;
+    field.autocomplete = 'off'; field.maxLength = cell.hasAttribute('data-single-line') ? 160 : 20000; field.value = firstCharacter ?? cell.textContent;
     if (useCustom) field.dataset.customSelect = 'true';
     let orderField = null;
     if (cell.hasAttribute('data-order-status')) {
@@ -330,7 +330,7 @@
     document.body.append(panel);
     cell.classList.add('is-editing');
     select(cell);
-    active = { panel, cell, field, initialValue:field.value, orderField, initialOrder:orderField?.value, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
+    active = { panel, cell, field, initialValue:cell.textContent, orderField, initialOrder:orderField?.value, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
     window.dispatchEvent(new CustomEvent('vitrine-editor-opened',{detail:{row:Number(cell.dataset.row),column:cell.dataset.column}}));
     table?.classList.add('has-editor');
     panel.addEventListener('keydown', event => {
@@ -487,6 +487,16 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
+    if (catalog === 'flight-statuses' && cell.dataset.column === 'A' && cell.hasAttribute('data-single-line')
+      && !cell.hasAttribute('data-readonly-cell') && !event.defaultPrevented && !event.isComposing
+      && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))
+      && /^\S$/u.test(event.key)) {
+      event.preventDefault();
+      const startTyping = target => open(target,event.key);
+      if (window.VitrineRows && !cell.isConnected) window.VitrineRows.activate(cell,startTyping);
+      else startTyping(cell);
+      return;
+    }
     if (cell.dataset.kind === 'time' && /^[0-9]$/.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault(); if(window.VitrineRows&&!cell.isConnected)window.VitrineRows.activate(cell,next=>editTime(next,event.key));else editTime(cell,event.key); return;
     }
