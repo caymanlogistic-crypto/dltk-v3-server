@@ -40,13 +40,20 @@ function vitrine_rows_endpoint(): never {
     json_response(['html'=>$html,'rowIds'=>array_column($rows,'rowIndex')]);
 }
 
+function vitrine_validate_single_line(string $value, array $row, string $column): void {
+    if (!empty($row['singleLine'][$column]) && preg_match('/\R/u',$value)) {
+        throw new ApiError('invalid_single_line','Введите текст одной строкой, без переносов.');
+    }
+}
+
 function vitrine_validate_paste(array $body, array $data, array $target): void {
     vitrine_require_manual_field($data['table'],$body['column']);
     $paste = $body['paste'] ?? null;
     if (!is_array($paste) || !array_key_exists('source',$paste)) throw new ApiError('invalid_clipboard','Не удалось определить содержимое буфера обмена.');
+    vitrine_validate_single_line($body['value'],$target,$body['column']);
     $kind = $target['kinds'][$body['column']] ?? 'text';
     if ($kind === 'time') $body['value'] = vitrine_time_input($body['value']) ?? $body['value'];
-    $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','boolean'=>'TRUE/FALSE'];
+    $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','slot'=>'Слот','boolean'=>'TRUE/FALSE'];
     if ($paste['source'] !== null) {
         $source = $paste['source'];
         if (!is_array($source) || !is_int($source['row']??null) || !is_string($source['column']??null) || !is_int($source['revision']??null) || !is_string($source['baseHash']??null) || !is_string($source['value']??null)) throw new ApiError('invalid_clipboard','Некорректный формат скопированной ячейки.');
@@ -103,7 +110,17 @@ function vitrine_save_cell(): never {
         if ($normalized === null && $body['value'] !== ($current['values'][$body['column']] ?? '')) throw new ApiError('invalid_time','Введите время: 800 или 0800 → 08:00. Часы 00–23, минуты 00–59.');
         if ($normalized !== null) $body['value'] = $normalized;
     }
-    if (isset($body['paste']) && !$body['reset']) vitrine_validate_paste($body,$data,$current);
+    if (!$body['reset'] && ($current['kinds'][$body['column']] ?? '') === 'slot') {
+        $normalized = vitrine_slot_input($body['value']);
+        if ($normalized === null) {
+            throw new ApiError('invalid_slot','Введите 10 цифр: часы начала и окончания от 00 до 23 и действительную дату ДДММГГ.');
+        }
+        $body['value'] = $normalized;
+    }
+    if (!$body['reset']) {
+        if (isset($body['paste'])) vitrine_validate_paste($body,$data,$current);
+        else vitrine_validate_single_line($body['value'],$current,$body['column']);
+    }
     $original = $current['originalValues'][$body['column']] ?? '';
     $statusId = null;
     if ($body['column']==='A' && !$body['reset'] && $body['value']!=='') {
@@ -122,6 +139,9 @@ function vitrine_save_cell(): never {
         $orderEdit=['orderStatus'=>$code];
     }
     $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'']+$orderEdit);
+    if (($current['kinds'][$body['column']] ?? '') === 'slot') {
+        $result['value'] = vitrine_slot_input($result['value']) ?? $result['value'];
+    }
     $statusColor = null; $resultStatusId = null;
     if ($body['column']==='A') foreach ($data['statuses'] as $status) if (vitrine_status_key($status['name'])===vitrine_status_key($result['value'])) { $statusColor=$status['color']; $resultStatusId=$status['id']; }
     json_response($result + ['original'=>$original,'baseHash'=>$current['baseHash'],'conflict'=>false,'statusColor'=>$statusColor,'statusId'=>$resultStatusId]);

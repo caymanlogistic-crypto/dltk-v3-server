@@ -15,7 +15,16 @@
   const path = url => window.DltkPaths?.path(url) ?? url;
   const notice = (message,tone) => window.PlanexNotifications.show({message,tone});
   const selected = () => table.querySelector('#vitrine-rows .is-current-cell');
-  let employee, roleField, saving = false, loading = false;
+  let employee, roleField, editColumn, saving = false, loading = false;
+  const directoryUrl = new URL(location.href);
+  const focusRow = directoryUrl.searchParams.get('focusRow');
+  const focusColumn = directoryUrl.searchParams.get('focusColumn');
+  if (/^[0-9]+$/.test(focusRow || '') && /^[A-E]$/.test(focusColumn || '')) {
+    window.VitrineRows.activate({dataset:{row:focusRow,column:focusColumn}});
+    directoryUrl.searchParams.delete('focusRow');
+    directoryUrl.searchParams.delete('focusColumn');
+    history.replaceState(history.state,'',directoryUrl);
+  }
 
   const updateEdit = () => { edit.disabled = loading || !selected(); };
   window.addEventListener('vitrine-cell-selected',updateEdit);
@@ -45,8 +54,9 @@
     if (message) notice(message,'danger');
   }
 
-  function open(person) {
+  function open(person,column) {
     employee = person;
+    editColumn = column;
     const self = person?.id === viewerId;
     form.reset();
     showError('');
@@ -72,12 +82,13 @@
   }
 
   edit.addEventListener('click', async () => {
-    const id = selected()?.dataset.row;
-    if (!id || loading) return;
+    const cell = selected();
+    if (!cell || loading) return;
+    const {row:id,column} = cell.dataset;
     loading = true; updateEdit();
     try {
       const result = await request('?id='+encodeURIComponent(id));
-      open(result.employee);
+      open(result.employee,column);
     } catch (error) {
       notice(error.message,'danger');
     } finally {
@@ -113,7 +124,12 @@
         return;
       }
       try { sessionStorage.setItem(feedbackKey,employee ? 'Сотрудник обновлён.' : 'Сотрудник добавлен.'); } catch {}
-      location.assign(path('/vitrine?catalog=employees'+(payload.active?'':'&archive=1')));
+      const destination = new URL(path('/vitrine?catalog=employees'+(payload.active?'':'&archive=1')),location.href);
+      if (employee && editColumn) {
+        destination.searchParams.set('focusRow',String(employee.id));
+        destination.searchParams.set('focusColumn',editColumn);
+      }
+      location.assign(destination);
     } catch (error) {
       showError(error.message);
       saving = false;

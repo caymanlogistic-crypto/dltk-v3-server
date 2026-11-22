@@ -42,7 +42,24 @@ verify(vitrine_clipboard_accepts('А', 'text', ['А','Б']), 'Exact enum entry')
 verify(!vitrine_clipboard_accepts('а', 'text', ['А','Б']), 'Enum does not silently rewrite case');
 verify(vitrine_clipboard_accepts("<text>\n79161234567", 'text'), 'Plain text is retained as text');
 verify(!vitrine_clipboard_accepts(str_repeat('я',20001), 'text'), 'Length limit');
-foreach (['status','text','number','date','datetime','time','boolean'] as $kind) verify(vitrine_clipboard_accepts('', $kind), 'Empty is allowed for '.$kind);
+foreach (['status','text','number','date','datetime','time','slot','boolean'] as $kind) verify(vitrine_clipboard_accepts('', $kind), 'Empty is allowed for '.$kind);
 foreach (['800'=>'08:00','0800'=>'08:00','930'=>'09:30','2359'=>'23:59','0000'=>'00:00','8:00'=>'08:00','08:00:30'=>'08:00:30',''=>''] as $input=>$expected) verify(vitrine_time_input((string)$input)===$expected,'Time entry normalizes '.(string)$input);
 foreach (['2400','1260','999','08','8','abcd'] as $input) verify(vitrine_time_input($input)===null,'Invalid time entry rejected '.$input);
+foreach ([
+    'Слот?'=>'Слот?',
+    ' слот ? '=>'Слот?',
+    '0012251026'=>'с 00 до 12 - 25.10.26',
+    'с 00 до 12 - 25.10.26'=>'с 00 до 12 - 25.10.26',
+    'с 00 до 12 - 25.10.2026'=>'с 00 до 12 - 25.10.26',
+    '0823290228'=>'с 08 до 23 - 29.02.28',
+    '0012290200'=>'с 00 до 12 - 29.02.00',
+    ''=>'',
+] as $input=>$expected) {
+    verify(vitrine_slot_input((string)$input)===$expected,'Slot normalizes '.(string)$input);
+    verify(vitrine_clipboard_accepts((string)$input,'slot'),'Slot accepts '.(string)$input);
+}
+foreach (['001225102','001225102026','2412251026','0024251026','0012310426','0012290227','слот? 12'] as $input) {
+    verify(vitrine_slot_input((string)$input)===null,'Invalid slot rejected '.$input);
+    verify(!vitrine_clipboard_accepts((string)$input,'slot'),'Invalid slot paste rejected '.$input);
+}
 echo 'PASS '.$checks." clipboard format checks\n";

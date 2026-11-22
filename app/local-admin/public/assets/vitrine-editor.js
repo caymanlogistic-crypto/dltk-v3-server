@@ -6,7 +6,9 @@
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
   const orderLabels = Object.fromEntries(Object.entries(orderStatuses).map(([code,status])=>[status.label,code]));
   function hasDraft(editor) {
-    return editor.field.value !== editor.initialValue || (editor.orderField && editor.orderField.value !== editor.initialOrder);
+    return editor.field.value !== editor.initialValue
+      || (editor.orderField && editor.orderField.value !== editor.initialOrder)
+      || (editor.requestField && editor.requestField.checked !== editor.initialRequest);
   }
   function report(text, tone = 'warning') {
     window.PlanexNotifications.show({ tone, message:text });
@@ -104,7 +106,9 @@
   }
   function applyResult(cell, result) {
     if (Number(cell.dataset.revision || 0) > result.revision) return;
-    cell.textContent = result.value;
+    const slotRequested = cell.dataset.kind === 'slot' && window.VitrineSlot.isRequest(result.value);
+    cell.toggleAttribute('data-slot-request',slotRequested);
+    cell.textContent = slotRequested ? window.VitrineSlot.requestLabel : result.value;
     cell.dataset.original = result.original ?? '';
     cell.dataset.revision = String(result.revision);
     if (catalog) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
@@ -190,15 +194,16 @@
     window.dispatchEvent(new CustomEvent('vitrine-editor-opened',{detail:{row:Number(cell.dataset.row),column:cell.dataset.column}}));
     panel.addEventListener('keydown',event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
-      if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); save(false,{row:1,column:0}); }
+      if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); save(); }
       if (event.key === 'Tab') event.preventDefault();
     });
     position(); field.focus(); field.setSelectionRange(field.value.length,field.value.length);
   }
-  async function save(reset = false, advance = null) {
+  async function save(reset = false) {
     if (!active || active.saving) return;
     const editor = active;
-    const value = editor.resolveValue ? editor.resolveValue() : editor.field.value;
+    const value = editor.requestField?.checked ? window.VitrineSlot.requestLabel
+      : editor.resolveValue ? editor.resolveValue() : editor.field.value;
     if (!reset && value === null) {
       report('Выберите клиента из подсказок.','danger');
       editor.field.focus();
@@ -209,6 +214,7 @@
     editor.buttons.forEach(button => { button.disabled = true; });
     editor.field.disabled = true;
     if (editor.orderField) editor.orderField.disabled = true;
+    if (editor.requestField) editor.requestField.disabled = true;
     editor.saveButton.textContent = 'Сохраняю…';
     editor.panel.setAttribute('aria-busy', 'true');
     const cell = editor.cell;
@@ -220,23 +226,23 @@
       editor.saving = false;
       close();
       if (result.draftSaved) {
-        await window.VitrineDirectoryDrafts.finish(cell,result.draftSaved);
+        await window.VitrineDirectoryDrafts.finish(cell);
         return;
       }
       if (!result.draft) flash(cell);
-      if (advance) move(cell, advance.row, advance.column);
       if (!result.draft && (reset || !editor.paste)) report(reset ? 'Исходное значение восстановлено' : 'Локальная правка сохранена', 'success');
     } catch (error) {
       editor.saving = false;
       editor.buttons.forEach(button => { button.disabled = false; });
-      editor.field.disabled = false;
+      editor.field.disabled = Boolean(editor.requestField?.checked);
       if (editor.orderField) editor.orderField.disabled = false;
+      if (editor.requestField) editor.requestField.disabled = false;
       editor.saveButton.textContent = 'Сохранить';
       editor.panel.removeAttribute('aria-busy');
       editor.error.textContent = error instanceof TypeError ? 'Нет связи с сервером. Текст сохранён в поле — повторите попытку.' : error.message;
       report(editor.error.textContent, 'danger');
       position();
-      editor.field.focus();
+      (editor.field.disabled ? editor.requestField : editor.field).focus();
     }
   }
   function open(cell, firstCharacter = null) {
@@ -258,9 +264,12 @@
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder => { folder.open = false; });
     const panel = element('section', 'vitrine-editor');
     panel.setAttribute('role', 'dialog');
+    const isStatus = cell.dataset.kind === 'status';
+    const isSlot = cell.dataset.kind === 'slot';
+    const isSingleLine = cell.hasAttribute('data-single-line');
     const catalogEditor = ['B', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz';
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
-    if (catalogEditor || catalog) {
+    if (isSlot || isSingleLine || isStatus || catalogEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
     } else {
       const title = element('h2', 'vitrine-editor-title', dialogName);
@@ -272,8 +281,7 @@
     let choices = [];
     try { choices = JSON.parse(cell.dataset.choices || '[]'); } catch {}
     if (!Array.isArray(choices)) choices = [];
-    const isStatus = cell.dataset.kind === 'status';
-    const useCustom = isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0;
+    const useCustom = !isSlot && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
     const searchableClient = cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
@@ -284,23 +292,29 @@
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableClient});
     }
-    const field = control?.field || element(cell.hasAttribute('data-single-line') ? 'input' : 'textarea', 'field-input');
+    const field = control?.field || element(isSlot || isSingleLine ? 'input' : 'textarea', 'field-input');
     field.classList.add('vitrine-editor-field');
     field.id = 'vitrine-editor-field';
     field.setAttribute('aria-label', 'Значение ячейки');
     const draftType = cell.dataset.draftType;
-    const initialValue = draftType === 'password' ? window.VitrineDirectoryDrafts.secret(cell) : cell.textContent;
+    let initialValue = draftType === 'password' ? window.VitrineDirectoryDrafts.secret(cell) : cell.textContent;
+    if (isSlot) {
+      initialValue = window.VitrineSlot.format(window.VitrineSlot.read(initialValue));
+      window.VitrineSlot.bind(field);
+    }
     field.autocomplete = draftType === 'password' ? 'new-password' : 'off';
     if (draftType === 'password') field.type = 'password';
     if (draftType === 'email') field.inputMode = 'email';
     if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
-    field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : cell.hasAttribute('data-single-line') ? 160 : 20000;
-    field.value = firstCharacter ?? initialValue;
+    field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : isSingleLine && catalog ? 160 : 20000;
+    field.value = isSlot && firstCharacter !== null ? window.VitrineSlot.format(firstCharacter) : firstCharacter ?? initialValue;
     if (useCustom) field.dataset.customSelect = 'true';
     let orderField = null;
+    let requestField = null;
+    const initialRequest = isSlot && window.VitrineSlot.isRequest(cell.textContent);
     if (cell.hasAttribute('data-order-status')) {
       field.setAttribute('aria-label','Клиент');
-      const clientGroup = element('div','vitrine-editor-order-field');
+      const clientGroup = element('div','vitrine-editor-field-group');
       clientGroup.append(element('div','field-label','Клиент'),control?.element || field);
       panel.append(clientGroup);
       const options = [{value:'',label:'Без статуса'},...Object.values(orderStatuses).map(status=>({
@@ -310,11 +324,28 @@
       orderField = picker.field;
       orderField.setAttribute('aria-label','Статус заказа');
       orderField.classList.add('vitrine-editor-field');
-      const statusGroup = element('div','vitrine-editor-order-field');
+      const statusGroup = element('div','vitrine-editor-field-group');
       statusGroup.append(element('div','field-label','Статус заказа'),picker.element);
       panel.append(statusGroup);
+    } else if (isSlot) {
+      const group = element('div','vitrine-editor-field-group');
+      const label = element('label','checkbox-item');
+      requestField = element('input');
+      requestField.type = 'checkbox';
+      requestField.checked = initialRequest && firstCharacter === null;
+      const mark = element('span','checkbox-mark');
+      mark.setAttribute('aria-hidden','true');
+      label.append(requestField,mark,element('span','checkbox-label','Запросить слот'));
+      group.append(field,label);
+      panel.append(group);
+      field.disabled = requestField.checked;
+      requestField.addEventListener('change',()=>{
+        field.disabled = requestField.checked;
+      });
     } else panel.append(control?.element || field);
-    if (!catalog && !orderField) panel.append(element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить и вниз · Shift+Enter — новая строка'));
+    if (!isSlot && !isSingleLine && !isStatus && !catalog && !orderField) {
+      panel.append(element('p', 'vitrine-editor-help', useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить · Esc — отменить'));
+    }
     const error = element('p', 'vitrine-editor-error');
     error.setAttribute('role', 'alert'); error.hidden = true; panel.append(error);
     const actions = element('div', 'vitrine-editor-actions');
@@ -325,7 +356,7 @@
     saveButton.addEventListener('click', () => save());
     cancelButton.addEventListener('click', close);
     actions.append(saveButton, cancelButton);
-    if (!orderField && cell.classList.contains('local-edited')) {
+    if (!isStatus && !orderField && cell.classList.contains('local-edited')) {
       const resetButton = element('button', 'btn btn-secondary vitrine-editor-reset', 'Исходное');
       resetButton.type = 'button'; resetButton.addEventListener('click', () => save(true));
       buttons.push(resetButton); actions.append(resetButton);
@@ -334,29 +365,30 @@
     document.body.append(panel);
     cell.classList.add('is-editing');
     select(cell);
-    active = { panel, cell, field, initialValue, orderField, initialOrder:orderField?.value, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
+    active = { panel, cell, field, initialValue, orderField, initialOrder:orderField?.value, requestField, initialRequest, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
     window.dispatchEvent(new CustomEvent('vitrine-editor-opened',{detail:{row:Number(cell.dataset.row),column:cell.dataset.column}}));
     table?.classList.add('has-editor');
     panel.addEventListener('keydown', event => {
       const directions = {ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[-1,0],ArrowDown:[1,0]};
       if (!directions[event.key] || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.isComposing || active?.saving) return;
       if (field.dataset.customSelect && (field.getAttribute('aria-expanded') === 'true' || event.key === 'ArrowDown' || event.key === 'ArrowUp')) return;
-      if (orderField || cell.hasAttribute('data-single-line') || hasDraft(active)) return;
+      if (isSlot || orderField || isSingleLine || hasDraft(active)) return;
       event.preventDefault(); event.stopImmediatePropagation();
       close(); move(cell,...directions[event.key],false);
     }, true);
     panel.addEventListener('keydown', event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
-      if (event.key === 'Enter' && (event.target === field || event.target === orderField) && !event.shiftKey && !event.isComposing) { event.preventDefault(); save(false,{row:1,column:0}); }
+      if (event.key === 'Enter' && (event.target === field || event.target === orderField || event.target === requestField) && !event.shiftKey && !event.isComposing) { event.preventDefault(); save(); }
       if (event.key === 'Tab') {
-        const focusable = [field, orderField, ...buttons].filter(node => node && !node.disabled);
+        const focusable = [field, orderField, requestField, ...buttons].filter(node => node && !node.disabled);
         const first = focusable[0], last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
       }
     });
     field.addEventListener('input',fitEditor);
-    fitEditor(); field.focus();
+    fitEditor();
+    (field.disabled ? requestField : field).focus();
     if (searchableClient) field.select();
     else field.setSelectionRange(field.value.length, field.value.length);
   }
@@ -404,7 +436,7 @@
     event.stopImmediatePropagation();
     if (event.target.closest('td[data-derived-source]')) notifyDerivedCell();
     else report(active.saving ? 'Дождитесь сохранения ячейки.' : 'Сначала сохраните правку или нажмите «Отмена»');
-    active.field.focus();
+    (active.field.disabled && active.requestField ? active.requestField : active.field).focus();
   }, true);
   document.addEventListener('click', event => {
     const cell = event.target.closest('td[data-edit-cell]');
@@ -481,7 +513,7 @@
     if (event.key === 'F6' && !document.querySelector('dialog[open]')) {
       event.preventDefault();
       table?.classList.add('keyboard-navigation');
-      if (active) { active.field.focus(); return; }
+      if (active) { (active.field.disabled && active.requestField ? active.requestField : active.field).focus(); return; }
       if(window.VitrineRows&&selected){window.VitrineRows.activate(selected);return;}
       selected?.focus({preventScroll:true}); if (selected) reveal(selected); return;
     }
@@ -491,7 +523,7 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
-    if (catalog && cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line')
+    if (cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line')
       && !cell.hasAttribute('data-required-choice') && cell.dataset.choices === '[]'
       && !cell.hasAttribute('data-readonly-cell') && !event.defaultPrevented && !event.isComposing
       && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))
@@ -500,6 +532,14 @@
       const startTyping = target => open(target,event.key);
       if (window.VitrineRows && !cell.isConnected) window.VitrineRows.activate(cell,startTyping);
       else startTyping(cell);
+      return;
+    }
+    if (cell.dataset.kind === 'slot' && /^[0-9]$/.test(event.key) && !cell.hasAttribute('data-readonly-cell')
+      && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing) {
+      event.preventDefault();
+      const start = target=>open(target,event.key);
+      if (window.VitrineRows && !cell.isConnected) window.VitrineRows.activate(cell,start);
+      else start(cell);
       return;
     }
     if (cell.dataset.kind === 'time' && /^[0-9]$/.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -530,7 +570,8 @@
     let cell = eventCell(event);
     const inEditor = active && event.target === active.field;
     if ((!cell && !inEditor) || !event.clipboardData) return;
-    if (inEditor && (active.field.getAttribute('aria-autocomplete') === 'list' || active.cell.closest('[data-draft-slot]'))) return;
+    if (inEditor && (active.cell.dataset.kind === 'slot' || active.field.getAttribute('aria-autocomplete') === 'list'
+      || active.cell.closest('[data-draft-slot]'))) return;
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
@@ -566,7 +607,7 @@
     try {
       const result = await writeCell(target,value,false,paste);
       applyResult(target,result);
-      if (result.draftSaved) await window.VitrineDirectoryDrafts.finish(target,result.draftSaved);
+      if (result.draftSaved) await window.VitrineDirectoryDrafts.finish(target);
       if (!result.draft) { flash(target); rememberPaste(before,result); }
     } catch(error) { report(error instanceof TypeError ? 'Нет связи с сервером. Вставка не выполнена.' : error.message,'danger'); }
     finally { pendingCells.delete(target); target.removeAttribute('aria-busy'); target.focus({preventScroll:true}); }

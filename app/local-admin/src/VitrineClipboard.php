@@ -44,6 +44,20 @@ function vitrine_time_input(string $value): ?string {
     return str_pad($value, strlen($value) + (strpos($value,':') === 1 ? 1 : 0), '0', STR_PAD_LEFT);
 }
 
+/** Normalize a slot request, ten digits, or the current/legacy display format. */
+function vitrine_slot_input(string $value): ?string {
+    $value = trim($value);
+    if ($value === '') return '';
+    if (preg_match('/^слот[\s\x{00A0}\x{202F}]*\?$/iuD',$value)) return 'Слот?';
+    if (preg_match('/^с ([0-9]{2}) до ([0-9]{2}) - ([0-9]{2})\.([0-9]{2})\.(?:20)?([0-9]{2})$/uD',$value,$parts)) {
+        $value = implode('',array_slice($parts,1));
+    }
+    if (!preg_match('/^([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$/D',$value,$parts)) return null;
+    [, $from, $to, $day, $month, $year] = $parts;
+    if ((int)$from>23 || (int)$to>23 || !checkdate((int)$month,(int)$day,2000+(int)$year)) return null;
+    return "с $from до $to - $day.$month.$year";
+}
+
 /** Validate pasted text without coercing it, evaluating formulas, or rewriting the source. */
 function vitrine_clipboard_accepts(string $value, string $kind, array $choices = []): bool {
     if (!mb_check_encoding($value, 'UTF-8') || mb_strlen($value, 'UTF-8') > 20000) return false;
@@ -67,6 +81,7 @@ function vitrine_clipboard_accepts(string $value, string $kind, array $choices =
         'boolean' => in_array(strtoupper($trimmed), ['TRUE', 'FALSE'], true),
         'date' => vitrine_clipboard_date($trimmed),
         'time' => vitrine_clipboard_time($trimmed),
+        'slot' => vitrine_slot_input($value) !== null,
         'datetime' => preg_match('/^(.+?)[ T](\d{1,2}:\d{2}(?::\d{2})?)$/D', $trimmed, $m) === 1 && vitrine_clipboard_date($m[1]) && vitrine_clipboard_time($m[2]),
         // Displayed numbers may carry locale grouping and a percent/currency suffix.
         // Currency/percent are formats of a number, not separately inferred business types.
