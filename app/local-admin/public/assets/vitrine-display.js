@@ -68,7 +68,9 @@
   const originalOrder = columns.map(column => column.letter);
   let catalog = {};
   try { catalog = JSON.parse(document.getElementById('vitrine-status-data')?.content || '{}'); } catch {}
-  const base = (catalog.palette || []).map(item => item.fill.toUpperCase());
+  const palette = catalog.palette || [];
+  const base = palette.map(item => item.fill.toUpperCase());
+  const red = palette.find(item=>item.name==='Красный')?.fill;
   const presets = [
     {id:'base',name:'Базовый',note:'Текущая мягкая палитра',colors:base},
     {id:'saturated',name:'Насыщенный',note:'Те же девять цветовых групп, более насыщенные',colors:['#E6ABAD','#EDBC8B','#EDE19A','#B2D1A0','#94CFC3','#A9C8E6','#B8AFE0','#DCAACD','#C9C9C9']},
@@ -125,6 +127,7 @@
     node.dataset.displayColor = fill; node.style.backgroundColor = color(fill); node.style.color = ink(color(fill));
   }
   function paintAll() {
+    if (red) table.style.setProperty('--vitrine-preset-red',color(red));
     table.querySelectorAll('td.has-status-color').forEach(paintCell);
     document.querySelectorAll('[data-display-color]').forEach(node => paint(node,node.dataset.displayColor));
   }
