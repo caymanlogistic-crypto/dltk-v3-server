@@ -32,7 +32,12 @@ function vitrine_data(?array $requestedRows=null): array {
     $records=$wanted?wquery('SELECT * FROM records WHERE table_id=? AND archived=FALSE AND row_num IN ('.implode(',',array_fill(0,count($wanted),'?')).') ORDER BY row_num DESC',[$t['id'],...$wanted])->fetchAll():[];
     $catalog=workspace_status_catalog($t);$byId=[];$byName=[];foreach($catalog['statuses'] as &$status){$status['id']=(int)$status['id'];$status['revision']=(int)$status['revision'];$byId[$status['id']]=$status;$byName[vitrine_status_key($status['name'])]=$status;}unset($status);
     [$boundChoices,$boundCatalogs,$entriesByName]=vitrine_catalog_options($t,$links);
-    $dependentLinks=array_filter($links,static fn(array $link): bool=>isset($link['target']));
+    $dependentLinks=array_filter($links,static fn(array $link): bool=>isset($link['target'])&&$link['kind']!=='unload-points');
+    $unloadLink=$links['K']??null;
+    $canChooseUnload=$unloadLink && workspace_can('catalog',(string)$unloadLink['id'],'view',$t['id']);
+    $unloadPoints=$unloadLink ? workspace_unload_points($unloadLink['id']) : [];
+    $unloadOptions=$canChooseUnload ? workspace_unload_options_by_client($unloadPoints) : [];
+    if ($canChooseUnload) $boundCatalogs['K']=$unloadLink['id'];
     $dependentValues=array_map('vitrine_catalog_values',$dependentLinks);
     $pickupColors=isset($boundCatalogs['E']) && isset($links['E'])
         ?wquery('SELECT id,color FROM catalog_entries WHERE catalog_id=? AND color IS NOT NULL',[$links['E']['id']])->fetchAll(PDO::FETCH_KEY_PAIR):[];
@@ -45,7 +50,7 @@ function vitrine_data(?array $requestedRows=null): array {
         foreach($columns as $f){$key=$f['letter'];$cell=$raw[(string)column_number($key)]??[];$kinds[$key]=$key==='A'?'status':(mb_strtolower(trim($f['label']))==='время'?'time':vitrine_clipboard_kind($cell,$key));
             if(!$raw){$kinds[$key]=match(mb_strtolower($f['label'])){'дата'=>'date','время'=>'time',default=>$key==='A'?'status':'text'};}
             if (isset($compactInputs[$key])) $kinds[$key]=$compactInputs[$key];
-            if ($key==='I' && isset($links[$key])) $kinds[$key]='text';
+            if (in_array($key,['I','K'],true) && isset($links[$key])) $kinds[$key]='text';
             if (isset($slots[$key])) $kinds[$key]='slot';
             if (isset($singleLine[$key])) $kinds[$key]='text';
             $display=display_cell($cell);if($display!==null){$baseline[$key]=$display;if(!isset($edits[(int)$r['id']][$key]))$values[$key]=$display;}
@@ -65,6 +70,18 @@ function vitrine_data(?array $requestedRows=null): array {
             $values[$link['target']]=$dependentValues[$source][$entryId]??'';
         }
         $choices=array_diff_key(array_replace($choices,$boundChoices),$slots,$singleLine,$compactInputs);
+        if ($unloadLink) {
+            $point=$unloadPoints[$refs[(int)$r['id']]['K']['id']??0]??null;
+            if ($point) {
+                $values['K']=$point['address'];
+                $values['L']=workspace_unload_primary($point);
+            }
+            if ($canChooseUnload) {
+                $clientName=$values['B']??'';
+                $clientId=$refs[(int)$r['id']]['B']['id']??($entriesByName['B'][vitrine_catalog_key($clientName)]??null);
+                $choices['K']=workspace_unload_row_options($unloadOptions,$clientId,$clientName,$point);
+            }
+        }
         $statusId=$edits[(int)$r['id']]['A']['status_id']??null;$status=$byId[$statusId]??($byName[vitrine_status_key($values['A']??'')]??null);
         if($status)$values['A']=$status['name'];$choices['A']=array_column($catalog['statuses'],'name');
         $pickupId=$refs[(int)$r['id']]['E']['id']??($entriesByName['E'][vitrine_catalog_key($values['E']??'')]??0);
@@ -91,14 +108,16 @@ function vitrine_store(array $body): array {
         $values=json_decode($r['values_json'],true);$key=$body['column'];$before=$body['currentValue']??($old?$old['value']:workspace_string($values[$key]??''));
         if($key==='A'&&!empty($old['status_id'])){$latestName=wquery('SELECT name FROM catalog_entries WHERE id=?',[$old['status_id']])->fetchColumn();if($latestName!==false)$before=$latestName;}
         $value=$body['reset']?$body['original']:$body['value'];
-        $reference=null;$binding=null;$entry=null;$link=vitrine_catalog_links($t)[$key]??null;
+        $reference=null;$binding=null;$entry=null;$links=vitrine_catalog_links($t);$link=$links[$key]??null;
         if($link){
             $binding=$link['id'];
             workspace_require('catalog',(string)$binding,'view',$t['id']);
             if($value!==''){
-                $entry=vitrine_find_catalog_entry($binding,$value);
+                $unload=$link['kind']==='unload-points';
+                $entry=$unload ? ($body['reset']?null:vitrine_find_unload_point($t,$r,$values,$binding,$value))
+                    : vitrine_find_catalog_entry($binding,$value);
                 if($entry){
-                    $reference=(int)$entry['id'];$value=$entry['name'];
+                    $reference=(int)$entry['id'];$value=$unload?$entry['address']:$entry['name'];
                 }elseif(!$body['reset']&&$value!==$before){
                     throw new ApiError('invalid_reference',$link['invalid']);
                 }
@@ -122,15 +141,30 @@ function vitrine_store(array $body): array {
                 else $values['clientOrderStatus']=$nextOrderStatus;
             }
         }
+        $unloadResult=[];
+        $unloadId=$links['K']['id']??null;
+        if ($key==='B' && $unloadId && workspace_can('field','K','view',$t['id'])
+            && workspace_can('catalog',(string)$unloadId,'view',$t['id'])) {
+            $points=workspace_unload_points($unloadId);
+            $selected=wquery("SELECT entry_id FROM record_references WHERE record_id=? AND field_key='K'",[$r['id']])->fetchColumn();
+            $unloadResult['unloadChoices']=workspace_unload_row_options(
+                workspace_unload_options_by_client($points),$reference,$value,$points[$selected]??null);
+        }
         $active=$value!==($body['comparisonOriginal']??$body['original']);
         $action=$body['editAction']??($body['reset']?'reset':'edit');if(!in_array($action,['edit','paste','undo','reset'],true))$action='edit';
         $operation=bin2hex(random_bytes(16));
         $dependentPatch=null;
-        if(isset($link['target'])&&($reference||$value!==$before)){
-            $entries=vitrine_catalog_values($link);
-            $previousEntry=vitrine_find_catalog_entry($binding,$before,$link['kind']==='clients');
-            $previous=$entries[$previousEntry['id']??0]??'';
-            $dependentPatch=vitrine_update_catalog_value($t,$r,$values,$link['target'],$entries[$reference]??'',$previous,$u,$action,$request,$operation);
+        if(isset($link['target'])&&($reference||$value!==$before||($key==='K'&&$body['reset']))){
+            if ($key==='K') {
+                $previous=workspace_string($values['L']??'');
+                $next=$body['reset'] ? vitrine_unload_original_contact($r) : ($entry?workspace_unload_primary($entry):'');
+            } else {
+                $entries=vitrine_catalog_values($link);
+                $previousEntry=vitrine_find_catalog_entry($binding,$before,$link['kind']==='clients');
+                $previous=$entries[$previousEntry['id']??0]??'';
+                $next=$entries[$reference]??'';
+            }
+            $dependentPatch=vitrine_update_catalog_value($t,$r,$values,$link['target'],$next,$previous,$u,$action,$request,$operation);
         }
         $catalogStyle=[];
         if(($link['kind']??null)==='terminals-main'){
@@ -139,10 +173,14 @@ function vitrine_store(array $body): array {
         }
         $derived=$dependentPatch&&workspace_can('field',$link['target'],'view',$t['id'])?['dependentCell'=>$dependentPatch]:[];
         if($before===$value && !$orderChanged){
-            $result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request]+$derived+$orderResult+$catalogStyle;
+            $result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request]+$derived+$orderResult+$catalogStyle+$unloadResult;
             if($link&&$reference){
                 wquery('INSERT INTO record_references VALUES(?,?,?) ON DUPLICATE KEY UPDATE entry_id=VALUES(entry_id)',[$r['id'],$key,$reference]);
                 $result+=['referenceId'=>$reference,'catalogId'=>(int)$binding];
+            }
+            if($key==='K'&&$body['reset']){
+                wquery("DELETE FROM record_references WHERE record_id=? AND field_key='K'",[$r['id']]);
+                $result+=['referenceId'=>0,'catalogId'=>(int)$binding];
             }
             if($dependentPatch)wquery('UPDATE records SET values_json=?,updated_at=UTC_TIMESTAMP(6) WHERE id=?',[wjson($values),$r['id']]);
             wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);workspace_db()->commit();return $result;
@@ -155,7 +193,7 @@ function vitrine_store(array $body): array {
         $label=next_label($t['columns'],$key);
         if ($orderChanged) workspace_audit(['tableId'=>$t['id'],'recordId'=>(int)$r['id'],'row'=>$body['row'],'column'=>'B','label'=>'Статус заказа','before'=>workspace_client_order_status($oldOrderStatus)['label'],'after'=>workspace_client_order_status($nextOrderStatus)['label'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
         if ($before!==$value) workspace_audit(['tableId'=>$t['id'],'recordId'=>(int)$r['id'],'row'=>$body['row'],'column'=>$key,'label'=>$label,'before'=>$before,'after'=>$value,'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
-        $status=$statusId?wquery('SELECT color FROM catalog_entries WHERE id=?',[$statusId])->fetch():null;$result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request,'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0)]+$derived+$orderResult+$catalogStyle;
+        $status=$statusId?wquery('SELECT color FROM catalog_entries WHERE id=?',[$statusId])->fetch():null;$result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request,'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0)]+$derived+$orderResult+$catalogStyle+$unloadResult;
         workspace_event('cell.changed',['tableSlug'=>$t['slug'],'row'=>$body['row'],'column'=>$key,'value'=>$value,'revision'=>$revision,'edited'=>$active,'statusId'=>$statusId,'statusColor'=>$status['color']??null,'original'=>$body['original'],'baseHash'=>hash('sha256',$r['baseline_json']),'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0),'actorId'=>$u['id'],'actorName'=>$u['name'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation]+$orderResult+$catalogStyle);
         if($key===$t['carrier_column'])workspace_event('row.changed',['tableSlug'=>$t['slug'],'row'=>$body['row']]);
         wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);workspace_db()->commit();return $result;

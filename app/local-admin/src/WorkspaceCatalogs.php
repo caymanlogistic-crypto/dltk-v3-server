@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/WorkspaceClientManagers.php';
+require_once __DIR__.'/WorkspaceUnloadPoints.php';
 require_once __DIR__.'/WorkspaceClientTransfer.php';
 require_once __DIR__.'/WorkspacePickupTransfer.php';
 
@@ -36,7 +37,12 @@ function workspace_catalog_save(array $b): array {
         $old=isset($b['id'])?wquery('SELECT * FROM catalog_entries WHERE id=? AND catalog_id=? FOR UPDATE',[(int)$b['id'],$cid])->fetch():null;
         if(isset($b['id'])&&!$old)throw new ApiError('not_found','Запись не найдена.',404);
         if($old&&(int)$old['revision']!==(int)($b['revision']??0))throw new ApiError('revision_conflict','Запись уже изменена. Откройте её заново; ваш ввод сохранён.',409);
-        $active=array_key_exists('active',$b)?(bool)$b['active']:true;$norm=mb_strtolower($name);$revision=$old?(int)$old['revision']+1:1;
+        if($catalog['kind']==='unload-points'&&(!$old||!isset($b['active'])||$name!==$old['name'])){
+            throw new ApiError('invalid_action','Откройте справочник «Точки выгрузки».');
+        }
+        $active=array_key_exists('active',$b)?(bool)$b['active']:true;
+        $norm=$catalog['kind']==='unload-points'?$old['normalized']:mb_strtolower($name);
+        $revision=$old?(int)$old['revision']+1:1;
         if($catalog['kind']==='terminals-main'&&!array_key_exists('color',$b))$color=$old['color']??null;
         if(in_array($catalog['kind'],['clients','terminals-main'],true)){
             $formerOwner=(int)(workspace_client_catalog_aliases($cid)[$norm]??0);
@@ -80,6 +86,10 @@ function workspace_catalogs_endpoint(string $method): never {
     if(!in_array($method,['GET','POST'],true))throw new ApiError('method','Метод не поддерживается.',405);
     if($method==='POST'){
         $b=wbody();
+        if (($b['action']??'')==='save_unload_contacts') {
+            if (!is_int($b['catalogId']??null) || !is_int($b['entryId']??null)) throw new ApiError('invalid_contacts','Выберите точку выгрузки.');
+            json_response(workspace_unload_contacts($b['catalogId'],$b['entryId'],$b));
+        }
         if (($b['action'] ?? '') === 'import_pickup_directory') json_response(workspace_import_pickup_directory($b));
         if (($b['action'] ?? '') === 'import_client_directory') json_response(workspace_import_client_directory($b));
         if(($b['action']??'')==='create_catalog'){
@@ -97,6 +107,9 @@ function workspace_catalogs_endpoint(string $method): never {
     }
     json_response(workspace_catalog_save($b));}
     $id=(int)($_GET['id']??0);$catalog=null;foreach(workspace_catalogs() as $c)if($c['id']===$id)$catalog=$c;if(!$catalog)throw new ApiError('not_found','Справочник не найден.',404);
+    if (isset($_GET['unloadContacts'])) {
+        json_response(workspace_unload_contacts($id,(int)$_GET['unloadContacts']));
+    }
     $detailsKey='catalog_details_'.$id;
     $unkeyed=($_GET['unkeyed']??null)==='1';
     if(isset($_GET['entryId'])||$unkeyed){

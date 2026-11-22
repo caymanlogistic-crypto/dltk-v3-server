@@ -12,6 +12,7 @@ function workspace_catalog_directory_model(): array {
         'status'=>['A'=>'Статус','B'=>'Цвет'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
         'container-types'=>['A'=>'Тип контейнера'],
+        'unload-points'=>['A'=>'Клиент','B'=>'Название точки','C'=>'Адрес выгрузки','D'=>'Режим работы','E'=>'Инструкция водителю'],
         default=>['A'=>'Название'],
     };
     $columns = [];
@@ -33,12 +34,17 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         'clients'=>workspace_client_manager_values($id),
         default=>[],
     };
+    $unload = $kind==='unload-points';
+    $clientChoices = $unload ? array_column(workspace_unload_client_entries(true),'name') : [];
+    $entries = $unload ? workspace_unload_points($id)
+        : wquery('SELECT id,name,color,revision,active FROM catalog_entries WHERE catalog_id=? AND active=? ORDER BY name,id',[$id,(int)!$archive])->fetchAll();
     $palette = array_column(workspace_palette(),'name','fill');
     $rows = $rowIds = [];
     $requested = $requestedRows === null ? null : array_fill_keys($requestedRows,true);
-    foreach (wquery('SELECT id,name,color,revision FROM catalog_entries WHERE catalog_id=? AND active=? ORDER BY name,id',[$id,(int)!$archive])->fetchAll() as $entry) {
+    foreach ($entries as $entry) {
+        if ((bool)$entry['active']===$archive) continue;
         $entryId = (int)$entry['id'];
-        $values = ['A'=>$entry['name']];
+        $values = $unload ? workspace_unload_point_values($entry) : ['A'=>$entry['name']];
         if (workspace_catalog_has_palette($kind)) $values['B'] = $palette[$entry['color']] ?? '';
         if (in_array($kind,['clients','carriers'],true)) $values['B'] = $valuesB[$entryId] ?? '';
         if ($search !== '' && mb_stripos(implode(' ',$values),$search) === false) continue;
@@ -52,6 +58,11 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $row['choices']['B']=$choices;
             $row['requiredChoices']['B']=true;
         }
+        if ($unload) {
+            $row['singleLine']=['A'=>true,'B'=>true];
+            $row['choices']['A']=$clientChoices;
+            $row['requiredChoices']['A']=true;
+        }
         $rows[] = $row;
     }
     $details = wquery("SELECT COALESCE(JSON_LENGTH(JSON_EXTRACT(value,'$.unkeyed')),0) AS unkeyedCount
@@ -60,7 +71,9 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         'catalogGrid'=>['id'=>$id,'archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,
             'syncLabel'=>$canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($id) : null,
             'hasDetails'=>(bool)$details,'unkeyedCount'=>(int)($details['unkeyedCount'] ?? 0),
-            'draftFields'=>workspace_directory_draft_fields('entries',catalogKind:$kind)]];
+            'unloadPoints'=>$unload,
+            'draftFields'=>$unload ? workspace_unload_draft_fields($clientChoices)
+                : workspace_directory_draft_fields('entries',catalogKind:$kind)]];
 }
 
 function workspace_catalog_directory_hash(int $catalogId,int $entryId): string {
@@ -81,6 +94,21 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     $entry = wquery('SELECT * FROM catalog_entries WHERE catalog_id=? AND id=? AND active=TRUE',[$id,$body['row']])->fetch();
     if (!$entry) throw new ApiError('not_found','Запись не найдена.',404);
     $kind = $model['catalogKind'];
+    if ($kind==='unload-points') {
+        $point=workspace_unload_points($id)[$body['row']]??null;
+        if (!$point) throw new ApiError('not_found','Точка выгрузки не найдена.',404);
+        $values=workspace_unload_point_values($point);
+        $values[$column]=$body['value'];
+        $baseHash=workspace_catalog_directory_hash($id,$body['row']);
+        if ($pasteCheck) {
+            workspace_unload_validate_point($values,$point);
+            json_response(['accepted'=>true]);
+        }
+        if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
+        $result=workspace_unload_save_point($id,$values,$body['row'],$body['revision']);
+        $value=$result['values'][$column];
+        json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);
+    }
     $payload = ['catalogId'=>$id,'id'=>$body['row'],'name'=>$entry['name'],'color'=>$entry['color']];
     $value = $body['value'];
     $fill = null;

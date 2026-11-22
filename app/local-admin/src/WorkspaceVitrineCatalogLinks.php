@@ -12,10 +12,11 @@ function vitrine_catalog_links(array $table): array {
         'B'=>['kind'=>'clients','target'=>'AL','meta'=>'catalog_managers_','source'=>'Из справочника клиентов','empty'=>'У клиента не указан менеджер','invalid'=>'Выберите клиента из справочника.'],
         'E'=>['kind'=>'terminals-main','invalid'=>'Выберите терминал постановки из справочника.'],
         'I'=>['kind'=>'container-types','invalid'=>'Выберите тип контейнера из справочника.'],
+        'K'=>['kind'=>'unload-points','target'=>'L','source'=>'Контакт из справочника точек выгрузки','empty'=>'У точки не указан контакт','invalid'=>'Выберите точку выгрузки этого клиента.'],
         'S'=>['kind'=>'carriers','target'=>'AM','meta'=>'catalog_logists_','source'=>'Из справочника перевозчиков','empty'=>'У перевозчика не указан логист','invalid'=>'Выберите перевозчика из справочника.'],
     ];
     $links=[];
-    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','I','S') ORDER BY c.id",[$table['id']])->fetchAll();
+    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','I','K','S') ORDER BY c.id",[$table['id']])->fetchAll();
     foreach($bindings as $binding){
         $field=$binding['field_key'];$definition=$definitions[$field];
         if($definition['kind']===$binding['kind']&&!isset($links[$field])){
@@ -30,7 +31,7 @@ function vitrine_bound_catalog_menu(array $tables): array {
         if($table['slug']!=='vyvoz')continue;
         $links=vitrine_catalog_links($table);
         $items=[];
-        foreach(['E','I'] as $field){
+        foreach(['E','I','K'] as $field){
             $link=$links[$field]??null;
             if(!$link||!workspace_can('catalog',(string)$link['id'],'view',$table['id']))continue;
             $title=wquery('SELECT title FROM catalogs WHERE id=?',[$link['id']])->fetchColumn();
@@ -60,6 +61,28 @@ function vitrine_find_catalog_entry(int $catalog,string $name,bool $includeArchi
     return $alias?wquery('SELECT id,name,color FROM catalog_entries WHERE catalog_id=? AND id=?',[$catalog,$alias])->fetch():false;
 }
 
+function vitrine_find_unload_point(array $table,array $record,array $values,int $catalogId,string $value): ?array {
+    $oldLinks=wquery("SELECT field_key,entry_id FROM record_references WHERE record_id=? AND field_key IN ('B','K')",[$record['id']])->fetchAll(PDO::FETCH_KEY_PAIR);
+    $clientName=workspace_string($values['B']??'');
+    $clientCatalog=vitrine_catalog_links($table)['B']['id']??0;
+    $clientId=isset($oldLinks['B']) ? (int)$oldLinks['B'] : ($clientCatalog?(int)(vitrine_find_catalog_entry($clientCatalog,$clientName,true)['id']??0):0);
+    $clientKey=workspace_unload_client_key($clientId?:null,$clientName);
+    $input=vitrine_catalog_key($value);
+    foreach (workspace_unload_points($catalogId) as $point) {
+        if (!$point['active']) continue;
+        $key=workspace_unload_client_key($point['client_id']===null?null:(int)$point['client_id'],$point['client']);
+        if ($key!==$clientKey && (int)$point['id']!==(int)($oldLinks['K']??0)) continue;
+        if ($input===vitrine_catalog_key(workspace_unload_option($point)) || $input===vitrine_catalog_key($point['address'])) return $point;
+    }
+    return null;
+}
+
+function vitrine_unload_original_contact(array $record): string {
+    $baseline=json_decode($record['baseline_json'],true);
+    $metadata=$record['metadata_zlib']?blob_json($record['metadata_zlib']):[];
+    return workspace_string(display_cell($metadata[column_number('L')]??[])??($baseline['L']??''));
+}
+
 function vitrine_require_manual_field(array $table,string $column): void {
     if(in_array($column,array_column(vitrine_catalog_links($table),'target'),true)){
         throw new ApiError('derived_field','Данные берутся из справочника. Эту ячейку нельзя редактировать.',403);
@@ -70,7 +93,7 @@ function vitrine_catalog_options(array $t,array $links): array {
     $boundChoices=[];$boundCatalogs=[];$catalogVisibility=[];$entriesByName=[];
     $catalogIds=array_column($links,'id')?:[0];
     $catalogSlots=implode(',',array_fill(0,count($catalogIds),'?'));
-    foreach(wquery("SELECT b.field_key,c.id AS catalog_id,e.id AS entry_id,e.name,e.normalized,e.active FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id LEFT JOIN catalog_entries e ON e.catalog_id=c.id AND (e.active=TRUE OR c.kind IN ('clients','terminals-main')) WHERE b.table_id=? AND b.field_key NOT IN ('','A') AND (?=TRUE OR c.id IN ($catalogSlots)) ORDER BY e.id",[$t['id'],(int)$t['is_demo'],...$catalogIds])->fetchAll() as $option){
+    foreach(wquery("SELECT b.field_key,c.id AS catalog_id,e.id AS entry_id,e.name,e.normalized,e.active FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id LEFT JOIN catalog_entries e ON e.catalog_id=c.id AND (e.active=TRUE OR c.kind IN ('clients','terminals-main')) WHERE b.table_id=? AND b.field_key NOT IN ('','A') AND c.kind<>'unload-points' AND (?=TRUE OR c.id IN ($catalogSlots)) ORDER BY e.id",[$t['id'],(int)$t['is_demo'],...$catalogIds])->fetchAll() as $option){
         $key=$option['field_key'];$catalogId=(int)$option['catalog_id'];
         $linked=($links[$key]['id']??0)===$catalogId;
         if($linked&&$option['entry_id']!==null)$entriesByName[$key][$option['normalized']]=(int)$option['entry_id'];

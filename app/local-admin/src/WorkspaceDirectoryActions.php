@@ -46,6 +46,7 @@ function workspace_catalog_row_action(string $directory, array $body): array {
     $action = $body['action'];
     if ($action === 'add') {
         $values = $body['values'];
+        if ($kind==='unload-points') return workspace_unload_save_point($catalogId,$values);
         $name = workspace_catalog_validate_name($values['A'] ?? '');
         $payload = ['catalogId'=>$catalogId,'name'=>$name];
         if (workspace_catalog_has_palette($kind)) $payload['color'] = workspace_directory_color($values['B'] ?? '');
@@ -74,6 +75,10 @@ function workspace_directory_conflict(): never {
 }
 
 function workspace_assert_catalog_entry_unused(string $kind, int $catalogId, array $entry): void {
+    if ($kind==='unload-points') {
+        workspace_assert_unload_point_unused((int)$entry['id'],$entry['name']);
+        return;
+    }
     if ($kind === 'status') {
         workspace_assert_flight_status_unused($catalogId,$entry);
         return;

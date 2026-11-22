@@ -6,6 +6,9 @@
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
   const orderLabels = Object.fromEntries(Object.entries(orderStatuses).map(([code,status])=>[status.label,code]));
   const normalizeContainer = value => value.replace(/[ \t\u00a0\u202f-]+/g,'').toUpperCase();
+  function isUnloadingCell(cell) {
+    return cell.dataset.column==='K' && Number(cell.dataset.catalogId)>0 && document.body.dataset.workspaceTable==='vyvoz';
+  }
   function isContainerTypeCell(cell) {
     return cell.dataset.column === 'I' && Number(cell.dataset.catalogId) > 0 &&
       document.body.dataset.workspaceTable === 'vyvoz';
@@ -119,6 +122,13 @@
       : weightDigits ? weightMask.format(weightDigits) : result.value;
     cell.dataset.original = result.original ?? '';
     cell.dataset.revision = String(result.revision);
+    if (result.unloadChoices) {
+      const unload=cell.parentElement.querySelector('td[data-column="K"]');
+      if (unload) unload.dataset.choices=JSON.stringify(result.unloadChoices);
+    }
+    if (result.values) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
+      if (Object.hasOwn(result.values,sibling.dataset.column)) sibling.textContent = result.values[sibling.dataset.column];
+    }
     if (catalog) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
       sibling.dataset.revision = String(result.revision);
       if (catalog === 'employees') sibling.dataset.base = result.baseHash;
@@ -222,7 +232,8 @@
       : editor.resolveValue ? editor.resolveValue() : editor.field.value;
     if (!reset && value === null) {
       report(isContainerTypeCell(editor.cell)
-        ? 'Выберите тип контейнера из подсказок.' : 'Выберите клиента из подсказок.','danger');
+        ? 'Выберите тип контейнера из подсказок.'
+        : isUnloadingCell(editor.cell) ? 'Выберите точку выгрузки из подсказок.' : 'Выберите клиента из подсказок.','danger');
       editor.field.focus();
       return;
     }
@@ -288,7 +299,7 @@
     const isSingleLine = isContainer || cell.hasAttribute('data-single-line');
     const pickupEditor = cell.dataset.column === 'E' && Number(cell.dataset.catalogId) > 0 &&
       document.body.dataset.workspaceTable === 'vyvoz';
-    const catalogEditor = pickupEditor || (['B', 'I', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
+    const catalogEditor = pickupEditor || (['B', 'I', 'K', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
     if (mask || isSingleLine || isStatus || catalogEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
@@ -304,7 +315,9 @@
     if (!Array.isArray(choices)) choices = [];
     const useCustom = !mask && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
     const typeEditor = isContainerTypeCell(cell);
-    const searchableCatalog = pickupEditor || typeEditor || cell.hasAttribute('data-order-status');
+    const unloadEditor = isUnloadingCell(cell);
+    const unloadClient = cell.dataset.column==='A' && document.querySelector('[data-unload-contacts]')!==null;
+    const searchableCatalog = pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');
@@ -448,7 +461,7 @@
     field.focus();
     if (firstCharacter === null && (searchableCatalog || replaceLegacyValue)) field.select();
     else field.setSelectionRange(field.value.length, field.value.length);
-    if (typeEditor && firstCharacter !== null) {
+    if ((typeEditor || unloadEditor) && firstCharacter !== null) {
       field.dispatchEvent(new InputEvent('input',{inputType:'insertText',bubbles:true}));
     }
   }
@@ -586,7 +599,8 @@
     const typedText = cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line') && /^\S$/u.test(event.key);
     const typedContainer = cell.dataset.kind === 'container' && /^[a-z]$/i.test(event.key);
     const typedType = isContainerTypeCell(cell) && /^[\p{L}0-9]$/u.test(event.key);
-    if ((typedType || ((typedText || typedContainer) && cell.dataset.choices === '[]'))
+    const typedUnload = isUnloadingCell(cell) && /^[\p{L}0-9]$/u.test(event.key);
+    if ((typedType || typedUnload || ((typedText || typedContainer) && cell.dataset.choices === '[]'))
       && !cell.hasAttribute('data-required-choice')
       && !cell.hasAttribute('data-readonly-cell') && !event.defaultPrevented && !event.isComposing
       && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))) {

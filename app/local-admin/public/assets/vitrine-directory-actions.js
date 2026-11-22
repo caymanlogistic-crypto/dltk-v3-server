@@ -185,8 +185,11 @@
         throw new Error('Пароль должен содержать от 8 символов и занимать до 72 байт.');
       }
       if (value && field.type === 'choice' && !choice(column,value)) throw new Error('Выберите значение из списка.');
-      if (field.type === 'text' && (Array.from(value).length > 160 || /[\r\n]/.test(value))) {
-        throw new Error('Введите текст одной строкой, до 160 символов.');
+      const maxLength = field.maxLength ?? 160;
+      if (field.type === 'text' && (Array.from(value).length > maxLength || (field.singleLine !== false && /[\r\n]/.test(value)))) {
+        throw new Error(field.singleLine === false
+          ? `Введите не более ${maxLength} символов.`
+          : `Введите текст одной строкой, до ${maxLength} символов.`);
       }
       draft.values[column] = value;
       if (field.allowEmpty) draft.confirmed.add(column);
