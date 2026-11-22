@@ -13,7 +13,7 @@
   const confirmLabel=deleteForm.querySelector('[data-client-unload-confirm]');
   const menu=dialog.querySelector('[data-client-unload-menu]');
   const csrf=document.querySelector('meta[name="csrf-token"]').content;
-  let opener, clientId, data, selectedPoint, returnFocus, menuTrigger, menuPoint;
+  let opener, clientId, data, selectedPoint, returnFocus, menuTrigger, menuPoint, menuReturnFocus;
   let busy=false, restoreFocus=true;
 
   const notice=(message,tone='danger')=>window.PlanexNotifications.show({message,tone});
@@ -51,7 +51,7 @@
   function closeMenu(focus=false) {
     if (!menuTrigger) return;
     menuTrigger.setAttribute('aria-expanded','false');
-    if (focus) menuTrigger.focus({preventScroll:true});
+    if (focus) (menuReturnFocus?.isConnected ? menuReturnFocus : menuTrigger).focus({preventScroll:true});
     menu.hidden=true;
     menuTrigger=null;
   }
@@ -59,6 +59,7 @@
     if (menuTrigger===button) { closeMenu(true);return; }
     closeMenu();
     menuTrigger=button;
+    menuReturnFocus=dialog.contains(document.activeElement) ? document.activeElement : button;
     menuPoint=point;
     button.setAttribute('aria-expanded','true');
     menu.hidden=false;
@@ -80,8 +81,10 @@
     showOnly(deleteForm);
     deleteForm.querySelector('[data-client-unload-cancel]').focus();
   }
-  function focusList() {
-    (returnFocus?.isConnected ? returnFocus : add.hidden ? close : add).focus({preventScroll:true});
+  function focusList(savedId) {
+    if (savedId && keyboard.focusRow(savedId,returnFocus?.closest('td')?.cellIndex??1)) return;
+    if (returnFocus?.isConnected) { returnFocus.focus({preventScroll:true});return; }
+    keyboard.focusFirst(add.hidden ? close : add);
   }
   function render() {
     dialog.querySelector('h2').textContent='Точки выгрузки · '+data.name;
@@ -89,6 +92,7 @@
     rows.replaceChildren();
     for (const point of data.points) {
       const row=node('tr');
+      row.dataset.relationId=String(point.id);
       const actions=node('td');
       if (data.canEdit) {
         const more=action('⋯',button=>rowMenu(point,button),'vitrine-row-menu-trigger');
@@ -135,10 +139,12 @@
     try {
       data=await request();
       restoreFocus=true;
+      returnFocus=null;
       render();
       showOnly(list);
       dialog.show();
       position();
+      focusList();
     } catch (error) { notice(error.message); }
     finally { busy=false;cell.removeAttribute('aria-busy'); }
   }
@@ -151,7 +157,11 @@
       data=await request(payload);
       render();
       if (form===deleteForm) dialog.close();
-      else { showOnly(list);focusList(); }
+      else {
+        const savedId=selectedPoint?.id??data.points.find(point=>point.address===payload.address.trim())?.id;
+        showOnly(list);
+        focusList(savedId);
+      }
       notice(message,'success');
     } catch (error) { notice(error.message,'info'); }
     finally { busy=false;controls.forEach(control=>control.disabled=false); }
@@ -169,25 +179,24 @@
   add.addEventListener('click',()=>edit(null,add));
   close.addEventListener('click',()=>dialog.close());
   menu.querySelector('[data-client-unload-remove]').addEventListener('click',()=>{
-    const button=menuTrigger;
+    const button=menuReturnFocus??menuTrigger;
     closeMenu();
     askDelete(menuPoint,button);
   });
   for (const cancel of dialog.querySelectorAll('[data-client-unload-cancel]')) {
     cancel.addEventListener('click',()=>{showOnly(list);focusList();});
   }
+  const keyboard=window.VitrineClientRelationsKeyboard.bind(dialog,{
+    rows,menu,closeMenu,isBusy:()=>busy,onEscape:()=>{
+      if (list.hidden) { showOnly(list);focusList(); }
+      else dialog.close();
+    },
+  });
   dialog.addEventListener('keydown',event=>{
     if (event.key==='Enter' && event.target===address && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       addressForm.requestSubmit();
-      return;
     }
-    if (event.key!=='Escape') return;
-    event.preventDefault();
-    if (busy) return;
-    if (menuTrigger) closeMenu(true);
-    else if (list.hidden) { showOnly(list);focusList(); }
-    else dialog.close();
   });
   dialog.addEventListener('close',()=>{
     closeMenu();

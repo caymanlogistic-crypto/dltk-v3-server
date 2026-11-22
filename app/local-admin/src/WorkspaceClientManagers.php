@@ -68,7 +68,7 @@ function workspace_client_replace_manager_links(int $clientId,array $ids): void 
 function workspace_client_manager_card(int $clientId,?array $body=null): array {
     $catalogId=(int)(workspace_client_grid_catalog()['id']??0);
     $managerCatalog=workspace_manager_catalog_id();
-    if (!$catalogId || !$managerCatalog) throw new ApiError('not_found','Справочник «Менеджеры» не найден.',404);
+    if (!$catalogId || !$managerCatalog) throw new ApiError('not_found','Справочник «Сотрудники» не найден.',404);
     workspace_require('catalog',(string)$managerCatalog,'view');
     if ($body!==null) {
         workspace_require('catalog',(string)$catalogId,'edit');
@@ -84,7 +84,9 @@ function workspace_client_manager_card(int $clientId,?array $body=null): array {
         foreach (workspace_manager_entries($managerCatalog) as $entry) {
             $id=(int)$entry['id'];
             if (!$entry['active'] && !in_array($id,$existing,true)) continue;
-            $label=implode(' ',array_filter([$entry['surname'],$entry['name'],$entry['patronymic']],'strlen'));
+            $surname=$entry['surname']==='Неизвестно' ? '' : $entry['surname'];
+            $patronymic=$entry['patronymic']==='Неизвестно' ? '' : $entry['patronymic'];
+            $label=implode(' ',array_filter([$surname,$entry['name'],$patronymic],'strlen'));
             $options[$id]=['id'=>$id,'name'=>$entry['name'],'label'=>$label,'active'=>(bool)$entry['active']];
         }
         if ($body!==null) {

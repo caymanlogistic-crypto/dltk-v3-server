@@ -12,7 +12,7 @@
   const menu=dialog.querySelector('[data-client-manager-menu]');
   const title=dialog.querySelector('h2');
   const csrf=document.querySelector('meta[name="csrf-token"]').content;
-  let opener,clientId,data,selected,returnFocus,menuTrigger,menuManager,control,available,initialValue;
+  let opener,clientId,data,selected,returnFocus,menuTrigger,menuManager,menuReturnFocus,control,available,initialValue;
   let busy=false,restoreFocus=true;
 
   const notice=(message,tone='danger')=>window.PlanexNotifications.show({message,tone});
@@ -39,7 +39,7 @@
   function closeMenu(focus=false) {
     if (!menuTrigger) return;
     menuTrigger.setAttribute('aria-expanded','false');
-    if (focus) menuTrigger.focus({preventScroll:true});
+    if (focus) (menuReturnFocus?.isConnected ? menuReturnFocus : menuTrigger).focus({preventScroll:true});
     menu.hidden=true;
     menuTrigger=null;
   }
@@ -47,14 +47,17 @@
     if (menuTrigger===button) { closeMenu(true);return; }
     closeMenu();
     menuTrigger=button;
+    menuReturnFocus=dialog.contains(document.activeElement) ? document.activeElement : button;
     menuManager=manager;
     button.setAttribute('aria-expanded','true');
     menu.hidden=false;
     window.VitrineGrid.positionPanel(menu,button);
     menu.querySelector('button').focus({preventScroll:true});
   }
-  function focusList() {
-    (returnFocus?.isConnected ? returnFocus : add.hidden ? close : add).focus({preventScroll:true});
+  function focusList(savedId) {
+    if (savedId && keyboard.focusRow(savedId,1)) return;
+    if (returnFocus?.isConnected) { returnFocus.focus({preventScroll:true});return; }
+    keyboard.focusFirst(add.hidden ? close : add);
   }
   async function request(body=null) {
     const path='/api/workspace/catalogs'+(body?'':'?clientManagers='+clientId);
@@ -92,6 +95,7 @@
       const manager=byId.get(id);
       if (!manager) continue;
       const row=node('tr');
+      row.dataset.relationId=String(id);
       const actions=node('td');
       if (data.canEdit) {
         const more=action('⋯',button=>rowMenu(manager,button),'vitrine-row-menu-trigger');
@@ -131,10 +135,11 @@
       show(list);
       dialog.show();
       position();
+      focusList();
     } catch (error) { notice(error.message); }
     finally { busy=false;cell.removeAttribute('aria-busy'); }
   }
-  async function submit(section,managerIds) {
+  async function submit(section,managerIds,savedId=null) {
     if (busy) return;
     const fields=[...section.querySelectorAll('button,input')];
     busy=true;
@@ -146,7 +151,7 @@
       cell.textContent=cell.dataset.original=data.summary;
       cell.title='Щелчок — открыть список менеджеров. '+data.summary;
       if (section===removeForm) dialog.close();
-      else { render();show(list);focusList(); }
+      else { render();show(list);focusList(savedId); }
       notice('Менеджеры клиента сохранены.','success');
     } catch (error) { notice(error.message); }
     finally { busy=false;fields.forEach(field=>field.disabled=false); }
@@ -158,11 +163,11 @@
     const option=available.find(item=>item.value===control.resolveValue());
     if (!option) { notice('Выберите менеджера из списка.','info');return; }
     const ids=selected ? data.managerIds.map(id=>id===selected.id ? option.id : id) : [...data.managerIds,option.id];
-    submit(form,ids);
+    submit(form,ids,option.id);
   });
   menu.querySelector('[data-client-manager-remove]').addEventListener('click',()=>{
     selected=menuManager;
-    returnFocus=menuTrigger;
+    returnFocus=menuReturnFocus??menuTrigger;
     closeMenu();
     removeForm.querySelector('[data-client-manager-confirm]').textContent='Убрать «'+selected.label+'» из списка менеджеров клиента?';
     show(removeForm);
@@ -175,13 +180,11 @@
   for (const cancel of dialog.querySelectorAll('[data-client-manager-cancel]')) {
     cancel.addEventListener('click',()=>{show(list);focusList();});
   }
-  dialog.addEventListener('keydown',event=>{
-    if (event.key!=='Escape') return;
-    event.preventDefault();
-    if (busy) return;
-    if (menuTrigger) closeMenu(true);
-    else if (list.hidden) { show(list);focusList(); }
-    else dialog.close();
+  const keyboard=window.VitrineClientRelationsKeyboard.bind(dialog,{
+    rows,menu,closeMenu,isBusy:()=>busy,onEscape:()=>{
+      if (list.hidden) { show(list);focusList(); }
+      else dialog.close();
+    },
   });
   dialog.addEventListener('close',()=>{
     closeMenu();

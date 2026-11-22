@@ -43,7 +43,7 @@ function workspace_manager_validate(array $values): array {
 }
 
 function workspace_manager_save(int $catalogId,array $values,?int $entryId=null,?int $revision=null): array {
-    if ($catalogId!==workspace_manager_catalog_id()) throw new ApiError('not_found','Справочник «Менеджеры» не найден.',404);
+    if ($catalogId!==workspace_manager_catalog_id()) throw new ApiError('not_found','Справочник «Сотрудники» не найден.',404);
     workspace_require('catalog',(string)$catalogId,'edit');
     workspace_begin();
     try {
@@ -61,7 +61,7 @@ function workspace_manager_save(int $catalogId,array $values,?int $entryId=null,
         wquery('INSERT INTO manager_profiles(entry_id,surname,patronymic,role_id,phone,email) VALUES(?,?,?,?,?,?)
             ON DUPLICATE KEY UPDATE surname=VALUES(surname),patronymic=VALUES(patronymic),role_id=VALUES(role_id),phone=VALUES(phone),email=VALUES(email)',
             [$entryId,$manager['surname'],$manager['patronymic'],$manager['role_id'],$manager['phone'],$manager['email']]);
-        workspace_audit(['category'=>'catalog','label'=>'Менеджеры','before'=>$old?['id'=>$entryId]+workspace_manager_values($old):null,
+        workspace_audit(['category'=>'catalog','label'=>'Сотрудники','before'=>$old?['id'=>$entryId]+workspace_manager_values($old):null,
             'after'=>['id'=>$entryId]+workspace_manager_values($manager),'action'=>$old?'edit':'create']);
         workspace_db()->commit();
         return ['id'=>$entryId,'revision'=>$revision,'values'=>workspace_manager_values($manager)];

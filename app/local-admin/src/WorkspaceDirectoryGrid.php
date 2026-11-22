@@ -30,7 +30,7 @@ function workspace_directory_grid_model(string $directory): array {
     foreach ($labels as $letter => $label) $columns[] = ['letter'=>$letter,'label'=>$label];
     return [
         'id'=>0, 'directoryKey'=>$directory, 'slug'=>'catalog-'.$directory,
-        'title'=>$employees ? 'Сотрудники' : 'Роли', 'columns'=>$columns,
+        'title'=>$employees ? 'Учётные записи' : 'Роли', 'columns'=>$columns,
     ];
 }
 

@@ -8,7 +8,7 @@ $catalogGrid = $data['catalogGrid'] ?? null;
 $canManageDirectory = $catalogGrid['canEdit'] ?? false;
 $showDraftRows = $canManageDirectory && !$catalogGrid['archive'];
 $viewUrl = static fn(string $path): string => function_exists('app_url_path') ? app_url_path($path) : $path;
-$currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Сотрудники','roles'=>'Роли','client-order-statuses'=>'Статусы клиентов','flight-statuses'=>'Статусы рейса','entries'=>'Справочник'][$directory]] : workspace_table());
+$currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Учётные записи','roles'=>'Роли','client-order-statuses'=>'Статусы клиентов','flight-statuses'=>'Статусы рейса','entries'=>'Справочник'][$directory]] : workspace_table());
 $managementTable = $currentTable['sourceTable'] ?? ($directory ? 'vyvoz' : $currentTable['slug']);
 $directoryUrl = $catalogGrid ? '/vitrine?catalog='.$directory.match ($directory) {
     'entries' => '&id='.$catalogGrid['id'],
@@ -78,6 +78,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if (!empty($catalogGrid['unloadPoints'])): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-unload-contacts.js')) ?>"></script>
   <?php endif; ?>
+  <?php if (!empty($catalogGrid['clientUnloadCatalog']) || !empty($catalogGrid['clientManagers'])): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-relations-keyboard.js')) ?>"></script>
+  <?php endif; ?>
   <?php if (!empty($catalogGrid['clientUnloadCatalog'])): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-unload-points.js')) ?>"></script>
   <?php endif; ?>
@@ -143,7 +146,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
       <details class="vitrine-folder" id="vitrine-catalogs">
         <summary class="nav-item is-parent<?= $directory && !in_array($directory,['client-order-statuses','flight-statuses'],true) ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
-          <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Сотрудники', 'roles'=>'Роли']; ?>
+          <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Учётные записи', 'roles'=>'Роли']; ?>
           <?php if (!workspace_client_grid_catalog()) unset($directoryLinks['clients']); ?>
           <?php if (!workspace_can('system','users','view')) unset($directoryLinks['employees']); ?>
           <?php if (!workspace_can('system','roles','view')) unset($directoryLinks['roles']); ?>
@@ -152,7 +155,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <?php endforeach; ?>
           <?php $managerCatalog=workspace_manager_catalog_id(); if ($managerCatalog && workspace_can('catalog',(string)$managerCatalog,'view')):
               $managerCurrent=$directory==='entries'&&($catalogGrid['id']??0)===$managerCatalog; ?>
-          <a class="nav-sub-item<?= $managerCurrent ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$managerCatalog)) ?>"<?= $managerCurrent ? ' aria-current="page"' : '' ?>>Менеджеры</a>
+          <a class="nav-sub-item<?= $managerCurrent ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$managerCatalog)) ?>"<?= $managerCurrent ? ' aria-current="page"' : '' ?>>Сотрудники</a>
           <?php endif; ?>
           <?php foreach ($boundCatalogMenu as $item):
             $current=$directory==='entries'&&($catalogGrid['id']??0)===$item['id'];
