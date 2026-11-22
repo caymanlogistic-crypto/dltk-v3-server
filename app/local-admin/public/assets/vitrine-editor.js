@@ -257,9 +257,10 @@
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder => { folder.open = false; });
     const panel = element('section', 'vitrine-editor');
     panel.setAttribute('role', 'dialog');
+    const isSlot = cell.dataset.kind === 'slot';
     const catalogEditor = ['B', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz';
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
-    if (catalogEditor || catalog) {
+    if (isSlot || catalogEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
     } else {
       const title = element('h2', 'vitrine-editor-title', dialogName);
@@ -272,7 +273,6 @@
     try { choices = JSON.parse(cell.dataset.choices || '[]'); } catch {}
     if (!Array.isArray(choices)) choices = [];
     const isStatus = cell.dataset.kind === 'status';
-    const isSlot = cell.dataset.kind === 'slot';
     const useCustom = !isSlot && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
     const searchableClient = cell.hasAttribute('data-order-status');
     let control = null;

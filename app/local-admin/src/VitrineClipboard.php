@@ -44,16 +44,16 @@ function vitrine_time_input(string $value): ?string {
     return str_pad($value, strlen($value) + (strpos($value,':') === 1 ? 1 : 0), '0', STR_PAD_LEFT);
 }
 
-/** Normalize the exact 12-digit slot or its displayed form. */
+/** Normalize the 10-digit slot or its current/legacy display format. */
 function vitrine_slot_input(string $value): ?string {
     $value = trim($value);
     if ($value === '') return '';
-    if (preg_match('/^с ([0-9]{2}) до ([0-9]{2}) - ([0-9]{2})\.([0-9]{2})\.([0-9]{4})$/uD',$value,$parts)) {
+    if (preg_match('/^с ([0-9]{2}) до ([0-9]{2}) - ([0-9]{2})\.([0-9]{2})\.(?:20)?([0-9]{2})$/uD',$value,$parts)) {
         $value = implode('',array_slice($parts,1));
     }
-    if (!preg_match('/^([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{4})$/D',$value,$parts)) return null;
+    if (!preg_match('/^([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$/D',$value,$parts)) return null;
     [, $from, $to, $day, $month, $year] = $parts;
-    if ((int)$from>23 || (int)$to>23 || !checkdate((int)$month,(int)$day,(int)$year)) return null;
+    if ((int)$from>23 || (int)$to>23 || !checkdate((int)$month,(int)$day,2000+(int)$year)) return null;
     return "с $from до $to - $day.$month.$year";
 }
 

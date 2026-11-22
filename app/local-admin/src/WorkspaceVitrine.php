@@ -38,6 +38,9 @@ function vitrine_data(?array $requestedRows=null): array {
         foreach($values as &$v)$v=workspace_string($v);unset($v);foreach($baseline as &$v)$v=workspace_string($v);unset($v);
         $rowEdits=[];foreach($edits[(int)$r['id']]??[] as $key=>$e){$values[$key]=$e['active']?$e['value']:($baseline[$key]??'');$rowEdits[$key]=['revision'=>(int)$e['revision'],'conflict'=>false,'value'=>$values[$key],'active'=>(bool)$e['active']];}
         foreach($refs[(int)$r['id']]??[] as $key=>$ref)$values[$key]=$ref['name'];
+        foreach (array_keys($slots) as $key) {
+            if (isset($values[$key])) $values[$key] = vitrine_slot_input($values[$key]) ?? $values[$key];
+        }
         foreach($links as $source=>$link){
             $entryId=$entriesByName[$source][vitrine_catalog_key($values[$source]??'')]??null;
             $values[$link['target']]=$dependentValues[$source][$entryId]??'';

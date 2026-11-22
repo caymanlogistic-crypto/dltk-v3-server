@@ -106,7 +106,7 @@ function vitrine_save_cell(): never {
     if (!$body['reset'] && ($current['kinds'][$body['column']] ?? '') === 'slot') {
         $normalized = vitrine_slot_input($body['value']);
         if ($normalized === null) {
-            throw new ApiError('invalid_slot','Введите 12 цифр: часы начала и окончания от 00 до 23 и действительную дату ДДММГГГГ.');
+            throw new ApiError('invalid_slot','Введите 10 цифр: часы начала и окончания от 00 до 23 и действительную дату ДДММГГ.');
         }
         $body['value'] = $normalized;
     }
@@ -129,6 +129,9 @@ function vitrine_save_cell(): never {
         $orderEdit=['orderStatus'=>$code];
     }
     $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'']+$orderEdit);
+    if (($current['kinds'][$body['column']] ?? '') === 'slot') {
+        $result['value'] = vitrine_slot_input($result['value']) ?? $result['value'];
+    }
     $statusColor = null; $resultStatusId = null;
     if ($body['column']==='A') foreach ($data['statuses'] as $status) if (vitrine_status_key($status['name'])===vitrine_status_key($result['value'])) { $statusColor=$status['color']; $resultStatusId=$status['id']; }
     json_response($result + ['original'=>$original,'baseHash'=>$current['baseHash'],'conflict'=>false,'statusColor'=>$statusColor,'statusId'=>$resultStatusId]);
