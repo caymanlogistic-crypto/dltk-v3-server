@@ -6,7 +6,9 @@
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
   const orderLabels = Object.fromEntries(Object.entries(orderStatuses).map(([code,status])=>[status.label,code]));
   function hasDraft(editor) {
-    return editor.field.value !== editor.initialValue || (editor.orderField && editor.orderField.value !== editor.initialOrder);
+    return editor.field.value !== editor.initialValue
+      || (editor.orderField && editor.orderField.value !== editor.initialOrder)
+      || (editor.requestField && editor.requestField.checked !== editor.initialRequest);
   }
   function report(text, tone = 'warning') {
     window.PlanexNotifications.show({ tone, message:text });
@@ -104,7 +106,9 @@
   }
   function applyResult(cell, result) {
     if (Number(cell.dataset.revision || 0) > result.revision) return;
-    cell.textContent = result.value;
+    const slotRequested = cell.dataset.kind === 'slot' && window.VitrineSlot.isRequest(result.value);
+    cell.toggleAttribute('data-slot-request',slotRequested);
+    cell.textContent = slotRequested ? window.VitrineSlot.requestLabel : result.value;
     cell.dataset.original = result.original ?? '';
     cell.dataset.revision = String(result.revision);
     if (catalog) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
@@ -198,7 +202,8 @@
   async function save(reset = false) {
     if (!active || active.saving) return;
     const editor = active;
-    const value = editor.resolveValue ? editor.resolveValue() : editor.field.value;
+    const value = editor.requestField?.checked ? window.VitrineSlot.requestLabel
+      : editor.resolveValue ? editor.resolveValue() : editor.field.value;
     if (!reset && value === null) {
       report('Выберите клиента из подсказок.','danger');
       editor.field.focus();
@@ -209,6 +214,7 @@
     editor.buttons.forEach(button => { button.disabled = true; });
     editor.field.disabled = true;
     if (editor.orderField) editor.orderField.disabled = true;
+    if (editor.requestField) editor.requestField.disabled = true;
     editor.saveButton.textContent = 'Сохраняю…';
     editor.panel.setAttribute('aria-busy', 'true');
     const cell = editor.cell;
@@ -228,14 +234,15 @@
     } catch (error) {
       editor.saving = false;
       editor.buttons.forEach(button => { button.disabled = false; });
-      editor.field.disabled = false;
+      editor.field.disabled = Boolean(editor.requestField?.checked);
       if (editor.orderField) editor.orderField.disabled = false;
+      if (editor.requestField) editor.requestField.disabled = false;
       editor.saveButton.textContent = 'Сохранить';
       editor.panel.removeAttribute('aria-busy');
       editor.error.textContent = error instanceof TypeError ? 'Нет связи с сервером. Текст сохранён в поле — повторите попытку.' : error.message;
       report(editor.error.textContent, 'danger');
       position();
-      editor.field.focus();
+      (editor.field.disabled ? editor.requestField : editor.field).focus();
     }
   }
   function open(cell, firstCharacter = null) {
@@ -302,6 +309,8 @@
     field.value = isSlot && firstCharacter !== null ? window.VitrineSlot.format(firstCharacter) : firstCharacter ?? initialValue;
     if (useCustom) field.dataset.customSelect = 'true';
     let orderField = null;
+    let requestField = null;
+    const initialRequest = isSlot && window.VitrineSlot.isRequest(cell.textContent);
     if (cell.hasAttribute('data-order-status')) {
       field.setAttribute('aria-label','Клиент');
       const clientGroup = element('div','vitrine-editor-order-field');
@@ -318,6 +327,20 @@
       statusGroup.append(element('div','field-label','Статус заказа'),picker.element);
       panel.append(statusGroup);
     } else panel.append(control?.element || field);
+    if (isSlot) {
+      const label = element('label','checkbox-item vitrine-slot-request-toggle');
+      requestField = element('input');
+      requestField.type = 'checkbox';
+      requestField.checked = initialRequest && firstCharacter === null;
+      const mark = element('span','checkbox-mark');
+      mark.setAttribute('aria-hidden','true');
+      label.append(requestField,mark,element('span','checkbox-label','Запросить слот'));
+      panel.append(label);
+      field.disabled = requestField.checked;
+      requestField.addEventListener('change',()=>{
+        field.disabled = requestField.checked;
+      });
+    }
     if (!isSlot && !catalog && !orderField) panel.append(element('p','vitrine-editor-help',useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить · Esc — отменить'));
     const error = element('p', 'vitrine-editor-error');
     error.setAttribute('role', 'alert'); error.hidden = true; panel.append(error);
@@ -338,7 +361,7 @@
     document.body.append(panel);
     cell.classList.add('is-editing');
     select(cell);
-    active = { panel, cell, field, initialValue, orderField, initialOrder:orderField?.value, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
+    active = { panel, cell, field, initialValue, orderField, initialOrder:orderField?.value, requestField, initialRequest, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
     window.dispatchEvent(new CustomEvent('vitrine-editor-opened',{detail:{row:Number(cell.dataset.row),column:cell.dataset.column}}));
     table?.classList.add('has-editor');
     panel.addEventListener('keydown', event => {
@@ -351,16 +374,17 @@
     }, true);
     panel.addEventListener('keydown', event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
-      if (event.key === 'Enter' && (event.target === field || event.target === orderField) && !event.shiftKey && !event.isComposing) { event.preventDefault(); save(); }
+      if (event.key === 'Enter' && (event.target === field || event.target === orderField || event.target === requestField) && !event.shiftKey && !event.isComposing) { event.preventDefault(); save(); }
       if (event.key === 'Tab') {
-        const focusable = [field, orderField, ...buttons].filter(node => node && !node.disabled);
+        const focusable = [field, orderField, requestField, ...buttons].filter(node => node && !node.disabled);
         const first = focusable[0], last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
       }
     });
     field.addEventListener('input',fitEditor);
-    fitEditor(); field.focus();
+    fitEditor();
+    (field.disabled ? requestField : field).focus();
     if (searchableClient) field.select();
     else field.setSelectionRange(field.value.length, field.value.length);
   }
@@ -408,7 +432,7 @@
     event.stopImmediatePropagation();
     if (event.target.closest('td[data-derived-source]')) notifyDerivedCell();
     else report(active.saving ? 'Дождитесь сохранения ячейки.' : 'Сначала сохраните правку или нажмите «Отмена»');
-    active.field.focus();
+    (active.field.disabled && active.requestField ? active.requestField : active.field).focus();
   }, true);
   document.addEventListener('click', event => {
     const cell = event.target.closest('td[data-edit-cell]');
@@ -485,7 +509,7 @@
     if (event.key === 'F6' && !document.querySelector('dialog[open]')) {
       event.preventDefault();
       table?.classList.add('keyboard-navigation');
-      if (active) { active.field.focus(); return; }
+      if (active) { (active.field.disabled && active.requestField ? active.requestField : active.field).focus(); return; }
       if(window.VitrineRows&&selected){window.VitrineRows.activate(selected);return;}
       selected?.focus({preventScroll:true}); if (selected) reveal(selected); return;
     }

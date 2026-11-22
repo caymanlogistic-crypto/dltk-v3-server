@@ -46,6 +46,8 @@ foreach (['status','text','number','date','datetime','time','slot','boolean'] as
 foreach (['800'=>'08:00','0800'=>'08:00','930'=>'09:30','2359'=>'23:59','0000'=>'00:00','8:00'=>'08:00','08:00:30'=>'08:00:30',''=>''] as $input=>$expected) verify(vitrine_time_input((string)$input)===$expected,'Time entry normalizes '.(string)$input);
 foreach (['2400','1260','999','08','8','abcd'] as $input) verify(vitrine_time_input($input)===null,'Invalid time entry rejected '.$input);
 foreach ([
+    'Слот?'=>'Слот?',
+    ' слот ? '=>'Слот?',
     '0012251026'=>'с 00 до 12 - 25.10.26',
     'с 00 до 12 - 25.10.26'=>'с 00 до 12 - 25.10.26',
     'с 00 до 12 - 25.10.2026'=>'с 00 до 12 - 25.10.26',

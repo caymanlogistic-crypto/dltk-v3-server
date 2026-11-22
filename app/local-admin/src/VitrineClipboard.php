@@ -44,10 +44,11 @@ function vitrine_time_input(string $value): ?string {
     return str_pad($value, strlen($value) + (strpos($value,':') === 1 ? 1 : 0), '0', STR_PAD_LEFT);
 }
 
-/** Normalize the 10-digit slot or its current/legacy display format. */
+/** Normalize a slot request, ten digits, or the current/legacy display format. */
 function vitrine_slot_input(string $value): ?string {
     $value = trim($value);
     if ($value === '') return '';
+    if (preg_match('/^слот[\s\x{00A0}\x{202F}]*\?$/iuD',$value)) return 'Слот?';
     if (preg_match('/^с ([0-9]{2}) до ([0-9]{2}) - ([0-9]{2})\.([0-9]{2})\.(?:20)?([0-9]{2})$/uD',$value,$parts)) {
         $value = implode('',array_slice($parts,1));
     }

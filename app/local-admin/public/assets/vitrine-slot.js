@@ -1,6 +1,8 @@
 'use strict';
 (() => {
   const maxDigits = 10;
+  const requestLabel = 'Слот?';
+  const isRequest = value => /^слот\s*\?$/iu.test(value.trim());
   const digitsOnly = value => value.replace(/[^0-9]/g,'');
   function read(value) {
     const input = value.trim();
@@ -63,5 +65,5 @@
     });
   }
 
-  window.VitrineSlot = Object.freeze({read,format,bind});
+  window.VitrineSlot = Object.freeze({read,format,bind,requestLabel,isRequest});
 })();
