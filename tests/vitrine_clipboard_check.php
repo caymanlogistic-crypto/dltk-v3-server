@@ -87,4 +87,9 @@ foreach (['25990'=>'25 990','25 990'=>'25 990',"25\u{202F}990"=>'25 990','0000'=
 foreach (['25.5','25,5','25кг','-25','+25','1 00'] as $input) {
     verify(vitrine_compact_input($input,'weight')===null,'Non-integer weight rejected '.$input);
 }
+foreach ([''=>'', '0'=>'0','999'=>'999','1 000'=>'1 000','50 000'=>'50 000','50 001'=>'50 001'] as $input=>$expected) {
+    $formatted = vitrine_compact_input((string)$input,'weight');
+    verify($formatted===$expected,'Weights stay formatted for existing rows '.$input);
+    verify(vitrine_weight_in_range($formatted)===in_array($expected,['','1 000','50 000'],true),'Weight range boundary '.$input);
+}
 echo 'PASS '.$checks." clipboard format checks\n";

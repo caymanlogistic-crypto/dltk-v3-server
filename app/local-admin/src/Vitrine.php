@@ -46,6 +46,12 @@ function vitrine_validate_single_line(string $value, array $row, string $column)
     }
 }
 
+function vitrine_require_weight_range(string $weight): void {
+    if (!vitrine_weight_in_range($weight)) {
+        throw new ApiError('weight_out_of_range','Введите вес от 1 000 до 50 000.');
+    }
+}
+
 function vitrine_validate_paste(array $body, array $data, array $target): void {
     vitrine_require_manual_field($data['table'],$body['column']);
     $paste = $body['paste'] ?? null;
@@ -64,7 +70,9 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
         $sourceKind = $sourceRow['kinds'][$source['column']];
         if ($sourceKind!==$kind) throw new ApiError('clipboard_type_mismatch','Форматы ячеек не совпадают: '.$labels[$sourceKind].' → '.$labels[$kind].'. Вставка отменена.');
     }
-    $accepted = $compact ? vitrine_compact_input($body['value'],$kind) !== null
+    $normalized = $compact ? vitrine_compact_input($body['value'],$kind) : null;
+    if ($kind === 'weight' && $normalized !== null) vitrine_require_weight_range($normalized);
+    $accepted = $compact ? $normalized !== null
         : vitrine_clipboard_accepts($body['value'],$kind,$target['choices'][$body['column']]??[]);
     if (!$accepted) throw new ApiError('clipboard_value_mismatch','Значение не подходит для формата «'.$labels[$kind].'» или заданного списка. Вставка отменена.');
 }
@@ -121,7 +129,10 @@ function vitrine_save_cell(): never {
             };
             throw new ApiError('invalid_'.$compactKind,$message);
         }
-        if ($normalized !== null) $body['value'] = $normalized;
+        if ($normalized !== null) {
+            if ($compactKind === 'weight') vitrine_require_weight_range($normalized);
+            $body['value'] = $normalized;
+        }
     } elseif (!$body['reset'] && ($current['kinds'][$body['column']] ?? '') === 'time') {
         $normalized = vitrine_time_input($body['value']);
         if ($normalized === null && $body['value'] !== ($current['values'][$body['column']] ?? '')) throw new ApiError('invalid_time','Введите время: 800 или 0800 → 08:00. Часы 00–23, минуты 00–59.');

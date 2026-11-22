@@ -100,6 +100,11 @@ function vitrine_slot_input(string $value): ?string {
     return "с $from до $to - $day.$month.$year";
 }
 
+function vitrine_weight_in_range(string $formatted): bool {
+    $digits = str_replace(' ','',$formatted);
+    return $digits === '' || ($digits >= 1000 && $digits <= 50000);
+}
+
 /** Validate pasted text without coercing it, evaluating formulas, or rewriting the source. */
 function vitrine_clipboard_accepts(string $value, string $kind, array $choices = []): bool {
     if (!mb_check_encoding($value, 'UTF-8') || mb_strlen($value, 'UTF-8') > 20000) return false;
