@@ -34,6 +34,16 @@ function workspace_catalog_preferences_key(array $grid, int $userId): string {
     return 'catalog_preferences_'.$userId.'_'.$grid['catalogId'];
 }
 
+function workspace_read_color_preset(int $userId): ?array {
+    $stored=wquery('SELECT value FROM workspace_meta WHERE `key`=?',['grid_color_preset_'.$userId])->fetchColumn();
+    if ($stored!==false) return json_decode($stored,true);
+
+    $legacy=wquery("SELECT JSON_UNQUOTE(JSON_EXTRACT(p.settings,'$.preset'))
+        FROM user_view_preferences p JOIN table_definitions t ON t.id=p.table_id
+        WHERE p.user_id=? AND t.slug='vyvoz'",[$userId])->fetchColumn();
+    return in_array($legacy,['base','saturated','acid'],true) ? ['value'=>$legacy,'version'=>0] : null;
+}
+
 function workspace_prune_preference_columns(array $settings,array $columns): array {
     foreach (['order','hidden'] as $key) {
         if (isset($settings[$key]) && is_array($settings[$key])) {
@@ -73,7 +83,7 @@ function workspace_validate_preferences(mixed $settings, array $columns): void {
 
 function workspace_preferences(array $grid, ?array $body = null): array {
     $userId = (int)workspace_current_user()['id'];
-    if ($body === null) return workspace_read_preferences($grid, $userId);
+    if ($body === null) return workspace_read_preferences($grid, $userId)+['colorPreset'=>workspace_read_color_preset($userId)];
     $patch = $body['changes'] ?? null;
     if ($patch !== null && !is_array($patch)) throw new ApiError('invalid_preferences', 'Некорректные изменения настроек.');
     $columns = array_column($grid['columns'], 'letter');
@@ -88,12 +98,24 @@ function workspace_preferences(array $grid, ?array $body = null): array {
         $prior=workspace_prune_preference_columns($previous['settings']??$defaults,$columns);
         $settings = $patch === null ? ($body['settings'] ?? null) : workspace_merge_preferences($prior,$patch);
         workspace_validate_preferences($settings, $columns);
+        $submitted=$patch ?? $settings;
+        $colorPreset=workspace_read_color_preset($userId);
+        if (array_key_exists('preset',$submitted)) {
+            $chosen=$submitted['preset'];
+            if (!in_array($chosen,['base','saturated','acid'],true)) {
+                throw new ApiError('invalid_preferences','Неизвестный цветовой пресет.');
+            }
+            $colorPreset=['value'=>$chosen,'version'=>($colorPreset['version']??0)+1];
+            wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+                ['grid_color_preset_'.$userId,wjson($colorPreset)]);
+        }
         $result = ['settings'=>$settings, 'version'=>$version+1];
         if (isset($grid['catalogId']) || isset($grid['directoryKey'])) {
             wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [workspace_catalog_preferences_key($grid, $userId), wjson($result)]);
         } else {
             wquery('INSERT INTO user_view_preferences(user_id,table_id,settings,version) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE settings=VALUES(settings),version=VALUES(version)', [$userId, $grid['id'], wjson($settings), $result['version']]);
         }
+        $result['colorPreset']=$colorPreset;
         workspace_event('preferences.changed', ['userId'=>$userId, 'tableSlug'=>$grid['slug']] + $result);
         workspace_db()->commit();
         return $result;

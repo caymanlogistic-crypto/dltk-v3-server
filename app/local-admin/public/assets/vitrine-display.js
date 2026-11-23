@@ -3,7 +3,9 @@
   const {tableSlug,url}=window.VitrineGridScope;
   const userId=document.body.dataset.workspaceUser||'anonymous';
   const key='dltk-v3.vitrine.display.v2.'+userId+'.'+tableSlug;
+  const legacyPresetKey='dltk-v3.vitrine.display.v2.'+userId+'.vyvoz';
   let serverPreferences={};try{serverPreferences=JSON.parse(document.getElementById('workspace-preferences')?.content||'{}');}catch{}
+  let sharedPreset=serverPreferences.colorPreset;
   let preferenceVersion=Number(serverPreferences.version||0),saveTimer=0,inFlight=false,pendingChanges={},lastLocalSnapshot=null,bufferedRemote=null;
   const csrf=document.querySelector('meta[name=csrf-token]')?.content||'';
   const copy=value=>JSON.parse(JSON.stringify(value));
@@ -11,9 +13,10 @@
     for(const [key,value] of Object.entries(changes))if(key==='widths')target.widths={...(target.widths||{}),...value};else target[key]=value;
     return target;
   }
-  function persist(settings){
+  function persist(settings,savePreset=false){
     const before=lastLocalSnapshot||settings,changes={};
     for(const key of ['order','hidden','preset','lines','layoutWidth'])if(JSON.stringify(before[key])!==JSON.stringify(settings[key]))changes[key]=copy(settings[key]);
+    if(savePreset)changes.preset=settings.preset;
     for(const letter of new Set([...Object.keys(before.widths||{}),...Object.keys(settings.widths||{})]))if(before.widths?.[letter]!==settings.widths?.[letter]){changes.widths||={};changes.widths[letter]=settings.widths?.[letter]??null;}
     lastLocalSnapshot=copy(settings);mergeChanges(pendingChanges,changes);
     clearTimeout(saveTimer);saveTimer=setTimeout(()=>flushPreferences(),250);
@@ -25,6 +28,7 @@
     try{
       const response=await fetch(url('/api/workspace/preferences'),{method:'POST',credentials:'same-origin',keepalive,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({changes})});
       const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось сохранить личные настройки.');
+      receiveColorPreset(result.colorPreset);
       queueRemote(result);
     }catch(error){
       pendingChanges=mergeChanges(mergeChanges({},changes),pendingChanges);
@@ -38,15 +42,25 @@
     if(!bufferedRemote||Number(result.version)>=Number(bufferedRemote.version))bufferedRemote=result;
     applyBuffered();
   }
+  function receiveColorPreset(incoming) {
+    if (incoming && validPreset(incoming.value) && Number(incoming.version)>=Number(sharedPreset?.version??-1)) {
+      sharedPreset=incoming;
+      applyBuffered();
+    }
+  }
   function hasOpenEditor() {
     return document.querySelector('.vitrine-editor:not(dialog):not([hidden]), dialog.vitrine-editor[open], .vitrine-time-inline:not([hidden])')!==null;
   }
   function applyBuffered(){
-    if(!bufferedRemote||inFlight||Object.keys(pendingChanges).length||document.querySelector('.vitrine-display-dialog[open]')||hasOpenEditor()||document.body.classList.contains('is-column-resizing'))return;
+    if(!bufferedRemote && (!sharedPreset || sharedPreset.value===state.preset))return;
+    if(inFlight||Object.keys(pendingChanges).length||document.querySelector('.vitrine-display-dialog[open]')||hasOpenEditor()||document.body.classList.contains('is-column-resizing'))return;
     const incoming=bufferedRemote;bufferedRemote=null;
-    if(Number(incoming.version)<preferenceVersion)return;
-    preferenceVersion=Number(incoming.version);const saved=incoming.settings;
-    const next={order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:presets.some(p=>p.id===saved.preset)?saved.preset:'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
+    const preset=validPreset(sharedPreset?.value) ? sharedPreset.value : state.preset;
+    let next={...state,preset};
+    if(incoming && Number(incoming.version)>=preferenceVersion){
+      preferenceVersion=Number(incoming.version);const saved=incoming.settings;
+      next={order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset,lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
+    }
     if(JSON.stringify(state)!==JSON.stringify(next)){
       state=next;applyWidths(state.widths);applyLines();applyLayoutWidth();applyOrder(state.order);applyVisibility(state.hidden);paintAll();
     }
@@ -54,7 +68,9 @@
   }
   window.addEventListener('workspace:event',event=>{
     const item=event.detail,data=item?.data;
-    if(item?.event==='preferences.changed'&&data?.tableSlug===tableSlug&&(!data.userId||String(data.userId)===userId))queueRemote(data);
+    if(item?.event!=='preferences.changed'||!data||(data.userId&&String(data.userId)!==userId))return;
+    receiveColorPreset(data.colorPreset);
+    if(data.tableSlug===tableSlug)queueRemote(data);
   });
   window.addEventListener('pagehide',()=>flushPreferences(true));
   document.addEventListener('visibilitychange',()=>{if(document.hidden)flushPreferences(true);else applyBuffered();});
@@ -80,6 +96,7 @@
     {id:'saturated',name:'Насыщенный',note:'Те же девять цветовых групп, более насыщенные',colors:['#E6ABAD','#EDBC8B','#EDE19A','#B2D1A0','#94CFC3','#A9C8E6','#B8AFE0','#DCAACD','#C9C9C9']},
     {id:'acid',name:'Кислотный',note:'Яркие базовые RGB-цвета, как в примере',colors:['#FF0000','#FF8000','#FFFF00','#00FF00','#00FFFF','#0000FF','#8000FF','#FF00FF','#C0C0C0']}
   ];
+  const validPreset = value => presets.some(p=>p.id===value);
   const linePresets=[{id:'base',name:'Текущие',color:null},{id:'dark',name:'Потемнее',color:'#A0988C'},{id:'black',name:'Чёрные',color:'#000000'}];
   const widthModes = [
     {id:'full',name:'По ширине области'},
@@ -108,8 +125,13 @@
   let state = {order:[...originalOrder],hidden:[],widths:{},preset:'base',lines:'base',layoutWidth:defaultWidth};
   try {
     const saved = serverPreferences.settings && Object.keys(serverPreferences.settings).length ? serverPreferences.settings : JSON.parse(localStorage.getItem(key) || 'null');
-    if (saved) state = {order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:presets.some(p => p.id === saved.preset) ? saved.preset : 'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
+    if (saved) state = {order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
   } catch {}
+  try {
+    const fallback=JSON.parse(localStorage.getItem(legacyPresetKey)||'null')?.preset;
+    if (validPreset(fallback)) state.preset=fallback;
+  } catch {}
+  if (validPreset(sharedPreset?.value)) state.preset=sharedPreset.value;
   lastLocalSnapshot=copy(state);
   function color(fill) {
     const index = base.indexOf(String(fill).toUpperCase());
@@ -328,7 +350,7 @@
     applyLines();applyLayoutWidth();
     if(orderChanged) applyOrder(state.order);
     applyVisibility(state.hidden);
-    paintAll();persist(state);close();
+    paintAll();persist(state,mode==='colors');close();
   }
   const dialogModes={
     columns:{title:'Столбцы: порядок и видимость',render:renderOrder,resetLabel:'Исходный порядок',reset:()=>{draft.order=[...originalOrder];}},
