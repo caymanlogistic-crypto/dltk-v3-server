@@ -25,27 +25,8 @@ function workspace_carrier_edo_id(mixed $value): string {
 }
 
 function workspace_carrier_edo_operator(string $id): string {
-    // Codes verified against the operators’ published roaming directory.
-    return match (strtoupper(substr($id,0,3))) {
-        '2AD'=>'Русь-Телеком',
-        '2AE'=>'Калуга Астрал',
-        '2AH'=>'ИнфоТеКС Интернет Траст',
-        '2AL'=>'Такском',
-        '2BA'=>'НТЦ СТЭК',
-        '2BE'=>'Тензор (СБИС / Saby)',
-        '2BK'=>'СберКорус',
-        '2BM'=>'Контур.Диадок',
-        '2EE'=>'Электронный Экспресс',
-        '2GP'=>'КДС',
-        '2HX'=>'КРИПТЭКС',
-        '2IJ'=>'Эдивеб',
-        '2JF'=>'ЭДО.МИГ24',
-        '2LH'=>'ФораПром',
-        '2LT'=>'Оператор-ЦРПТ (ЭДО Лайт)',
-        '2MH'=>'Точка',
-        '2VO'=>'Эвотор ОФД',
-        default=>'',
-    };
+    if ($id==='') return '';
+    return workspace_edo_operator_names()[strtolower(substr($id,0,3))]??'';
 }
 
 function workspace_carrier_values(array $details,string $logist=''): array {

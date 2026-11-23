@@ -8,6 +8,7 @@ require_once __DIR__.'/WorkspaceClientTransfer.php';
 require_once __DIR__.'/WorkspacePickupTransfer.php';
 require_once __DIR__.'/WorkspaceDropoffPoints.php';
 require_once __DIR__.'/WorkspaceCarrierDirectory.php';
+require_once __DIR__.'/WorkspaceEdoOperators.php';
 
 function vitrine_catalog_key(string $name): string {
     return mb_strtolower(trim(preg_replace('/\s+/u',' ',$name)));
@@ -72,7 +73,9 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
             throw new ApiError('invalid_action','Откройте справочник для редактирования записи.');
         }
         $active=array_key_exists('active',$b)?(bool)$b['active']:true;
-        $norm=$profileCatalog?$old['normalized']:mb_strtolower($name);
+        $edoOperator=$catalog['kind']==='edo-operators';
+        $norm=$edoOperator ? strtolower(workspace_edo_operator_code($b['operatorCode']??$old['normalized']??''))
+            : ($profileCatalog ? $old['normalized'] : mb_strtolower($name));
         $revision=$old?(int)$old['revision']+1:1;
         if($catalog['kind']==='terminals-main'&&!array_key_exists('color',$b))$color=$old['color']??null;
         if(in_array($catalog['kind'],['clients','terminals-main'],true)){
@@ -83,7 +86,7 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
             }
         }
         $archive=($b['archive']??null)===true && in_array($catalog['kind'],['clients','managers'],true);
-        if ($deleteReason!==null || ($old && $old['active'] && !$active &&
+        if ($deleteReason!==null || ($edoOperator && $old && $old['normalized']!==$norm) || ($old && $old['active'] && !$active &&
             (!$archive || !in_array($catalog['kind'],['clients','managers'],true)))) {
             workspace_assert_catalog_entry_unused($catalog['kind'],$cid,$old);
         }
@@ -97,7 +100,7 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
         $carrierChanged=$carrierDetails!==null && $beforeCarrier!==$carrierDetails;
         $beforeDropoff=$dropoffProfile!==null && $old ? workspace_dropoff_profiles($cid)[(int)$old['id']]??[] : [];
         $dropoffChanged=$dropoffProfile!==null && $beforeDropoff!==$dropoffProfile;
-        if($deleteReason===null&&$old&&$old['name']===$name&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged&&!$dropoffChanged&&!$carrierChanged){return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
+        if($deleteReason===null&&$old&&$old['name']===$name&&$old['normalized']===$norm&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged&&!$dropoffChanged&&!$carrierChanged){return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
         if($old){wquery('UPDATE catalog_entries SET name=?,normalized=?,color=?,active=?,revision=? WHERE id=?',[$name,$norm,$color,(int)$active,$revision,$old['id']]);$id=(int)$old['id'];}
         else{wquery('INSERT INTO catalog_entries(catalog_id,name,normalized,color,active) VALUES(?,?,?,?,?)',[$cid,$name,$norm,$color,(int)$active]);$id=(int)workspace_db()->lastInsertId();}
         if($managerChanged)workspace_client_set_manager($cid,$id,$manager);
@@ -105,9 +108,13 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
             $logists[$id]=$logist;
             wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',['catalog_logists_'.$cid,wjson((object)$logists)]);
         }
-        if($old&&$catalog['kind']!=='status'&&$old['normalized']!==$norm)workspace_client_remember_alias($cid,$id,$old['normalized']);
+        if($old&&!$edoOperator&&$catalog['kind']!=='status'&&$old['normalized']!==$norm)workspace_client_remember_alias($cid,$id,$old['normalized']);
         $before=$old?['id'=>$id,'name'=>$old['name'],'color'=>$old['color'],'active'=>(bool)$old['active']]:null;
         $after=['id'=>$id,'name'=>$name,'color'=>$color,'active'=>$active];
+        if ($edoOperator) {
+            if ($before!==null) $before['code']=strtoupper($old['normalized']);
+            $after['code']=strtoupper($norm);
+        }
         if ($carrierChanged) {
             wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
                 ['carrier_details_'.$id,wjson($carrierDetails)]);
@@ -139,7 +146,7 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
         }
         workspace_audit($audit+['before'=>$before,'after'=>$after,'action'=>$action]);
         workspace_event('catalog.changed',['catalogId'=>$cid,'id'=>$id,'name'=>$name,'beforeName'=>$old['name']??null,'color'=>$color,'active'=>$active,'revision'=>$revision,'bindings'=>wquery('SELECT b.table_id AS tableId,t.slug AS tableSlug,b.field_key AS fieldKey FROM catalog_bindings b JOIN table_definitions t ON t.id=b.table_id WHERE b.catalog_id=?',[$cid])->fetchAll()]);return ['id'=>$id,'revision'=>$revision];
-    }catch(Throwable $e){if($e instanceof PDOException&&$e->getCode()==='23000')throw new ApiError('duplicate_catalog','Такое название уже есть в справочнике.',409);throw $e;}
+    }catch(Throwable $e){if($e instanceof PDOException&&$e->getCode()==='23000')throw new ApiError('duplicate_catalog',$catalog['kind']==='edo-operators' ? 'Этот код уже есть в справочнике операторов ЭДО.' : 'Такое название уже есть в справочнике.',409);throw $e;}
 }
 
 function workspace_catalogs_endpoint(string $method): never {

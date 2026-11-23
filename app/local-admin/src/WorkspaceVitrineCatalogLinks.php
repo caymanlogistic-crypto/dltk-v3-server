@@ -43,7 +43,7 @@ function vitrine_bound_catalog_menu(array $tables): array {
         }
         $additional=wquery("SELECT c.id,c.title,c.kind FROM catalogs c JOIN catalog_bindings b ON c.id=b.catalog_id
             WHERE b.table_id=? AND b.field_key='' AND c.kind IN ('transport','drivers-detailed','drivers-legacy',
-                'terminals-detailed','application-contacts','application-checks','etrn-carriers') ORDER BY c.title,c.id",
+                'terminals-detailed','application-contacts','application-checks','etrn-carriers','edo-operators') ORDER BY c.title,c.id",
             [$table['id']])->fetchAll();
         $fleetEnabled=isset($links['O']);
         foreach($additional as $catalog){

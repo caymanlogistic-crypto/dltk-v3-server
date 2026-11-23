@@ -75,6 +75,7 @@ function workspace_directory_excel_entries(array $schema): array {
         $entry['values']=match($kind) {
             'clients'=>$base+['B'=>$detail??''],
             'carriers'=>$base+($detail??workspace_carrier_values([])),
+            'edo-operators'=>workspace_edo_operator_values($entry),
             'status','terminals-main','order-statuses'=>$base+['B'=>$palette[$entry['color']]??''],
             'dropoff-points'=>$base+($detail??workspace_dropoff_profile([])),
             'managers'=>workspace_manager_values($detail),
@@ -109,6 +110,10 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
     $payload=['catalogId'=>$id];
     if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) return [workspace_fleet_values_validated($kind,$values)['key'],$payload];
     if (in_array($kind,['roles','employees'],true)) return workspace_access_excel_payload($kind,$values,$old);
+    if ($kind==='edo-operators') {
+        $code=workspace_edo_operator_code($values['A']);
+        return [strtolower($code),$payload+['operatorCode'=>$code,'name'=>workspace_catalog_validate_name($values['B'])]];
+    }
     if ($kind==='managers') {
         $profile=workspace_manager_validate($values);
         $key=hash('sha256',implode("\n",array_map('vitrine_catalog_key',[$profile['surname'],$profile['name'],$profile['patronymic']])));
@@ -155,6 +160,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             $values=[];
             foreach ($schema['labels'] as $letter=>$label) $values[$letter]=trim($cells[$positions[$label]??0]??'');
             if ($kind==='carriers') $values['D']=workspace_carrier_edo_operator(workspace_carrier_edo_id($values['C']));
+            if ($kind==='edo-operators') $values['A']=workspace_edo_operator_code($values['A']);
             if ($kind==='employees') {
                 if (!in_array($values['C'],['','Скрыт'],true)) directory_xlsx_error('Пароли сотрудников задаются только в карточке.');
                 $values['C']='Скрыт';

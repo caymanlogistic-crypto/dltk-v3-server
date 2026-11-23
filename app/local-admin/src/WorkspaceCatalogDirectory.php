@@ -9,6 +9,7 @@ function workspace_catalog_directory_model(): array {
     $labels = match ($catalog['kind']) {
         'clients'=>['A'=>'Клиент','B'=>'Менеджер'],
         'carriers'=>['A'=>'Перевозчик','B'=>'ИНН','C'=>'Идентификатор ЭДО','D'=>'Оператор ЭДО','E'=>'Логист'],
+        'edo-operators'=>['A'=>'Код','B'=>'Оператор ЭДО'],
         'status'=>['A'=>'Статус','B'=>'Цвет'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
         'container-types'=>['A'=>'Тип контейнера'],
@@ -68,7 +69,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         $unload=>workspace_unload_points($id),
         $managers=>workspace_manager_entries($id),
         $fleet=>workspace_fleet_entries($kind,$id),
-        default=>wquery("SELECT id,name,color,revision,active FROM catalog_entries e WHERE catalog_id=? AND active=?
+        default=>wquery("SELECT id,name,normalized,color,revision,active FROM catalog_entries e WHERE catalog_id=? AND active=?
             AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('catalog_deleted_client_',e.id))
             ORDER BY name,id",[$id,(int)!$archive])->fetchAll(),
     };
@@ -89,6 +90,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $unload=>workspace_unload_point_values($entry),
             $managers=>workspace_manager_values($entry),
             $fleet=>workspace_fleet_values($kind,$entry),
+            $kind==='edo-operators'=>workspace_edo_operator_values($entry),
             default=>['A'=>$entry['name']],
         };
         if ($unload) $values['C']=workspace_unload_contact_summary(workspace_unload_primary($entry),(int)$entry['contact_count']);
@@ -290,7 +292,10 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     $updatedValues=[];
     $value = $body['value'];
     $fill = null;
-    if ($column === 'A') $payload['name'] = $value = workspace_catalog_validate_name($value);
+    if ($kind==='edo-operators') {
+        if ($column==='A') $payload['operatorCode']=$value=workspace_edo_operator_code($value);
+        else $payload['name']=$value=workspace_catalog_validate_name($value);
+    } elseif ($column === 'A') $payload['name'] = $value = workspace_catalog_validate_name($value);
     elseif (workspace_catalog_has_palette($kind)) $payload['color'] = $fill = workspace_directory_color($value);
     elseif ($kind==='carriers' && in_array($column,['B','C'],true)) {
         $details=workspace_carrier_entry_details((int)$entry['id']);
