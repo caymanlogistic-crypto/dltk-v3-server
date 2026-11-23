@@ -415,17 +415,25 @@
     const unloadEditor = isUnloadingCell(cell);
     const unloadClient = catalog==='entries' && cell.dataset.column==='A' && document.getElementById('unload-contacts-dialog');
     const fleetEditor = !catalog && cell.dataset.column==='O' && Number(cell.dataset.catalogId)>0;
+    const fleetSearchKey = value => value.toUpperCase().replace(/[АВЕКМНОРСТУХ]/g,
+      letter => 'ABEKMHOPCTYX'['АВЕКМНОРСТУХ'.indexOf(letter)]).replace(/[\s-]+/g,'');
     const searchableCatalog = fleetEditor || dropoffEditor || pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');
       const options = required ? [] : [{value:'',label:'Не выбран'}];
-      const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(option => option && typeof option === 'object' ? option : {value:String(option),label:String(option)});
-      if (!required && !typeEditor && !unloadEditor && (!dropoffEditor || Number(cell.dataset.referenceId)) && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
+      const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(option => {
+        if (!option || typeof option !== 'object') return {value:String(option),label:String(option)};
+        if (!fleetEditor) return option;
+        const driver = option.driver ?? '';
+        const shortName = window.VitrineRows.shortDriverName(driver);
+        return {value:option.value, label:shortName ? option.value+' '+shortName : option.value,
+          search:option.search+' '+fleetSearchKey(driver)};
+      });
+      if (!required && !typeEditor && !unloadEditor && (!dropoffEditor || Number(cell.dataset.referenceId)) && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + (fleetEditor ? cell.dataset.fleetDriverSuffix ?? '' : ' · вне справочника')});
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableCatalog,
-        ...(fleetEditor ? {searchKey:value => value.toUpperCase().replace(/[АВЕКМНОРСТУХ]/g,
-          letter => 'ABEKMHOPCTYX'['АВЕКМНОРСТУХ'.indexOf(letter)]).replace(/[\s-]+/g,'')} : {})});
+        ...(fleetEditor ? {searchKey:fleetSearchKey,showLabels:true} : {})});
     }
     const field = control?.field || element(mask || isSingleLine ? 'input' : 'textarea', 'field-input');
     field.classList.add('vitrine-editor-field');
@@ -433,6 +441,7 @@
     field.setAttribute('aria-label', 'Значение ячейки');
     const draftType = cell.dataset.draftType;
     let initialValue = draftType === 'password' ? window.VitrineDirectoryDrafts.secret(cell) : cell.textContent;
+    if (fleetEditor && control) initialValue=control.field.value;
     if (dropoffEditor && !Number(cell.dataset.referenceId)) initialValue='';
     let replaceLegacyValue = false;
     if (mask) {

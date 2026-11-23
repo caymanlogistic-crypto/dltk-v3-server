@@ -26,25 +26,29 @@
   const remotePatches=new Map(),catalogPatches=new Map();
   const pageSize=100,cache=new Map(),loaded=new Map(),pending=new Map();
   const showVehicleDriver=document.body.dataset.workspaceTable==='vyvoz' && !document.body.hasAttribute('data-vitrine-catalog');
+  function shortDriverName(driver) {
+    const parts=driver.replaceAll('.',' ').trim().split(/\s+/u);
+    if (parts.length>3 || !parts.every(part=>/^\p{L}+(?:[-’']\p{L}+)*$/u.test(part))) return '';
+    const [surname,...names]=parts;
+    const initials=names.map(name=>Array.from(name)[0].toUpperCase()).join('.');
+    return initials ? surname+' '+initials : surname;
+  }
   function updateVehicleDriver(row) {
     if (!showVehicleDriver) return;
     const vehicle=row.querySelector('td[data-column="O"]:not([data-catalog-id="0"])');
     if (!vehicle) return;
     const driver=row.querySelector('td[data-column="P"]')?.textContent.trim() ?? '';
-    const parts=driver.replaceAll('.',' ').trim().split(/\s+/u);
-    const validName=parts.length<=3 && parts.every(part=>/^\p{L}+(?:[-’']\p{L}+)*$/u.test(part));
+    const shortName=shortDriverName(driver);
     const previousSuffix=vehicle.dataset.fleetDriverSuffix ?? '';
     if (previousSuffix && vehicle.title.endsWith(previousSuffix)) {
       vehicle.title=vehicle.title.slice(0,-previousSuffix.length);
     }
-    if (!vehicle.textContent.trim() || !validName) {
+    if (!vehicle.textContent.trim() || !shortName) {
       delete vehicle.dataset.fleetDriverSuffix;
       vehicle.removeAttribute('aria-label');
       return;
     }
-    const [surname,...names]=parts;
-    const initials=names.map(name=>Array.from(name)[0].toUpperCase()).join('.');
-    const suffix=' '+[surname,initials].filter(Boolean).join(' ');
+    const suffix=' '+shortName;
     vehicle.dataset.fleetDriverSuffix=suffix;
     vehicle.setAttribute('aria-label',vehicle.textContent+suffix);
     if (vehicle.title) vehicle.title+=suffix;
@@ -361,6 +365,7 @@
     },
     activate:(cell,action)=>activate(cell,action).catch(report),
     updateVehicleDriver,
+    shortDriverName,
     resolveCell:cell=>cache.get(Number(cell.dataset.row))?.querySelector('td[data-column="'+cell.dataset.column+'"]')||cell,
     move(cell,dr,dc,wrap){const columns=visibleColumns();let r=(navigation?.r??rowIndex(cell))+dr,c=(navigation?.c??columns.indexOf(cell.dataset.column))+dc;if(wrap&&c<0){r--;c=columns.length-1;}if(wrap&&c>=columns.length){r++;c=0;}return go(cell,r,c);},
     edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?ids.length+drafts.length-1:0):rowIndex(cell),end?columns.length-1:0);},

@@ -135,7 +135,7 @@ function vitrine_catalog_options(array $t,array $links): array {
             $trailer=$vehicle['trailer_plate']??'';
             $value=workspace_fleet_trip_vehicle_label($plate,$trailer);
             $name=$canViewDriver ? trim(implode(' ',[$vehicle['surname']??'',$vehicle['given_name']??'',$vehicle['patronymic']??''])) : '';
-            $boundChoices['O'][]=['value'=>$value,'label'=>$name!=='' ? $value.' · '.$name : $value,
+            $boundChoices['O'][]=['value'=>$value,'driver'=>$name,
                 'search'=>workspace_fleet_plate_key($plate).' '.workspace_fleet_plate_key($trailer)];
         }
     }
