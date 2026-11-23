@@ -57,7 +57,7 @@ function workspace_directory_excel_entries(array $schema): array {
     }
     $secondary=match($kind) {
         'clients'=>workspace_client_manager_values($id),
-        'carriers'=>workspace_client_catalog_metadata('catalog_logists_'.$id),
+        'carriers'=>workspace_carrier_directory_values($id),
         'dropoff-points'=>workspace_dropoff_profiles($id),
         'managers'=>array_column(workspace_manager_entries($id),null,'id'),
         'unload-points'=>workspace_unload_points($id),
@@ -73,7 +73,8 @@ function workspace_directory_excel_entries(array $schema): array {
         $entry['detail']=$detail;
         $base=['A'=>$entry['name']];
         $entry['values']=match($kind) {
-            'clients','carriers'=>$base+['B'=>$detail??''],
+            'clients'=>$base+['B'=>$detail??''],
+            'carriers'=>$base+($detail??workspace_carrier_details([])+['D'=>'']),
             'status','terminals-main','order-statuses'=>$base+['B'=>$palette[$entry['color']]??''],
             'dropoff-points'=>$base+($detail??workspace_dropoff_profile([])),
             'managers'=>workspace_manager_values($detail),
@@ -124,7 +125,10 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
                 workspace_client_manager_ids($payload['manager']);
             }
         }
-        if ($kind==='carriers') $payload['logist']=workspace_client_validate_manager($values['B']);
+        if ($kind==='carriers') {
+            $payload['carrierDetails']=workspace_carrier_details($values);
+            $payload['logist']=workspace_client_validate_manager($values['D']);
+        }
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
         if ($kind==='status' || $kind==='order-statuses' || ($kind==='terminals-main' && $values['B']!=='')) {
             $payload['color']=workspace_directory_color($values['B']);

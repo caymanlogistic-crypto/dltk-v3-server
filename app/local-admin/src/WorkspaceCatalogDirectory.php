@@ -8,7 +8,7 @@ function workspace_catalog_directory_model(): array {
     workspace_require('catalog',(string)$id,'view');
     $labels = match ($catalog['kind']) {
         'clients'=>['A'=>'Клиент','B'=>'Менеджер'],
-        'carriers'=>['A'=>'Перевозчик','B'=>'Логист'],
+        'carriers'=>['A'=>'Перевозчик','B'=>'ИНН','C'=>'Оператор ЭДО','D'=>'Логист'],
         'status'=>['A'=>'Статус','B'=>'Цвет'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
         'container-types'=>['A'=>'Тип контейнера'],
@@ -29,7 +29,11 @@ function workspace_catalog_directory_model(): array {
     if ($catalog['kind']==='unload-points') $columns[2]['kind']='unload-contacts';
     return ['id'=>0,'catalogId'=>(int)$id,'catalogKind'=>$catalog['kind'],'slug'=>'catalog-entries-'.$id,
         'title'=>$catalog['title'],'columns'=>$columns]+
-        ($catalog['kind']==='fleet-vehicles' ? ['columnOrderVersion'=>2] : []);
+        (match ($catalog['kind']) {
+            'fleet-vehicles'=>['columnOrderVersion'=>2],
+            'carriers'=>['columnOrderVersion'=>1],
+            default=>[],
+        });
 }
 
 function workspace_catalog_directory_data(?array $requestedRows): array {
@@ -40,11 +44,8 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $search = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']),0,160) : '';
     $canEdit = workspace_can('catalog',(string)$id,'edit');
     $choices = workspace_directory_palette_options();
-    $valuesB = match ($kind) {
-        'carriers'=>workspace_client_catalog_metadata('catalog_logists_'.$id),
-        'clients'=>workspace_client_manager_values($id),
-        default=>[],
-    };
+    $clientManagers=$kind==='clients' ? workspace_client_manager_values($id) : [];
+    $carrierValues=$kind==='carriers' ? workspace_carrier_directory_values($id) : [];
     $unload = $kind==='unload-points';
     $managers=$kind==='managers';
     $fleet=in_array($kind,WORKSPACE_FLEET_KINDS,true);
@@ -89,7 +90,8 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         if ($unload) $values['C']=workspace_unload_contact_summary(workspace_unload_primary($entry),(int)$entry['contact_count']);
         if ($kind==='dropoff-points') $values+=($dropoffProfiles[$entryId]??workspace_dropoff_profile([]));
         if (workspace_catalog_has_palette($kind)) $values['B'] = $palette[$entry['color']] ?? '';
-        if (in_array($kind,['clients','carriers'],true)) $values['B'] = $valuesB[$entryId] ?? '';
+        if ($kind==='clients') $values['B'] = $clientManagers[$entryId] ?? '';
+        if ($kind==='carriers') $values+=($carrierValues[$entryId]??workspace_carrier_details([])+['D'=>'']);
         if ($driverCatalog && !$canViewDrivers) {
             $values=array_replace($values,array_fill_keys(array_keys(workspace_fleet_driver_columns()),''));
         }
@@ -282,7 +284,12 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     $fill = null;
     if ($column === 'A') $payload['name'] = $value = workspace_catalog_validate_name($value);
     elseif (workspace_catalog_has_palette($kind)) $payload['color'] = $fill = workspace_directory_color($value);
-    else $payload[$kind === 'clients' ? 'manager' : 'logist'] = $value = workspace_client_validate_manager($value);
+    elseif ($kind==='carriers' && $column!=='D') {
+        $details=workspace_carrier_entry_details((int)$entry['id']);
+        $details[$column]=$value;
+        $payload['carrierDetails']=workspace_carrier_details($details);
+        $value=$payload['carrierDetails'][$column];
+    } else $payload[$kind === 'clients' ? 'manager' : 'logist'] = $value = workspace_client_validate_manager($value);
     if ($pasteCheck) json_response(['accepted'=>true]);
     $baseHash = workspace_catalog_directory_hash($id,$body['row']);
     if (($body['baseHash'] ?? null) !== $baseHash || !is_int($body['revision'] ?? null)) workspace_directory_conflict();

@@ -72,7 +72,10 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
         if (workspace_catalog_has_palette($kind)) $payload['color'] = workspace_directory_color($values['B'] ?? '');
         if ($kind === 'clients' && isset($values['B'])) $payload['manager'] = $values['B'];
-        if ($kind === 'carriers' && isset($values['B'])) $payload['logist'] = $values['B'];
+        if ($kind==='carriers') {
+            $payload['carrierDetails']=workspace_carrier_details($values);
+            $payload['logist']=$values['D']??'';
+        }
         $previous = wquery('SELECT id,revision FROM catalog_entries WHERE catalog_id=? AND normalized=? AND active=FALSE',
             [$catalogId,vitrine_status_key($name)])->fetch();
         if ($previous) $payload += ['id'=>(int)$previous['id'],'revision'=>(int)$previous['revision']];
