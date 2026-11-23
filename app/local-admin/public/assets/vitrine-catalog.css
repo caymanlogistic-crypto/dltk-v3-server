@@ -10,8 +10,12 @@
 .vitrine .vitrine-catalog-search, .vitrine .vitrine-grid-tools { margin-inline-start:auto; }
 .vitrine .vitrine-excel-button.btn-icon { display:inline-grid; place-items:center; flex:none; box-sizing:border-box; inline-size:var(--control-h); block-size:var(--control-h); }
 .vitrine .vitrine-directory-import-form { margin:0; }
-.vitrine .vitrine-directory-import-form .modal-body { display:grid; gap:12px; }
-.vitrine .vitrine-directory-import-form p { margin:0; }
+.vitrine .vitrine-import-file { display:flex; align-items:center; gap:10px; min-width:0; }
+.vitrine .vitrine-import-file .btn { flex:none; }
+.vitrine .vitrine-import-file [data-import-filename] {
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted);
+}
+.vitrine .vitrine-import-archive input:focus-visible + .checkbox-mark { box-shadow:0 0 0 2px var(--accent); }
 .vitrine .vitrine-catalog-search { max-inline-size:100%; }
 .vitrine .vitrine-directory-visibility { inline-size:150px; max-inline-size:100%; }
 .vitrine .vitrine-catalog-search input[type="search"] { box-sizing:border-box; block-size:var(--control-h); inline-size:245px; max-inline-size:100%; }

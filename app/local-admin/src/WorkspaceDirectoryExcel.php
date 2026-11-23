@@ -25,7 +25,7 @@ function workspace_directory_excel_schema(string $directory): array {
     $labels=array_column($model['columns'],'label','letter');
     if ($kind==='clients') unset($labels['C']);
     if ($kind==='unload-points') $labels['C']='Основной контакт';
-    return ['id'=>$id,'kind'=>$kind,'labels'=>$labels,'title'=>$model['title']];
+    return ['id'=>$id,'kind'=>$kind,'labels'=>$labels];
 }
 
 function workspace_directory_excel_entries(array $schema): array {
@@ -74,13 +74,17 @@ function workspace_directory_excel_entries(array $schema): array {
 
 function workspace_directory_excel_header(array $labels,array $sheet): array {
     $header=array_filter(array_map('trim',$sheet[1]??[]),'strlen');
+    $exportedContacts=($labels['C']??'')==='Основной контакт' && in_array('Контакты',$header,true);
+    if ($exportedContacts) $labels['C']='Контакты';
     $allowed=[...array_values($labels),'ID записи','Версия записи','Строка'];
     if (in_array('Клиент',$labels,true) && in_array('Менеджер',$labels,true)) $allowed[]='Точки выгрузки';
     if (count($header)!==count(array_unique($header)) || array_diff($header,$allowed) ||
         array_diff($labels,$header) || (in_array('ID записи',$header,true)!==in_array('Версия записи',$header,true))) {
-        directory_xlsx_error('Проверьте заголовки первой строки. Нужны столбцы: '.implode(', ',$labels).'. Можно скачать шаблон.');
+        directory_xlsx_error('Проверьте заголовки первой строки. Нужны столбцы: '.implode(', ',$labels).'.');
     }
-    return [array_flip($header),$header];
+    $positions=array_flip($header);
+    if ($exportedContacts) $positions['Основной контакт']=$positions['Контакты'];
+    return [$positions,$header,$exportedContacts];
 }
 
 function workspace_directory_excel_payload(array $schema,array $values,?array $old): array {
@@ -113,7 +117,7 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
 }
 
 function workspace_directory_excel_plan(array $schema,array $entries,array $sheet,bool $replace): array {
-    [$positions,$header]=workspace_directory_excel_header($schema['labels'],$sheet);
+    [$positions,$header,$exportedContacts]=workspace_directory_excel_header($schema['labels'],$sheet);
     unset($sheet[1]);
     if (!$sheet) directory_xlsx_error('Добавьте в Excel хотя бы одну строку справочника.');
     $kind=$schema['kind'];
@@ -132,12 +136,12 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             $idText=trim($cells[$positions['ID записи']??0]??'');
             $version=trim($cells[$positions['Версия записи']??0]??'');
             if (($idText==='')!==($version==='') || ($idText!=='' && (!preg_match('/^[1-9][0-9]{0,17}$/D',$idText) || !ctype_digit($version)))) {
-                directory_xlsx_error('Проверьте ID и версию записи из шаблона.');
+                directory_xlsx_error('Проверьте ID и версию записи.');
             }
             $id=(int)$idText;
             $old=$entries[$id]??null;
             if ($id && (!$old || !$old['active'] || (string)$old['revision']!==$version)) {
-                throw new ApiError('revision_conflict','Запись изменилась или находится вне активного справочника. Скачайте свежий шаблон.',409);
+                throw new ApiError('revision_conflict','Версия записи устарела или запись находится в архиве.',409);
             }
             if (!$id) {
                 $lookup=$values['A'];
@@ -147,10 +151,15 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
                     $lookup=vitrine_status_key($lookup);
                 }
                 $matches=$keys[$lookup]??[];
-                if (count($matches)>1) directory_xlsx_error('Найдено несколько записей с таким названием. Используйте ID из шаблона.');
+                if (count($matches)>1) directory_xlsx_error('Найдено несколько записей с таким названием. Укажите ID записи и её версию.');
                 $id=$matches[0]??0;
                 $old=$entries[$id]??null;
                 if ($old && !$old['active']) directory_xlsx_error('Запись в архиве. Восстановите её перед загрузкой.');
+            }
+            if ($exportedContacts) {
+                $primary=$old['values']['C']??'';
+                $count=(int)($old['detail']['contact_count']??0);
+                if ($values['C']===workspace_unload_contact_summary($primary,$count)) $values['C']=$primary;
             }
             if ($old && $values===$old['values']) {
                 if (isset($seen[$id])) directory_xlsx_error('Повтор записи.');
@@ -251,16 +260,8 @@ function workspace_directory_excel_order_statuses(array $entries,array $operatio
 function workspace_directory_excel_endpoint(): never {
     $directory=vitrine_directory_requested();
     if (!workspace_directory_excel_supported($directory)) throw new ApiError('not_found','Для этого справочника загрузка Excel недоступна.',404);
+    if (($_SERVER['REQUEST_METHOD'] ?? '')!=='POST') throw new ApiError('method','Метод не поддерживается.',405);
     $schema=workspace_directory_excel_schema($directory);
-    $method=$_SERVER['REQUEST_METHOD'];
-    if ($method==='GET') {
-        $rows=[['ID записи','Версия записи',...array_values($schema['labels'])]];
-        foreach (workspace_directory_excel_entries($schema) as $entry) {
-            if ($entry['active']) $rows[]=[(string)$entry['id'],(string)$entry['revision'],...array_values($entry['values'])];
-        }
-        json_response(['title'=>$schema['title'],'rows'=>$rows]);
-    }
-    if ($method!=='POST') throw new ApiError('method','Метод не поддерживается.',405);
     $sheet=directory_xlsx_read($_FILES['workbook']??[]);
     $replace=($_POST['replace']??'')==='1';
     $commit=array_key_exists('token',$_POST);

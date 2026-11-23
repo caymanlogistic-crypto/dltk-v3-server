@@ -6,7 +6,9 @@
 
   const form = dialog.querySelector('form');
   const submit = dialog.querySelector('[data-import-submit]');
-  const template = dialog.querySelector('[data-import-template]');
+  const pick = dialog.querySelector('[data-import-pick]');
+  const filename = dialog.querySelector('[data-import-filename]');
+  const fileField = form.elements.workbook;
   const close = dialog.querySelector('[data-import-close]');
   const output = dialog.querySelector('[data-import-result]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
@@ -15,13 +17,20 @@
 
   function setBusy(value) {
     busy = value;
-    for (const control of [submit,template,close,form.elements.workbook,form.elements.replace]) control.disabled = value;
+    for (const control of [pick,close,fileField,form.elements.replace]) control.disabled = value;
+    submit.disabled = value || !fileField.files.length;
     dialog.setAttribute('aria-busy',String(value));
   }
   function resetReview() {
     token = '';
     output.hidden = true;
     submit.textContent = 'Проверить файл';
+    submit.disabled = !fileField.files.length;
+  }
+  function updateFilename() {
+    const name = fileField.files[0]?.name;
+    filename.textContent = name ?? 'Файл не выбран';
+    filename.title = name ?? '';
   }
   async function request(options) {
     const response = await fetch(url,options);
@@ -39,28 +48,20 @@
       return;
     }
     form.reset();
+    updateFilename();
     resetReview();
     dialog.showModal();
   });
   close.addEventListener('click',()=>dialog.close());
   dialog.addEventListener('cancel',event=>{ if (busy) event.preventDefault(); });
   dialog.addEventListener('close',()=>{ if (saved) location.reload(); });
+  pick.addEventListener('click',()=>fileField.click());
+  fileField.addEventListener('change',updateFilename);
   form.addEventListener('change',resetReview);
-  template.addEventListener('click',async()=>{
-    setBusy(true);
-    try {
-      const result = await request();
-      window.VitrineExcel.download(result.rows,result.title + ' — шаблон');
-    } catch (error) {
-      report(error);
-    } finally {
-      setBusy(false);
-    }
-  });
   form.addEventListener('submit',async event=>{
     event.preventDefault();
     if (busy || saved) return;
-    const workbook = form.elements.workbook.files[0];
+    const workbook = fileField.files[0];
     if (!workbook || !/\.xlsx$/i.test(workbook.name) || workbook.size>1_900_000) {
       report(new Error('Выберите файл .xlsx размером до 1,9 МБ.'));
       return;
@@ -90,9 +91,9 @@
       setBusy(false);
       if (saved) {
         submit.hidden = true;
-        form.elements.workbook.disabled = true;
+        fileField.disabled = true;
         form.elements.replace.disabled = true;
-        template.disabled = true;
+        pick.disabled = true;
         close.focus();
       }
     }

@@ -86,8 +86,6 @@
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
-  window.VitrineExcel = Object.freeze({download});
-
   button.addEventListener('click', async () => {
     const columns = Array.from(table.querySelectorAll('thead th[data-column]:not([hidden])'));
     const heading = ['Строка', ...columns.map(column => column.querySelector('.vitrine-column-label').textContent)];
