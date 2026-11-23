@@ -119,10 +119,11 @@ function vitrine_catalog_options(array $t,array $links): array {
                 $drivers[$vehicle['name']]=trim(implode(' ',[$vehicle['surname']??'',$vehicle['given_name']??'',$vehicle['patronymic']??'']));
             }
         }
+        $boundChoices['O']=array_filter($boundChoices['O'],static fn(string $plate): bool=>!workspace_fleet_trailer_key($plate));
         $boundChoices['O']=array_map(static fn(string $plate): array=>[
             'value'=>$plate,'label'=>($drivers[$plate]??'')!=='' ? $plate.' · '.$drivers[$plate] : $plate,
             'search'=>workspace_fleet_plate_key($plate),
-        ],$boundChoices['O']);
+        ],array_values($boundChoices['O']));
     }
     foreach(['B','E'] as $key){
         if(isset($links[$key]))$entriesByName[$key]=($entriesByName[$key]??[])+workspace_client_catalog_aliases($links[$key]['id']);

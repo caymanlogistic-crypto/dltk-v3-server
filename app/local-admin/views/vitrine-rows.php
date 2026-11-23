@@ -11,7 +11,7 @@
             <?php
               $letter = $column['letter'];
               $kind = $row['kinds'][$letter] ?? $column['kind'] ?? 'text';
-              $opensCard = in_array($kind,['unload-contacts','client-unload-points','client-managers'],true);
+              $opensCard = in_array($kind,['unload-contacts','client-unload-points','client-managers','fleet-documents'],true);
               $orderStatus = $letter==='B' && !isset($catalogGrid) ? ($row['orderStatus'] ?? null) : null;
               $orderFill = $letter==='B' ? ($row['orderFill'] ?? ($orderStatus ? workspace_client_order_status($orderStatus)['color'] : '')) : '';
               $cellStyle = $orderFill ? '--order-status-fill: '.$orderFill : '';

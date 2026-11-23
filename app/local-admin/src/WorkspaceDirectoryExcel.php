@@ -30,6 +30,7 @@ function workspace_directory_excel_schema(string $directory): array {
     if ($kind==='fleet-vehicles') workspace_require('catalog',(string)workspace_fleet_catalog('fleet-drivers'),'view');
     $labels=array_column($model['columns'],'label','letter');
     if ($kind==='clients') unset($labels['C']);
+    if ($kind==='fleet-vehicles') unset($labels['J']);
     if ($kind==='unload-points') $labels['C']='Основной контакт';
     return ['id'=>$id,'kind'=>$kind,'labels'=>$labels,'orderKey'=>$id ?: $directory];
 }
@@ -38,8 +39,9 @@ function workspace_directory_excel_entries(array $schema): array {
     ['id'=>$id,'kind'=>$kind]=$schema;
     if (in_array($kind,['roles','employees'],true)) return workspace_access_excel_entries($kind);
     if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) {
-        return array_map(static fn(array $entry): array=>$entry+['values'=>workspace_fleet_values($kind,$entry)],
-            workspace_fleet_entries($kind,$id));
+        $entries=workspace_fleet_entries($kind,$id);
+        if ($kind==='fleet-vehicles') $entries=array_filter($entries,static fn(array $entry): bool=>!workspace_fleet_trailer_key($entry['name']));
+        return array_map(static fn(array $entry): array=>$entry+['values'=>workspace_fleet_values($kind,$entry)],$entries);
     }
     if ($kind==='order-statuses') {
         $entries=[];

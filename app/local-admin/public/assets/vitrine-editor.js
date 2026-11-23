@@ -137,6 +137,20 @@
     if (result.values) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
       if (Object.hasOwn(result.values,sibling.dataset.column)) sibling.textContent = result.values[sibling.dataset.column];
     }
+    if (Object.hasOwn(result,'fleetDocumentAccess')) {
+      const docs = cell.parentElement.querySelector('td[data-column="J"]');
+      if (docs) {
+        docs.textContent = result.fleetDocumentAccess ? 'Открыть' : '';
+        docs.dataset.kind = result.fleetDocumentAccess ? 'fleet-documents' : 'text';
+        docs.toggleAttribute('data-readonly-cell',!result.fleetDocumentAccess);
+        docs.toggleAttribute('aria-readonly',!result.fleetDocumentAccess);
+        if (result.fleetDocumentAccess) docs.setAttribute('aria-haspopup','dialog');
+        else {
+          docs.removeAttribute('aria-haspopup');
+          docs.dataset.readonlyCell = 'Сначала укажите водителя в строке машины.';
+        }
+      }
+    }
     if (catalog) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
       sibling.dataset.revision = String(result.revision);
       if (catalog === 'employees') sibling.dataset.base = result.baseHash;
@@ -315,7 +329,7 @@
   }
   function open(cell, firstCharacter = null) {
     const card = {'unload-contacts':window.VitrineUnloadContacts,'client-unload-points':window.VitrineClientUnloadPoints,
-      'client-managers':window.VitrineClientManagers}[cell.dataset.kind];
+      'client-managers':window.VitrineClientManagers,'fleet-documents':window.VitrineFleetDocuments}[cell.dataset.kind];
     if (cell.hasAttribute('data-readonly-cell') && !card) {
       report(cell.dataset.readonlyCell, 'info');
       return;

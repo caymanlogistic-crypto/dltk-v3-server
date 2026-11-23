@@ -15,12 +15,15 @@ function workspace_catalog_directory_model(): array {
         'unload-points'=>['A'=>'Клиент','B'=>'Адрес','C'=>'Контакты'],
         'dropoff-points'=>['A'=>'Точка сдачи','B'=>'Адрес','C'=>'Контакты','D'=>'Постоянная инструкция'],
         'fleet-drivers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Телефон'],
-        'fleet-vehicles'=>['A'=>'Госномер','B'=>'Марка','C'=>'Тип транспорта']+workspace_fleet_driver_columns(),
+        'fleet-vehicles'=>['A'=>'Госномер тягача','B'=>'Марка тягача','C'=>'Тип транспорта']+workspace_fleet_driver_columns()+
+            ['H'=>'Госномер полуприцепа','I'=>'Марка полуприцепа'],
         'managers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Роль','E'=>'Телефон','F'=>'Email'],
         default=>['A'=>'Название'],
     };
+    if ($catalog['kind']==='fleet-vehicles' && workspace_fleet_can_documents()) $labels['J']='Документы водителя';
     $columns = [];
     foreach ($labels as $letter=>$label) $columns[] = compact('letter','label');
+    if (isset($labels['J'])) $columns[array_key_last($columns)]['export']=false;
     if ($catalog['kind']==='unload-points') $columns[2]['kind']='unload-contacts';
     return ['id'=>0,'catalogId'=>(int)$id,'catalogKind'=>$catalog['kind'],'slug'=>'catalog-entries-'.$id,
         'title'=>$catalog['title'],'columns'=>$columns];
@@ -43,6 +46,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $managers=$kind==='managers';
     $fleet=in_array($kind,WORKSPACE_FLEET_KINDS,true);
     $driverCatalog=$kind==='fleet-vehicles' ? workspace_fleet_catalog('fleet-drivers') : 0;
+    $showDocuments=in_array('J',array_column($model['columns'],'letter'),true);
     $canViewDrivers=$driverCatalog && workspace_can('catalog',(string)$driverCatalog,'view');
     $dropoffProfiles=$kind==='dropoff-points' ? workspace_dropoff_profiles($id) : [];
     $showAll=$managers && ($_GET['archive'] ?? '')==='all';
@@ -65,6 +69,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $requested = $requestedRows === null ? null : array_fill_keys($requestedRows,true);
     foreach ($entries as $entry) {
         if (!$showAll && (bool)$entry['active']===$archive) continue;
+        if ($kind==='fleet-vehicles' && workspace_fleet_trailer_key($entry['name'])) continue;
         if ($unload && !$archive && $entry['review_required']) continue;
         if ($clientFilter && (int)$entry['client_id']!==(int)$clientFilter['id']) continue;
         $entryId = (int)$entry['id'];
@@ -100,6 +105,11 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $row['requiredChoices']['D']=true;
         }
         if ($kind==='fleet-vehicles') {
+            if ($showDocuments) {
+                $row['values']['J']=$entry['driver_id'] && $canViewDrivers ? 'Открыть' : '';
+                if ($row['values']['J']!=='') $row['kinds']['J']='fleet-documents';
+                else $row['readOnly']['J']='Сначала укажите водителя в строке машины.';
+            }
             foreach (array_keys(workspace_fleet_driver_columns()) as $column) {
                 if ($canViewDrivers) $row['kinds'][$column]='fleet-driver';
                 else $row['readOnly'][$column]='Нет доступа к данным водителя.';
@@ -157,7 +167,12 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         $profile=workspace_fleet_entries($kind,$id)[$body['row']]??null;
         if (!$profile) throw new ApiError('not_found','Запись не найдена.',404);
         $values=workspace_fleet_values($kind,$profile);
+        if ($kind==='fleet-vehicles' && $column==='J') throw new ApiError('invalid_edit','Откройте карточку документов водителя.');
         $values[$column]=$body['value'];
+        if ($kind==='fleet-vehicles' && $column==='H' && workspace_fleet_trailer_key($body['value'])!==workspace_fleet_trailer_key($profile['trailer_plate']??'')) {
+            $key=workspace_fleet_trailer_key($body['value']);
+            $values['I']=$key ? (string)wquery('SELECT brand FROM fleet_trailer_profiles WHERE plate_key=?',[$key])->fetchColumn() : '';
+        }
         if ($kind==='fleet-vehicles' && array_key_exists($column,workspace_fleet_driver_columns()) && isset($body['fleetDriver'])) {
             $driver=$body['fleetDriver'];
             if (!is_array($driver) || array_diff_key($driver,workspace_fleet_driver_columns())
@@ -176,6 +191,9 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         $result=workspace_fleet_save($kind,$id,$values,$body['row'],$body['revision']);
         if ($kind==='fleet-vehicles' && !workspace_can('catalog',(string)workspace_fleet_catalog('fleet-drivers'),'view')) {
             $result['values']=array_diff_key($result['values'],workspace_fleet_driver_columns());
+        }
+        if ($kind==='fleet-vehicles' && workspace_fleet_can_documents()) {
+            $result['fleetDocumentAccess']=isset($result['values']['D']) && $result['values']['D']!=='';
         }
         $value=$result['values'][$column]??'';
         json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);

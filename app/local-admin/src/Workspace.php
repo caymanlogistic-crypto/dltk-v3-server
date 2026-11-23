@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__.'/WorkspaceCatalogs.php';
 require_once __DIR__.'/WorkspaceFleet.php';
+require_once __DIR__.'/WorkspaceFleetDetails.php';
 require_once __DIR__.'/WorkspaceClientCatalogGrid.php';
 require_once __DIR__.'/WorkspaceEmployees.php';
 require_once __DIR__.'/WorkspaceEmployeeGrid.php';

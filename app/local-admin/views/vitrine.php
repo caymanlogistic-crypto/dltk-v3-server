@@ -72,6 +72,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-select.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-slot.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <?php if (($data['table']['catalogKind']??null)==='fleet-vehicles' && in_array('J',array_column($data['columns'],'letter'),true)): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-fleet-documents.js')) ?>"></script>
+  <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
@@ -198,7 +201,10 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
     </section>
     <?php endif; ?>
     <?php if ($canManageRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
-    if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php'; ?>
+    if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php';
+    if (($data['table']['catalogKind']??null)==='fleet-vehicles' && in_array('J',array_column($columns,'letter'),true)) {
+        require __DIR__.'/vitrine-fleet-documents.php';
+    } ?>
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
       <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
@@ -207,7 +213,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <colgroup><col class="vitrine-row-column"><?php foreach ($columns as $column): ?><col class="vitrine-data-column<?= $columnClass($column) ?>" data-column="<?= $escape($column['letter']) ?>"><?php endforeach; ?></colgroup>
           <thead><tr><th scope="col" class="vitrine-row-number">Строка</th>
             <?php foreach ($columns as $column): ?>
-              <th scope="col" data-column="<?= $escape($column['letter']) ?>" class="<?= trim($columnClass($column)) ?>" title="<?= $escape($column['label']) ?>">
+              <th scope="col" data-column="<?= $escape($column['letter']) ?>"<?= ($column['export']??true) ? '' : ' data-no-export' ?> class="<?= trim($columnClass($column)) ?>" title="<?= $escape($column['label']) ?>">
                 <span class="vitrine-column-letter"><?= $escape($column['letter']) ?><?php if (isset($column['derivedSource'])): ?>
                   <span class="vitrine-derived-icon" role="img" tabindex="0" aria-label="<?= $escape($column['derivedSource']) ?>" data-source-label="<?= $escape($column['derivedSource']) ?>">
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7L12 5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19"/></svg>

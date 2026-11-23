@@ -10,8 +10,10 @@ function workspace_fleet_catalog(string $kind): int {
 function workspace_fleet_entries(string $kind,int $catalogId): array {
     $profile=$kind==='fleet-drivers'
         ? 'JOIN fleet_driver_profiles p ON p.entry_id=e.id'
-        : 'JOIN fleet_vehicle_profiles p ON p.entry_id=e.id LEFT JOIN fleet_driver_profiles driver ON driver.entry_id=p.driver_id';
-    $label=$kind==='fleet-drivers'?'':',driver.surname,driver.given_name,driver.patronymic,driver.phone';
+        : 'JOIN fleet_vehicle_profiles p ON p.entry_id=e.id LEFT JOIN fleet_driver_profiles driver ON driver.entry_id=p.driver_id
+            LEFT JOIN fleet_vehicle_trailers link ON link.vehicle_id=e.id LEFT JOIN fleet_trailer_profiles trailer ON trailer.plate_key=link.trailer_key';
+    $label=$kind==='fleet-drivers'?'':',driver.surname,driver.given_name,driver.patronymic,driver.phone,
+        trailer.plate AS trailer_plate,trailer.brand AS trailer_brand';
     return array_column(wquery("SELECT e.id,e.name,e.normalized,e.active,e.revision,p.* $label
         FROM catalog_entries e $profile WHERE e.catalog_id=? AND NOT EXISTS (
         SELECT 1 FROM workspace_meta m WHERE m.key=CONCAT('catalog_deleted_client_',e.id))
@@ -21,7 +23,8 @@ function workspace_fleet_entries(string $kind,int $catalogId): array {
 function workspace_fleet_values(string $kind,array $entry): array {
     if ($kind==='fleet-drivers') return ['A'=>$entry['surname'],'B'=>$entry['given_name'],'C'=>$entry['patronymic'],'D'=>$entry['phone']];
     return ['A'=>$entry['name'],'B'=>$entry['brand'],'C'=>$entry['vehicle_type'],
-        'D'=>$entry['surname']??'','E'=>$entry['given_name']??'','F'=>$entry['patronymic']??'','G'=>$entry['phone']??''];
+        'D'=>$entry['surname']??'','E'=>$entry['given_name']??'','F'=>$entry['patronymic']??'','G'=>$entry['phone']??'',
+        'H'=>$entry['trailer_plate']??'','I'=>$entry['trailer_brand']??''];
 }
 
 function workspace_fleet_driver_columns(): array {
@@ -32,7 +35,7 @@ function workspace_fleet_draft_fields(string $kind): array {
     $text=['type'=>'text'];
     $required=['required'=>true]+$text;
     if ($kind==='fleet-drivers') return ['A'=>$required,'B'=>$required,'C'=>$text,'D'=>$text];
-    return ['A'=>$required,'B'=>$text,'C'=>$text]+array_fill_keys(array_keys(workspace_fleet_driver_columns()),$text);
+    return ['A'=>$required,'B'=>$text,'C'=>$text]+array_fill_keys([...array_keys(workspace_fleet_driver_columns()),'H','I'],$text);
 }
 
 function workspace_fleet_plate_key(string $value): string {
@@ -63,6 +66,8 @@ function workspace_fleet_values_validated(string $kind,array $values): array {
     if (!preg_match('/^(?=[\p{L}\d]{4,14}$)(?=.*\d)(?=.*\p{L})[\p{L}\d]+$/uD',$key)) {
         throw new ApiError('invalid_vehicle','Укажите один госномер с буквами и цифрами.');
     }
+    if (workspace_fleet_trailer_key($plate)) throw new ApiError('invalid_vehicle','Госномер полуприцепа укажите в отдельном столбце.');
+    $trailer=workspace_fleet_trailer_values($values);
     $brand=workspace_unload_text($values['B']??'',160);
     $type=workspace_unload_text($values['C']??'',100);
     $driverValues=[];
@@ -71,8 +76,9 @@ function workspace_fleet_values_validated(string $kind,array $values): array {
     }
     $driver=array_filter($driverValues,'strlen') ? workspace_fleet_values_validated('fleet-drivers',$driverValues) : null;
     return ['name'=>$plate,'key'=>$key,'profile'=>[$brand,$type],
-        'driver'=>$driver,'values'=>['A'=>$plate,'B'=>$brand,'C'=>$type]+
-            array_combine(array_keys(workspace_fleet_driver_columns()),array_values($driver['values']??$driverValues))];
+        'driver'=>$driver,'trailer'=>$trailer,'values'=>['A'=>$plate,'B'=>$brand,'C'=>$type]+
+            array_combine(array_keys(workspace_fleet_driver_columns()),array_values($driver['values']??$driverValues))+
+            ['H'=>$trailer['plate'],'I'=>$trailer['brand']]];
 }
 
 function workspace_fleet_resolve_driver(?array $driver,?int $previous): ?array {
@@ -130,6 +136,9 @@ function workspace_fleet_write(string $kind,int $catalogId,array $values,?int $i
             : 'INSERT INTO fleet_vehicle_profiles(entry_id,brand,vehicle_type,driver_id) VALUES(?,?,?,?)
                 ON DUPLICATE KEY UPDATE brand=VALUES(brand),vehicle_type=VALUES(vehicle_type),driver_id=VALUES(driver_id)';
         wquery($sql,[$id,...$next['profile']]);
+        if ($kind==='fleet-vehicles' && ($next['values']['H']!==($before['H']??'') || $next['values']['I']!==($before['I']??''))) {
+            workspace_fleet_write_trailer($id,$next['trailer']);
+        }
         workspace_audit(['category'=>'catalog','label'=>$kind==='fleet-drivers'?'Водители':'Автотранспорт',
             'before'=>$old?['id'=>$id]+$before:null,'after'=>['id'=>$id]+$next['values'],'action'=>$old?'edit':'create']);
         workspace_event('catalog.changed',['catalogId'=>$catalogId,'id'=>$id,'name'=>$next['name'],
