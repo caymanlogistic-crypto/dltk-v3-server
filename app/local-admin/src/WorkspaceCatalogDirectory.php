@@ -124,6 +124,9 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
                 $row['edits'][$column]=['revision'=>$documentState['revision']??0,'baseHash'=>$documentState['baseHash']??''];
                 $row['readOnly'][$column]=$documentState['readOnly']??'Документы доступны суперадмину.';
             }
+            $row['kinds']['P']='fleet-driver';
+            $row['edits']['P']=['revision'=>(int)$entry['revision']];
+            if ($canEditDocuments && !$archive) $row['readOnly']['P']='';
             foreach (array_keys(workspace_fleet_driver_columns()) as $column) {
                 if ($canViewDrivers) $row['kinds'][$column]='fleet-driver';
                 else $row['readOnly'][$column]='Нет доступа к данным водителя.';
@@ -178,27 +181,32 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     if (!$entry) throw new ApiError('not_found','Запись не найдена.',404);
     $kind = $model['catalogKind'];
     if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) {
-        if ($kind==='fleet-vehicles' && isset(workspace_fleet_document_fields()[$column])) workspace_fleet_document_cell($body,$pasteCheck);
+        $isFleet=$kind==='fleet-vehicles';
+        if ($isFleet && isset(workspace_fleet_document_fields()[$column]) && ($column!=='P' || !isset($body['fleetGroup']))) {
+            workspace_fleet_document_cell($body,$pasteCheck);
+        }
         $profile=workspace_fleet_entries($kind,$id)[$body['row']]??null;
         if (!$profile) throw new ApiError('not_found','Запись не найдена.',404);
-        $values=workspace_fleet_values($kind,$profile);
-        $values[$column]=$body['value'];
-        if ($kind==='fleet-vehicles' && $column==='H' && workspace_fleet_trailer_key($body['value'])!==workspace_fleet_trailer_key($profile['trailer_plate']??'')) {
-            $key=workspace_fleet_trailer_key($body['value']);
+        $oldValues=workspace_fleet_values($kind,$profile);
+        $changes=$isFleet ? workspace_fleet_edit_values($body) : [$column=>$body['value']];
+        $birth=null;
+        if ($isFleet && array_key_exists('P',$changes)) {
+            if (!workspace_fleet_can_documents()) throw new ApiError('forbidden','Дата рождения доступна суперадмину.',403);
+            $driverCatalog=(string)workspace_fleet_catalog('fleet-drivers');
+            workspace_require('catalog',$driverCatalog,'view');
+            workspace_require('catalog',$driverCatalog,'edit');
+            if (!is_int($body['birthRevision']??null)) workspace_directory_conflict();
+            $birth=['value'=>$changes['P'],'revision'=>$body['birthRevision']];
+            unset($changes['P']);
+        }
+        $values=array_replace($oldValues,$changes);
+        if ($isFleet && isset($changes['H']) && $values['I']===$oldValues['I']
+            && workspace_fleet_trailer_key($values['H'])!==workspace_fleet_trailer_key($oldValues['H'])) {
+            $key=workspace_fleet_trailer_key($values['H']);
             $values['I']=$key ? (string)wquery('SELECT brand FROM fleet_trailer_profiles WHERE plate_key=?',[$key])->fetchColumn() : '';
         }
-        if ($kind==='fleet-vehicles' && array_key_exists($column,workspace_fleet_driver_columns()) && isset($body['fleetDriver'])) {
-            $driver=$body['fleetDriver'];
-            if (!is_array($driver) || array_diff_key($driver,workspace_fleet_driver_columns())
-                || array_diff_key(workspace_fleet_driver_columns(),$driver)
-                || array_filter($driver,static fn($part)=>!is_string($part))) {
-                throw new ApiError('invalid_driver','Проверьте данные водителя.');
-            }
-            $values=array_replace($values,$driver);
-        }
-        if ($kind==='fleet-vehicles' && (isset($body['fleetDriver']) || in_array($column,['D','E','F'],true))) {
+        if ($isFleet && array_intersect_key($changes,array_flip(['D','E','F']))) {
             $identity=array_flip(['D','E','F']);
-            $oldValues=workspace_fleet_values($kind,$profile);
             if (vitrine_catalog_key(implode(' ',array_intersect_key($values,$identity)))!==
                 vitrine_catalog_key(implode(' ',array_intersect_key($oldValues,$identity)))) {
                 foreach (['G','Q'] as $phoneColumn) if ($values[$phoneColumn]===$oldValues[$phoneColumn]) $values[$phoneColumn]='';
@@ -210,18 +218,19 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         }
         $baseHash=workspace_catalog_directory_hash($id,$body['row']);
         if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
-        $result=workspace_fleet_save($kind,$id,$values,$body['row'],$body['revision']);
+        $result=workspace_fleet_save($kind,$id,$values,$body['row'],$body['revision'],$birth);
         if ($kind==='fleet-vehicles' && !workspace_can('catalog',(string)workspace_fleet_catalog('fleet-drivers'),'view')) {
             $result['values']=array_diff_key($result['values'],workspace_fleet_driver_columns());
         }
         if ($kind==='fleet-vehicles' && workspace_fleet_can_documents()) {
             $driverCatalog=(string)workspace_fleet_catalog('fleet-drivers');
             if (workspace_can('catalog',$driverCatalog,'view')) {
-                $driver=(int)wquery('SELECT driver_id FROM fleet_vehicle_profiles WHERE entry_id=?',[$body['row']])->fetchColumn();
-                $result['fleetDocuments']=workspace_fleet_document_state($body['row'],$driver,workspace_can('catalog',$driverCatalog,'edit'));
+                $driver=workspace_fleet_driver_id($body['row']);
+                $result['fleetBirthEditable']=workspace_can('catalog',$driverCatalog,'edit');
+                $result['fleetDocuments']=workspace_fleet_document_state($body['row'],$driver,$result['fleetBirthEditable']);
             }
         }
-        $value=$result['values'][$column]??'';
+        $value=$result['values'][$column]??$result['fleetDocuments']['values'][$column]??'';
         json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);
     }
     if ($kind==='managers') {

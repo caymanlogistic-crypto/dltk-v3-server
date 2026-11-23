@@ -4,6 +4,7 @@
   const catalog = document.body.dataset.vitrineCatalog;
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
+  const fleetGroups = Object.entries(JSON.parse(document.getElementById('vitrine-fleet-edit-groups')?.content || '{}'));
   const orderLabels = Object.fromEntries(Object.entries(orderStatuses).map(([code,status])=>[status.label,code]));
   const normalizeContainer = value => value.replace(/[ \t\u00a0\u202f-]+/g,'').toUpperCase();
   function isUnloadingCell(cell) {
@@ -139,15 +140,20 @@
     }
     if (result.fleetDocuments) {
       const docs = result.fleetDocuments;
-      for (const sibling of cell.parentElement.querySelectorAll('td[data-kind="fleet-document"]')) {
+      for (const sibling of cell.parentElement.querySelectorAll('td[data-kind="fleet-document"],td[data-column="P"]')) {
+        const birth = sibling.dataset.column === 'P';
         sibling.textContent = docs.values[sibling.dataset.column];
         sibling.dataset.original = sibling.textContent;
-        sibling.dataset.base = docs.baseHash;
-        sibling.dataset.revision = String(docs.revision);
-        sibling.title = docs.readOnly || 'Щелчок — изменить.';
-        sibling.toggleAttribute('data-readonly-cell',Boolean(docs.readOnly));
-        if (docs.readOnly) {
-          sibling.dataset.readonlyCell = docs.readOnly;
+        if (birth && !Object.hasOwn(result,'fleetBirthEditable')) continue;
+        if (!birth) {
+          sibling.dataset.base = docs.baseHash;
+          sibling.dataset.revision = String(docs.revision);
+        }
+        const reason = birth && result.fleetBirthEditable ? '' : docs.readOnly;
+        sibling.title = reason || 'Щелчок — изменить.';
+        sibling.toggleAttribute('data-readonly-cell',Boolean(reason));
+        if (reason) {
+          sibling.dataset.readonlyCell = reason;
           sibling.setAttribute('aria-readonly','true');
         } else sibling.removeAttribute('aria-readonly');
       }
@@ -188,13 +194,20 @@
     if (cell.dataset.orderStatus) cell.title += ' · ' + (orderStatuses[cell.dataset.orderStatus]?.label || '');
     if (cell.dataset.kind === 'time' && !cell.dataset.compactInput) cell.title = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' + result.value;
   }
-  async function writeCell(cell, value, reset = false, paste = null, editAction = null, orderStatus = undefined, dropoffDetails = undefined, fleetDriver = undefined) {
-    if (cell.closest('[data-draft-slot]')) return window.VitrineDirectoryDrafts.write(cell,value);
+  function fleetBirthRevision(cell) {
+    return Number(cell.parentElement.querySelector('td[data-column="J"]')?.dataset.revision || 0);
+  }
+  async function writeCell(cell, value, reset = false, paste = null, editAction = null, orderStatus = undefined, dropoffDetails = undefined, fleetGroup = undefined, birthRevision = undefined) {
+    if (cell.closest('[data-draft-slot]')) return window.VitrineDirectoryDrafts.write(cell,value,fleetGroup);
+    if (!fleetGroup && fleetGroups.length && cell.dataset.column==='P') {
+      fleetGroup={P:value};
+      birthRevision=fleetBirthRevision(cell);
+    }
     const response = await fetch(window.VitrineGridScope.url('/api/vitrine/cell'), {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
       body:JSON.stringify({row:Number(cell.dataset.row),column:cell.dataset.column,value,
-        revision:Number(cell.dataset.revision || 0),baseHash:cell.dataset.base,reset,requestId:crypto.randomUUID(),editAction:editAction||(reset?'reset':paste?'paste':'edit'),...(paste ? {paste} : {}),orderStatus,dropoffDetails,fleetDriver})
+        revision:Number(cell.dataset.revision || 0),baseHash:cell.dataset.base,reset,requestId:crypto.randomUUID(),editAction:editAction||(reset?'reset':paste?'paste':'edit'),...(paste ? {paste} : {}),orderStatus,dropoffDetails,fleetGroup,birthRevision})
     });
     const result = await response.json();
     if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось сохранить ячейку.');
@@ -281,7 +294,7 @@
     const before = snapshot(cell);
     try {
       const result = await writeCell(cell, value, reset, reset ? null : editor.paste,null,
-        !reset && editor.orderField ? (orderLabels[editor.orderField.value] || '') : undefined,editor.dropoff?.values(),editor.fleetDriver?.values());
+        !reset && editor.orderField ? (orderLabels[editor.orderField.value] || '') : undefined,editor.dropoff?.values(),editor.fleetDriver?.values(),editor.fleetDriver?.birthRevision);
       applyResult(cell,result);
       if (!reset && editor.paste && !result.draft) rememberPaste(before,result);
       editor.saving = false;
@@ -308,27 +321,35 @@
       editor.field.focus();
     }
   }
-  function vehicleDriverFields(panel, cell, field) {
-    const columns = ['D','E','F','G','Q'];
-    const peers = columns.map(column => cell.parentElement.querySelector('td[data-column="' + column + '"]'));
-    const initial = peers.map(peer => peer?.textContent || '');
+  function fleetGroupFields(panel, cell, field, group) {
+    const [title,columns] = group;
+    panel.setAttribute('aria-label',title);
+    const peers = columns.map(column => cell.parentElement.querySelector('td[data-column="' + column + '"]'))
+      .filter(peer => peer && !peer.hasAttribute('data-readonly-cell'));
+    const initial = peers.map(peer => peer.textContent);
     const fields = peers.map((peer, index) => {
-      const input = columns[index] === cell.dataset.column ? field : element('input','field-input vitrine-editor-field');
+      const column = peer.dataset.column;
+      const input = column === cell.dataset.column ? field : element('input','field-input vitrine-editor-field');
       input.type = 'text';
       input.autocomplete = 'off';
-      const phone = ['G','Q'].includes(columns[index]);
-      input.maxLength = phone ? 100 : 65;
-      if (phone) input.inputMode = 'tel';
+      const date = ['P','O','L','M'].includes(column);
+      input.maxLength = ({A:28,B:160,H:28,I:160,D:65,E:45,F:45,G:100,Q:100,J:50,N:400,K:80})[column] ?? 10;
+      if (['G','Q'].includes(column)) input.inputMode = 'tel';
+      if (date) {
+        input.inputMode = 'numeric';
+        input.placeholder = 'ДД.ММ.ГГГГ';
+      }
       if (input !== field) input.value = initial[index];
-      const title = peer?.dataset.label || columns[index];
+      const title = peer.dataset.label;
       const label = element('label','vitrine-editor-field-group');
       input.setAttribute('aria-label',title);
       label.append(element('span','field-label',title),input);
       panel.append(label);
       return input;
     });
-    return {fields, dirty:() => fields.some((input,index) => input.value !== initial[index]),
-      values:() => Object.fromEntries(columns.map((column,index) => [column,fields[index].value]))};
+    return {fields, birthRevision:fleetBirthRevision(cell),
+      dirty:() => fields.some((input,index) => input.value !== initial[index]),
+      values:() => Object.fromEntries(peers.map((peer,index) => [peer.dataset.column,fields[index].value]))};
   }
   function open(cell, firstCharacter = null) {
     const card = {'unload-contacts':window.VitrineUnloadContacts,'client-unload-points':window.VitrineClientUnloadPoints,
@@ -419,11 +440,6 @@
     if (draftType === 'email') field.inputMode = 'email';
     if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
     field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : isSingleLine && catalog ? 160 : 20000;
-    if (cell.dataset.kind === 'fleet-document') {
-      const limit = {J:50,N:400,K:80}[cell.dataset.column];
-      field.maxLength = limit || 10;
-      if (!limit) field.placeholder = 'ДД.ММ.ГГГГ';
-    }
     field.value = mask && firstCharacter !== null ? mask.format(firstCharacter) : firstCharacter ?? initialValue;
     if (isContainer) {
       const prefix = /^(?:[A-Z]{0,3}|[A-Z]{3}U[0-9]{0,7})$/;
@@ -464,8 +480,9 @@
     const initialRequest = isSlot && window.VitrineSlot.isRequest(cell.textContent);
     let dropoff=null;
     let fleetDriver=null;
-    if (cell.dataset.kind==='fleet-driver') {
-      fleetDriver=vehicleDriverFields(panel,cell,field);
+    const fleetGroup = fleetGroups.find(([,columns]) => columns.includes(cell.dataset.column));
+    if (fleetGroup) {
+      fleetDriver=fleetGroupFields(panel,cell,field,fleetGroup);
     } else if (dropoffEditor) {
       dropoff=window.VitrineDropoff.attach(panel,control,cell);
     } else if (cell.hasAttribute('data-order-status')) {
@@ -756,7 +773,9 @@
     if (inEditor) {
       const editor = active;
       try {
-        const response = await fetch(window.VitrineGridScope.url('/api/vitrine/paste-check'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
+        const response = await fetch(window.VitrineGridScope.url('/api/vitrine/paste-check'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste,
+          revision:Number(target.dataset.revision || 0),baseHash:target.dataset.base,
+          ...(fleetGroups.length && target.dataset.column==='P' ? {fleetGroup:{P:value},birthRevision:fleetBirthRevision(target)} : {})})});
         const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'Не удалось проверить формат.');
         if (active !== editor) return;
         if (target.dataset.kind === 'container') active.field.value = normalizeContainer(value);

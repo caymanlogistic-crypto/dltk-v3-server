@@ -155,16 +155,34 @@ function workspace_fleet_write(string $kind,int $catalogId,array $values,?int $i
     }
 }
 
-function workspace_fleet_save(string $kind,int $catalogId,array $values,?int $id=null,?int $revision=null): array {
+function workspace_fleet_save(string $kind,int $catalogId,array $values,?int $id=null,?int $revision=null,?array $birth=null): array {
     workspace_begin();
     try {
+        if ($birth!==null) {
+            $previousDriver=workspace_fleet_driver_id($id);
+            $previousDocuments=workspace_fleet_documents($previousDriver);
+            if ($birth['revision']!==(int)$previousDocuments['revision']) workspace_directory_conflict();
+            $newBirth=workspace_fleet_validate_documents($previousDocuments,['P'=>$birth['value']])['birth_date'];
+        }
         $result=workspace_fleet_write($kind,$catalogId,$values,$id,$revision);
+        if ($birth!==null && $newBirth!==$previousDocuments['birth_date']) {
+            $driver=workspace_fleet_driver_id($id);
+            if (!$driver && $newBirth!==null) throw new ApiError('missing_driver','Сначала укажите фамилию и имя водителя.');
+            if ($driver && ($driver===$previousDriver || $newBirth!==null)) {
+                $documents=$driver===$previousDriver ? $previousDocuments : workspace_fleet_documents($driver);
+                workspace_fleet_store_documents($driver,$documents,array_replace($documents,['birth_date'=>$newBirth]));
+            }
+        }
         workspace_db()->commit();
         return $result;
     } catch (Throwable $error) {
         if (workspace_db()->inTransaction()) workspace_db()->rollBack();
         throw $error;
     }
+}
+
+function workspace_fleet_driver_id(int $vehicle): int {
+    return (int)wquery('SELECT driver_id FROM fleet_vehicle_profiles WHERE entry_id=?',[$vehicle])->fetchColumn();
 }
 
 function workspace_fleet_assigned_driver(int $vehicle): ?array {

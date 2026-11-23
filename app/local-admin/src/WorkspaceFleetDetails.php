@@ -47,6 +47,29 @@ function workspace_fleet_retired_kind(string $kind): bool {
         && workspace_fleet_catalog('fleet-vehicles')>0;
 }
 
+function workspace_fleet_edit_groups(): array {
+    return [
+        'Транспорт'=>['B','A','I','H'],
+        'Водитель'=>[...array_keys(workspace_fleet_driver_columns()),'P'],
+        'Паспорт'=>['J','N','O'],
+        'Водительское удостоверение'=>['K','L','M'],
+    ];
+}
+
+function workspace_fleet_edit_values(array $body): array {
+    $column=$body['column'];
+    $values=$body['fleetGroup']??$body['fleetDriver']??null;
+    if ($values===null) return [$column=>$body['value']];
+    foreach (workspace_fleet_edit_groups() as $columns) {
+        if (!in_array($column,$columns,true)) continue;
+        if (is_array($values) && isset($values[$column]) && !array_diff(array_keys($values),$columns)
+            && !array_filter($values,static fn($value): bool=>!is_string($value))) {
+            return $values;
+        }
+    }
+    throw new ApiError('invalid_edit','Проверьте поля группы.');
+}
+
 function workspace_fleet_document_labels(): array {
     return ['P'=>'Дата рождения','J'=>'Серия и номер паспорта','N'=>'Кем выдан паспорт','O'=>'Дата выдачи паспорта',
         'K'=>'Серия и номер ВУ','L'=>'Дата выдачи ВУ','M'=>'ВУ действует до'];
@@ -93,6 +116,7 @@ function workspace_fleet_document_state(int $vehicle,int $driver,bool $editable,
 
 function workspace_fleet_document_date(string $value,bool $fullYear=false): ?string {
     if ($value==='') return null;
+    if (preg_match('/^[0-9]{8}$/D',$value)) $value=substr($value,0,2).'.'.substr($value,2,2).'.'.substr($value,4);
     if (preg_match('/^(\d{2})\.(\d{2})\.(\d{2}|\d{4})$/D',$value,$parts)) {
         if ($fullYear && strlen($parts[3])===2) throw new ApiError('invalid_document_date','Укажите год рождения четырьмя цифрами.');
         $year=strlen($parts[3])===2 ? '20'.$parts[3] : $parts[3];
@@ -107,10 +131,12 @@ function workspace_fleet_document_date(string $value,bool $fullYear=false): ?str
 
 function workspace_fleet_document_cell(array $body,bool $pasteCheck): never {
     if (!workspace_fleet_can_documents()) throw new ApiError('forbidden','Документы доступны суперадмину.',403);
-    workspace_require('catalog',(string)workspace_fleet_catalog('fleet-drivers'),'edit');
+    $driverCatalog=(string)workspace_fleet_catalog('fleet-drivers');
+    workspace_require('catalog',$driverCatalog,'view');
+    workspace_require('catalog',$driverCatalog,'edit');
     $vehicle=$body['row'];
     $column=$body['column'];
-    $field=workspace_fleet_document_fields()[$column];
+    $values=workspace_fleet_edit_values($body);
     workspace_begin();
     try {
         $target=workspace_fleet_document_target($vehicle);
@@ -120,9 +146,31 @@ function workspace_fleet_document_cell(array $body,bool $pasteCheck): never {
         if ($state['readOnly']!=='' || ($body['baseHash']??null)!==$state['baseHash'] || ($body['revision']??null)!==$state['revision']) {
             workspace_directory_conflict();
         }
-        $next=$previous;
-        $value=trim($body['value']);
-        $limit=workspace_fleet_document_text_limits()[$field]??null;
+        $next=workspace_fleet_validate_documents($previous,$values);
+        if ($pasteCheck) {
+            workspace_db()->rollBack();
+            json_response(['accepted'=>true]);
+        }
+        $next=workspace_fleet_store_documents($driver,$previous,$next);
+        workspace_db()->commit();
+        $result=workspace_fleet_document_state($vehicle,$driver,true,$next);
+        $shown=$result['values'][$column];
+        json_response(['value'=>$shown,'original'=>$shown,'baseHash'=>$result['baseHash'],'revision'=>$result['revision'],
+            'edited'=>false,'fleetDocumentEdit'=>true,'fleetDocuments'=>$result]);
+    } catch (Throwable $error) {
+        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
+        throw $error;
+    }
+}
+
+function workspace_fleet_validate_documents(array $previous,array $values): array {
+    $next=$previous;
+    $fields=workspace_fleet_document_fields();
+    $limits=workspace_fleet_document_text_limits();
+    foreach ($values as $column=>$value) {
+        $field=$fields[$column];
+        $value=trim($value);
+        $limit=$limits[$field]??null;
         if ($limit===null) {
             $next[$field]=workspace_fleet_document_date($value,$field==='birth_date');
             if (in_array($field,['passport_issued','birth_date'],true) && $next[$field]!==null && $next[$field]>date('Y-m-d')) {
@@ -134,31 +182,23 @@ function workspace_fleet_document_cell(array $body,bool $pasteCheck): never {
             }
             $next[$field]=$value;
         }
-        if ($next['license_issued']!==null && $next['license_expires']!==null && $next['license_expires']<$next['license_issued']) {
-            throw new ApiError('invalid_document_date','Дата окончания ВУ должна быть после даты выдачи.');
-        }
-        if ($pasteCheck) {
-            workspace_db()->rollBack();
-            json_response(['accepted'=>true]);
-        }
-        if ($previous!==$next) {
-            $next['revision']=$state['revision']+1;
-            $columns=['revision',...array_values(workspace_fleet_document_fields())];
-            $placeholders=implode(',',array_fill(0,count($columns)+1,'?'));
-            $updates=implode(',',array_map(static fn(string $name): string=>$name.'=VALUES('.$name.')',$columns));
-            wquery('INSERT INTO fleet_driver_documents(driver_id,'.implode(',',$columns).")
-                VALUES($placeholders) ON DUPLICATE KEY UPDATE $updates",
-                [$driver,...array_map(static fn(string $name): mixed=>$next[$name],$columns)]);
-            workspace_audit(['category'=>'catalog','label'=>'Документы водителя','action'=>'edit',
-                'after'=>['driverId'=>$driver,'revision'=>$next['revision']]]);
-        }
-        workspace_db()->commit();
-        $result=workspace_fleet_document_state($vehicle,$driver,true,$next);
-        $shown=$result['values'][$column];
-        json_response(['value'=>$shown,'original'=>$shown,'baseHash'=>$result['baseHash'],'revision'=>$result['revision'],
-            'edited'=>false,'fleetDocumentEdit'=>true,'fleetDocuments'=>$result]);
-    } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
-        throw $error;
     }
+    if ($next['license_issued']!==null && $next['license_expires']!==null && $next['license_expires']<$next['license_issued']) {
+        throw new ApiError('invalid_document_date','Дата окончания ВУ должна быть после даты выдачи.');
+    }
+    return $next;
+}
+
+function workspace_fleet_store_documents(int $driver,array $previous,array $next): array {
+    if ($previous===$next) return $next;
+    $next['revision']=(int)$previous['revision']+1;
+    $columns=['revision',...array_values(workspace_fleet_document_fields())];
+    $placeholders=implode(',',array_fill(0,count($columns)+1,'?'));
+    $updates=implode(',',array_map(static fn(string $name): string=>$name.'=VALUES('.$name.')',$columns));
+    wquery('INSERT INTO fleet_driver_documents(driver_id,'.implode(',',$columns).")
+        VALUES($placeholders) ON DUPLICATE KEY UPDATE $updates",
+        [$driver,...array_map(static fn(string $name): mixed=>$next[$name],$columns)]);
+    workspace_audit(['category'=>'catalog','label'=>'Документы водителя','action'=>'edit',
+        'after'=>['driverId'=>$driver,'revision'=>$next['revision']]]);
+    return $next;
 }

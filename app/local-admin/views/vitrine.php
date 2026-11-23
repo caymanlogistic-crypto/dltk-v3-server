@@ -41,6 +41,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="csrf-token" content="<?= $escape(csrf_token()) ?>">
   <meta id="vitrine-status-data" name="vitrine-status-data" content="<?= $escape(json_encode(['statuses'=>$data['statuses'] ?? [], 'palette'=>$data['palette'] ?? []], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE)) ?>">
   <meta id="vitrine-order-statuses" content="<?= $escape(wjson(workspace_active_client_order_statuses())) ?>">
+  <?php if (($currentTable['catalogKind']??null)==='fleet-vehicles'): ?>
+  <meta id="vitrine-fleet-edit-groups" content="<?= $escape(wjson(workspace_fleet_edit_groups())) ?>">
+  <?php endif; ?>
   <?php if (!empty($data['dropoffEnabled'])): ?>
   <meta id="vitrine-dropoff-options" content="<?= $escape(wjson($data['dropoffOptions'])) ?>">
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-dropoff.js')) ?>"></script>
