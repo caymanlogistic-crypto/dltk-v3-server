@@ -11,6 +11,7 @@ declare(strict_types=1);
         <span data-import-filename role="status">Файл не выбран</span>
       </div>
       <p class="vitrine-import-warning" id="directory-import-warning"><strong>Полная замена справочника.</strong> После подтверждения в активном списке будут только строки из Excel, в том же порядке. Остальные записи уйдут в архив.</p>
+      <?php if ($directory==='employees'): ?><p>Пароль для входа задаётся в карточке сотрудника.</p><?php endif; ?>
       <p data-import-result role="status" hidden></p>
     </div>
     <footer class="modal-foot">

@@ -119,6 +119,18 @@ function workspace_employee_profile_value(string $field, mixed $value): string {
 }
 
 function workspace_employee_save(array $input, bool $cellEdit = false, ?string $deleteReason=null): array {
+    workspace_begin();
+    try {
+        $result=workspace_employee_write($input,$cellEdit,$deleteReason);
+        workspace_db()->commit();
+        return $result;
+    } catch (Throwable $error) {
+        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
+        throw $error;
+    }
+}
+
+function workspace_employee_write(array $input, bool $cellEdit = false, ?string $deleteReason=null): array {
     $profile = [];
     foreach (['name','login','email'] as $field) {
         if (isset($input[$field])) $profile[$field] = workspace_employee_profile_value($field,$input[$field]);
@@ -145,7 +157,6 @@ function workspace_employee_save(array $input, bool $cellEdit = false, ?string $
     if (isset($input['active']) && !is_bool($input['active'])) throw new ApiError('invalid_user','Некорректное состояние учётной записи.');
     $passwordHash = $password === '' ? null : password_hash($password,PASSWORD_DEFAULT);
 
-    workspace_begin();
     try {
         $scope = workspace_employee_editor_scope();
         if ($scope === null) throw new ApiError('forbidden','Редактирование доступно администратору.',403);
@@ -202,10 +213,8 @@ function workspace_employee_save(array $input, bool $cellEdit = false, ?string $
             'after'=>$audit($after)+['emailChanged'=>$email !== ($old['email'] ?? ''), 'passwordChanged'=>$passwordHash !== null]+$deletion,
             'action'=>$deleteReason!==null ? 'delete' : ($old ? 'edit' : 'create')]);
         workspace_event('users.changed',['id'=>$id]);
-        workspace_db()->commit();
         return $cellEdit ? $after : workspace_employee_form_data($after);
     } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
         if ($error instanceof PDOException && $error->getCode()==='23000') {
             throw new ApiError('duplicate_login','Этот логин уже используется.',409);
         }

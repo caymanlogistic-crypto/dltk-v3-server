@@ -9,15 +9,15 @@ function vitrine_directory_requested(): ?string {
     return $_GET['catalog'];
 }
 
-function workspace_directory_row_order_key(int $catalogId): string {
-    return 'directory_excel_order_'.($catalogId ?: 'client_order_statuses');
+function workspace_directory_row_order_key(int|string $catalogId): string {
+    return 'directory_excel_order_'.($catalogId==='client-order-statuses' || !$catalogId ? 'client_order_statuses' : $catalogId);
 }
 
-function workspace_directory_row_order(int $catalogId): array {
+function workspace_directory_row_order(int|string $catalogId): array {
     return workspace_client_catalog_metadata(workspace_directory_row_order_key($catalogId));
 }
 
-function workspace_directory_order_entries(array $entries,int $catalogId): array {
+function workspace_directory_order_entries(array $entries,int|string $catalogId): array {
     $order=workspace_directory_row_order($catalogId);
     if (!$order) return $entries;
     $position=array_flip($order);
@@ -88,8 +88,8 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
             }
         }
     }
-    if ($orderStatuses && !$archive) {
-        $entries=workspace_directory_order_entries($entries,$flightStatuses ? (int)$catalog['id'] : 0);
+    if (!$archive) {
+        $entries=workspace_directory_order_entries($entries,$flightStatuses ? (int)$catalog['id'] : $directory);
     }
     $scope = $employees ? workspace_employee_editor_scope() : null;
     $roleChoices = $scope === null ? [] : array_column(workspace_employee_role_options($scope),'name');

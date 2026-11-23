@@ -1,9 +1,10 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/DirectoryXlsx.php';
+require_once __DIR__.'/WorkspaceAccessExcel.php';
 
 function workspace_directory_excel_supported(?string $directory): bool {
-    return in_array($directory,['entries','clients','flight-statuses','client-order-statuses'],true);
+    return $directory!==null;
 }
 
 function workspace_directory_excel_schema(string $directory): array {
@@ -18,18 +19,23 @@ function workspace_directory_excel_schema(string $directory): array {
     } elseif ($directory==='client-order-statuses') {
         $kind='order-statuses';
         workspace_require('system','client-order-statuses','edit');
+    } elseif ($directory==='roles' || $directory==='employees') {
+        $kind=$directory;
+        $canEdit=$directory==='roles' ? workspace_directory_roles_editable() : workspace_employee_editor_scope()!==null;
+        if (!$canEdit) throw new ApiError('forbidden','Для этого действия нет доступа.',403);
     } else {
         workspace_require('catalog',(string)$id,'edit');
     }
-    if (!$id && $kind!=='order-statuses') throw new ApiError('not_found','Справочник не найден.',404);
+    if (!$id && !in_array($kind,['order-statuses','roles','employees'],true)) throw new ApiError('not_found','Справочник не найден.',404);
     $labels=array_column($model['columns'],'label','letter');
     if ($kind==='clients') unset($labels['C']);
     if ($kind==='unload-points') $labels['C']='Основной контакт';
-    return ['id'=>$id,'kind'=>$kind,'labels'=>$labels];
+    return ['id'=>$id,'kind'=>$kind,'labels'=>$labels,'orderKey'=>$id ?: $directory];
 }
 
 function workspace_directory_excel_entries(array $schema): array {
     ['id'=>$id,'kind'=>$kind]=$schema;
+    if (in_array($kind,['roles','employees'],true)) return workspace_access_excel_entries($kind);
     if ($kind==='order-statuses') {
         $entries=[];
         foreach (workspace_client_order_statuses(true) as $code=>$status) {
@@ -78,8 +84,9 @@ function workspace_directory_excel_header(array $labels,array $sheet): array {
     if ($exportedContacts) $labels['C']='Контакты';
     $allowed=[...array_values($labels),'ID записи','Версия записи','Строка'];
     if (in_array('Клиент',$labels,true) && in_array('Менеджер',$labels,true)) $allowed[]='Точки выгрузки';
+    $required=($labels['C']??null)==='Пароль' ? array_diff($labels,['Пароль']) : $labels;
     if (count($header)!==count(array_unique($header)) || array_diff($header,$allowed) ||
-        array_diff($labels,$header) || (in_array('ID записи',$header,true)!==in_array('Версия записи',$header,true))) {
+        array_diff($required,$header) || (in_array('ID записи',$header,true)!==in_array('Версия записи',$header,true))) {
         directory_xlsx_error('Проверьте заголовки первой строки. Нужны столбцы: '.implode(', ',$labels).'.');
     }
     $positions=array_flip($header);
@@ -90,6 +97,7 @@ function workspace_directory_excel_header(array $labels,array $sheet): array {
 function workspace_directory_excel_payload(array $schema,array $values,?array $old): array {
     ['id'=>$id,'kind'=>$kind]=$schema;
     $payload=['catalogId'=>$id];
+    if (in_array($kind,['roles','employees'],true)) return workspace_access_excel_payload($kind,$values,$old);
     if ($kind==='managers') {
         $profile=workspace_manager_validate($values);
         $key=hash('sha256',implode("\n",array_map('vitrine_catalog_key',[$profile['surname'],$profile['name'],$profile['patronymic']])));
@@ -131,7 +139,11 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
                 if (trim($value)!=='') directory_xlsx_error('Есть данные в столбце без заголовка.');
             }
             $values=[];
-            foreach ($schema['labels'] as $letter=>$label) $values[$letter]=trim($cells[$positions[$label]]??'');
+            foreach ($schema['labels'] as $letter=>$label) $values[$letter]=trim($cells[$positions[$label]??0]??'');
+            if ($kind==='employees') {
+                if (!in_array($values['C'],['','Скрыт'],true)) directory_xlsx_error('Пароли сотрудников задаются только в карточке.');
+                $values['C']='Скрыт';
+            }
             $idText=trim($cells[$positions['ID записи']??0]??'');
             $version=trim($cells[$positions['Версия записи']??0]??'');
             if (($idText==='')!==($version==='') || ($idText!=='' && (!preg_match('/^[1-9][0-9]{0,17}$/D',$idText) || !ctype_digit($version)))) {
@@ -143,7 +155,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
                 throw new ApiError('revision_conflict','Запись не найдена или её версия устарела.',409);
             }
             if (!$id) {
-                $lookup=$values['A'];
+                $lookup=$kind==='employees' ? $values['B'] : $values['A'];
                 if (in_array($kind,['managers','unload-points'],true)) {
                     [$lookup]=workspace_directory_excel_payload($schema,$values,null);
                 } else {
@@ -193,6 +205,15 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
 function workspace_directory_excel_check_archive(array $schema,array $entry): void {
     $kind=$schema['kind'];
     if (in_array($kind,['clients','managers'],true)) return;
+    if ($kind==='roles') {
+        workspace_assert_role_unused($entry);
+        return;
+    }
+    if ($kind==='employees') {
+        if (!workspace_employee_can_edit(workspace_employee_editor_scope()??'', $entry)) throw new ApiError('forbidden','Для этой учётной записи нет доступа.',403);
+        workspace_assert_employee_unused($entry);
+        return;
+    }
     if ($kind==='order-statuses') {
         $linked=(int)wquery("SELECT COUNT(*) FROM records WHERE JSON_UNQUOTE(JSON_EXTRACT(values_json,'$.clientOrderStatus'))=?
             OR JSON_UNQUOTE(JSON_EXTRACT(baseline_json,'$.clientOrderStatus'))=?",[$entry['code'],$entry['code']])->fetchColumn();
@@ -213,6 +234,21 @@ function workspace_directory_excel_apply(array $schema,array $entries,array $ope
         try {
             if (!empty($operation['unchanged'])) {
                 $order[]=$entryId;
+                continue;
+            }
+            if ($kind==='roles') {
+                $action=!empty($operation['archive'])?'archive':($entry?'restore':'add');
+                $result=workspace_role_row_write(['action'=>$action,'row'=>$entryId,'revision'=>0,'values'=>$operation['values']??[]]);
+                if ($action!=='archive') $order[]=$result['id'];
+                continue;
+            }
+            if ($kind==='employees') {
+                $archive=!empty($operation['archive']);
+                $payload=$archive ? ['id'=>$entryId,'name'=>$entry['name'],'login'=>$entry['login'],'active'=>false]
+                    : $operation['payload'];
+                if (!$entryId) $payload['password']=bin2hex(random_bytes(24));
+                $result=workspace_employee_write($payload);
+                if (!$archive) $order[]=$result['id'];
                 continue;
             }
             if (!empty($operation['archive'])) {
@@ -237,7 +273,7 @@ function workspace_directory_excel_apply(array $schema,array $entries,array $ope
             throw new ApiError($error->publicCode,$line.$error->publicMessage,$error->httpStatus);
         }
     }
-    workspace_event('catalog.changed',['catalogId'=>$id,'bulk'=>true]);
+    if ($id) workspace_event('catalog.changed',['catalogId'=>$id,'bulk'=>true]);
     return $order;
 }
 
@@ -282,7 +318,7 @@ function workspace_directory_excel_endpoint(): never {
     try {
         $entries=workspace_directory_excel_entries($schema);
         [$operations,$counts]=workspace_directory_excel_plan($schema,$entries,$sheet);
-        $previousOrder=workspace_directory_row_order($schema['id']);
+        $previousOrder=workspace_directory_row_order($schema['orderKey']);
         $token=hash_hmac('sha256',wjson([$schema,$sheet,$entries,$previousOrder]),csrf_token());
         if ($commit) {
             if (!hash_equals($token,$_POST['token'])) {
@@ -291,7 +327,7 @@ function workspace_directory_excel_endpoint(): never {
             $order=workspace_directory_excel_apply($schema,$entries,$operations);
             if ($order!==$previousOrder) {
                 wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
-                    [workspace_directory_row_order_key($schema['id']),wjson($order)]);
+                    [workspace_directory_row_order_key($schema['orderKey']),wjson($order)]);
             }
             workspace_db()->commit();
         }
