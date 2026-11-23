@@ -56,9 +56,10 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     }
     $catalog=workspace_status_catalog($t);$byId=[];$byName=[];foreach($catalog['statuses'] as &$status){$status['id']=(int)$status['id'];$status['revision']=(int)$status['revision'];$byId[$status['id']]=$status;$byName[vitrine_status_key($status['name'])]=$status;}unset($status);
     [$boundChoices,$boundCatalogs,$entriesByName]=vitrine_catalog_options($t,$links);
-    foreach (['T','U'] as $column) {
+    $partyColumns=array_keys(workspace_edo_party_links());
+    foreach (['T','U',...$partyColumns] as $column) {
         if (isset($links[$column]) && !isset($boundCatalogs[$column])) {
-            $readOnly[$column]='Нет доступа к справочнику статусов.';
+            $readOnly[$column]='Нет доступа к справочнику.';
         }
     }
     $dropoffCatalog=in_array('M',array_column($columns,'letter'),true) ? ($boundCatalogs['M']??null) : null;
@@ -89,7 +90,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         foreach($columns as $f){$key=$f['letter'];$cell=$raw[(string)column_number($key)]??[];$kinds[$key]=$key==='A'?'status':(mb_strtolower(trim($f['label']))==='время'?'time':vitrine_clipboard_kind($cell,$key));
             if(!$raw){$kinds[$key]=match(mb_strtolower($f['label'])){'дата'=>'date','время'=>'time',default=>$key==='A'?'status':'text'};}
             if (isset($compactInputs[$key])) $kinds[$key]=$compactInputs[$key];
-            if (in_array($key,['I','K','M','O','T','U'],true) && isset($links[$key])) $kinds[$key]='text';
+            if (in_array($key,['I','K','M','O','T','U',...$partyColumns],true) && isset($links[$key])) $kinds[$key]='text';
             if (isset($slots[$key])) $kinds[$key]='slot';
             if (isset($singleLine[$key])) $kinds[$key]='text';
             $display=display_cell($cell);if($display!==null){$baseline[$key]=$display;if(!isset($edits[(int)$r['id']][$key]))$values[$key]=$display;}
@@ -99,7 +100,10 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         $rowEdits=[];foreach($edits[(int)$r['id']]??[] as $key=>$e){$values[$key]=$e['active']?$e['value']:($baseline[$key]??'');$rowEdits[$key]=['revision'=>(int)$e['revision'],'conflict'=>false,'value'=>$values[$key],'active'=>(bool)$e['active']];}
         foreach($refs[(int)$r['id']]??[] as $key=>$ref) {
             if (isset($links['O']) && in_array($key,['O','P',$links['O']['phoneTarget'],$documentsColumn],true)) continue;
-            $values[$key]=$ref['name'];
+            if (($links[$key]['kind']??null)==='edo-counterparties' && $ref['catalogId']===$links[$key]['id']) {
+                $profile=workspace_edo_party_profiles($ref['catalogId'])[$ref['id']]??[];
+                $values[$key]=workspace_edo_party_label($ref['name'],$profile);
+            } else $values[$key]=$ref['name'];
         }
         if ($documentsColumn!==null) {
             if (!$canViewDocuments) {
@@ -118,6 +122,11 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         }
         if ($margin!==null) $values['Z']=$margin;
         foreach($dependentLinks as $source=>$link){
+            if ($link['kind']==='edo-counterparties') {
+                $ref=$refs[(int)$r['id']][$source]??null;
+                if ($ref && $ref['catalogId']===$link['id']) $values[$link['target']]=$dependentValues[$source][$ref['id']]??'';
+                continue;
+            }
             $entryId=$entriesByName[$source][vitrine_catalog_key($values[$source]??'')]??null;
             $values[$link['target']]=$dependentValues[$source][$entryId]??'';
         }
@@ -142,8 +151,11 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
             'archived'=>$archive,'readOnly'=>$archive ? [] : $readOnly,'relatedUrl'=>'/workspace?section=history&table='.rawurlencode($t['slug']).'&row='.(int)$r['row_num']];
         if ($dropoffDetails!==null) $rows[array_key_last($rows)]['dropoffDetails']=$dropoffDetails;
         if (isset($boundCatalogs['O'])) $rows[array_key_last($rows)]['sharedChoices']['O']='vehicles';
+        foreach ($partyColumns as $field) {
+            if (isset($boundCatalogs[$field])) $rows[array_key_last($rows)]['sharedChoices'][$field]=$field;
+        }
     }
-    return ['rowIds'=>$rowIds,'columns'=>$columns,'rows'=>$rows,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette'],'fleetOptions'=>['vehicles'=>$boundChoices['O']??[]],'dropoffOptions'=>$dropoffOptions,'dropoffEnabled'=>(bool)$dropoffCatalog];
+    return ['rowIds'=>$rowIds,'columns'=>$columns,'rows'=>$rows,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette'],'fleetOptions'=>['vehicles'=>$boundChoices['O']??[]]+array_intersect_key($boundChoices,array_fill_keys($partyColumns,true)),'dropoffOptions'=>$dropoffOptions,'dropoffEnabled'=>(bool)$dropoffCatalog];
 }
 
 function vitrine_store(array $body): array {
@@ -196,7 +208,18 @@ function vitrine_store(array $body): array {
         if($link){
             $binding=$link['id'];
             workspace_require('catalog',(string)$binding,'view',$t['id']);
-            if($value!==''){
+            $party=$link['kind']==='edo-counterparties';
+            if ($party) {
+                $oldPartyId=(int)wquery('SELECT entry_id FROM record_references WHERE record_id=? AND field_key=?',[$r['id'],$key])->fetchColumn();
+                $partyProfiles=workspace_edo_party_profiles($binding);
+            }
+            if ($party && $value!=='' && !$body['reset']) {
+                [,, $partyOptions]=vitrine_catalog_options($t,[$key=>$link]);
+                $reference=$partyOptions[$key][vitrine_catalog_key($value)]??null;
+                if (!$reference) throw new ApiError('invalid_reference',$link['invalid']);
+                $partyName=wquery('SELECT name FROM catalog_entries WHERE id=?',[$reference])->fetchColumn();
+                $value=workspace_edo_party_label($partyName,$partyProfiles[$reference]);
+            } elseif (!$party && $value!=='') {
                 $unload=$link['kind']==='unload-points';
                 $entry=$unload ? ($body['reset']?null:vitrine_find_unload_point($t,$r,$values,$binding,$value))
                     : vitrine_find_catalog_entry($binding,$value,normalized:$key==='O'?workspace_fleet_trip_vehicle_key($value):null);
@@ -253,7 +276,7 @@ function vitrine_store(array $body): array {
         }
         $dependentPatch=$phonePatch=null;
         $documentsChanged=false;
-        if(isset($link['target'])&&($clear||$reference||$value!==$before||(in_array($key,['K','O'],true)&&$body['reset']))){
+        if(isset($link['target'])&&($clear||$reference||$value!==$before||(!empty($party)&&$body['reset'])||(in_array($key,['K','O'],true)&&$body['reset']))){
             if ($key==='K') {
                 $previous=workspace_string($values['L']??'');
                 $next=$resetUnload && $sameClient ? vitrine_catalog_original_value($r,'L') : ($entry?workspace_unload_primary($entry):'');
@@ -269,13 +292,19 @@ function vitrine_store(array $body): array {
                     workspace_string($values[$phoneColumn]??''),$u,$action,$request,$operation,false);
                 $documentsChanged=workspace_fleet_trip_documents_save($t,$r,(int)($assigned['id']??0),
                     $body['reset'],$action,$request,$operation);
+            } elseif (!empty($party)) {
+                $target=$link['target'];
+                $previous=$oldPartyId ? workspace_carrier_edo_operator($partyProfiles[$oldPartyId]['F']??'')
+                    : vitrine_catalog_original_value($r,$target);
+                $next=$body['reset'] ? vitrine_catalog_original_value($r,$target)
+                    : workspace_carrier_edo_operator($partyProfiles[$reference]['F']??'');
             } else {
                 $entries=vitrine_catalog_values($link);
                 $previousEntry=vitrine_find_catalog_entry($binding,$before,$link['kind']==='clients');
                 $previous=$entries[$previousEntry['id']??0]??'';
                 $next=$entries[$reference]??'';
             }
-            $dependentPatch=vitrine_update_catalog_value($t,$r,$values,$link['target'],$next,$previous,$u,$action,$request,$operation,!$clear&&!in_array($key,['K','O'],true));
+            $dependentPatch=vitrine_update_catalog_value($t,$r,$values,$link['target'],$next,$previous,$u,$action,$request,$operation,!$clear&&empty($party)&&!in_array($key,['K','O'],true));
         }
         $catalogStyle=[];
         if(($link['kind']??null)==='terminals-main'){
@@ -291,7 +320,7 @@ function vitrine_store(array $body): array {
                 wquery('INSERT INTO record_references VALUES(?,?,?) ON DUPLICATE KEY UPDATE entry_id=VALUES(entry_id)',[$r['id'],$key,$reference]);
                 $result+=['referenceId'=>$reference,'catalogId'=>(int)$binding];
             }
-            if($link && ($clear||(in_array($key,['K','O'],true)&&$body['reset']))){
+            if($link && ($clear||((!empty($party)||in_array($key,['K','O'],true))&&$body['reset']))){
                 wquery('DELETE FROM record_references WHERE record_id=? AND field_key=?',[$r['id'],$key]);
                 $result+=['referenceId'=>0,'catalogId'=>(int)$binding];
             }

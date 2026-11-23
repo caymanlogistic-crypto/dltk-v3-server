@@ -229,7 +229,7 @@
   }
   const normalizedCatalogName = name => (name ?? '').trim().toLowerCase().replace(/\s+/gu,' ');
   function applyCatalogPatch(row,patch){
-    if(!row)return;
+    if(!row || patch.kind==='edo-counterparties')return;
     const active=window.VitrineGrid?.editingCell();
     for(const cell of row.querySelectorAll('td[data-catalog-id]')){
       if(String(cell.dataset.catalogId)!==String(patch.catalogId)||cell===active)continue;

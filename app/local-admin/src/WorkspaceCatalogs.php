@@ -9,6 +9,7 @@ require_once __DIR__.'/WorkspacePickupTransfer.php';
 require_once __DIR__.'/WorkspaceDropoffPoints.php';
 require_once __DIR__.'/WorkspaceCarrierDirectory.php';
 require_once __DIR__.'/WorkspaceEdoOperators.php';
+require_once __DIR__.'/WorkspaceEdoCounterparties.php';
 require_once __DIR__.'/WorkspaceMarginRules.php';
 
 function vitrine_catalog_key(string $name): string {
@@ -57,6 +58,11 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
     $logist=$hasLogist?workspace_client_validate_manager($b['logist']):'';
     $carrierDetails=$catalog['kind']==='carriers' && isset($b['carrierDetails'])
         ? workspace_carrier_details($b['carrierDetails']) : null;
+    $partyCatalog=$catalog['kind']==='edo-counterparties';
+    if ($partyCatalog && isset($b['edoParty']) && !is_array($b['edoParty'])) {
+        throw new ApiError('invalid_edo_party','Проверьте реквизиты контрагента.');
+    }
+    $partyProfile=$partyCatalog && isset($b['edoParty']) ? workspace_edo_party_profile($b['edoParty']) : null;
     $marginRule=null;
     if ($catalog['kind']==='margin-rules') {
         $name=workspace_margin_rule_date($name);
@@ -86,6 +92,13 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
         $edoOperator=$catalog['kind']==='edo-operators';
         $norm=$edoOperator ? strtolower(workspace_edo_operator_code($b['operatorCode']??$old['normalized']??''))
             : ($profileCatalog ? $old['normalized'] : mb_strtolower($name));
+        $beforeParty=$partyCatalog && $old ? workspace_client_catalog_metadata('edo_party_'.$old['id']) : [];
+        if ($partyCatalog) {
+            if (!$old && $partyProfile===null) throw new ApiError('invalid_edo_party','Укажите реквизиты контрагента.');
+            $norm=$partyProfile===null ? $old['normalized'] : workspace_edo_party_key($name,$partyProfile);
+        }
+        $partyChanged=$partyProfile!==null && $partyProfile!==$beforeParty;
+        if ($partyChanged && $old) workspace_edo_party_assert_roles($beforeParty,$partyProfile,(int)$old['id']);
         $revision=$old?(int)$old['revision']+1:1;
         if($catalog['kind']==='terminals-main'&&!array_key_exists('color',$b))$color=$old['color']??null;
         if(in_array($catalog['kind'],['clients','terminals-main'],true)){
@@ -113,7 +126,7 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
         $ruleChanged=$marginRule!==null && $marginRule!==$beforeRule;
         $beforeDropoff=$dropoffProfile!==null && $old ? workspace_dropoff_profiles($cid)[(int)$old['id']]??[] : [];
         $dropoffChanged=$dropoffProfile!==null && $beforeDropoff!==$dropoffProfile;
-        if($deleteReason===null&&$old&&$old['name']===$name&&$old['normalized']===$norm&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged&&!$dropoffChanged&&!$carrierChanged&&!$ruleChanged){return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
+        if($deleteReason===null&&$old&&$old['name']===$name&&$old['normalized']===$norm&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged&&!$dropoffChanged&&!$carrierChanged&&!$ruleChanged&&!$partyChanged){return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
         if($old){wquery('UPDATE catalog_entries SET name=?,normalized=?,color=?,active=?,revision=? WHERE id=?',[$name,$norm,$color,(int)$active,$revision,$old['id']]);$id=(int)$old['id'];}
         else{wquery('INSERT INTO catalog_entries(catalog_id,name,normalized,color,active) VALUES(?,?,?,?,?)',[$cid,$name,$norm,$color,(int)$active]);$id=(int)workspace_db()->lastInsertId();}
         if($managerChanged)workspace_client_set_manager($cid,$id,$manager);
@@ -121,12 +134,18 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
             $logists[$id]=$logist;
             wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',['catalog_logists_'.$cid,wjson((object)$logists)]);
         }
-        if($old&&!$edoOperator&&$catalog['kind']!=='status'&&$old['normalized']!==$norm)workspace_client_remember_alias($cid,$id,$old['normalized']);
+        if($old&&!$edoOperator&&!$partyCatalog&&$catalog['kind']!=='status'&&$old['normalized']!==$norm)workspace_client_remember_alias($cid,$id,$old['normalized']);
         $before=$old?['id'=>$id,'name'=>$old['name'],'color'=>$old['color'],'active'=>(bool)$old['active']]:null;
         $after=['id'=>$id,'name'=>$name,'color'=>$color,'active'=>$active];
         if ($edoOperator) {
             if ($before!==null) $before['code']=strtoupper($old['normalized']);
             $after['code']=strtoupper($norm);
+        }
+        if ($partyChanged) {
+            wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+                ['edo_party_'.$id,wjson($partyProfile)]);
+            if ($before!==null) $before['edoParty']=$beforeParty;
+            $after['edoParty']=$partyProfile;
         }
         if ($ruleChanged) {
             wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
@@ -164,8 +183,8 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
             if ($tableId) $audit['tableId']=(int)$tableId;
         }
         workspace_audit($audit+['before'=>$before,'after'=>$after,'action'=>$action]);
-        workspace_event('catalog.changed',['catalogId'=>$cid,'id'=>$id,'name'=>$name,'beforeName'=>$old['name']??null,'color'=>$color,'active'=>$active,'revision'=>$revision,'bindings'=>wquery('SELECT b.table_id AS tableId,t.slug AS tableSlug,b.field_key AS fieldKey FROM catalog_bindings b JOIN table_definitions t ON t.id=b.table_id WHERE b.catalog_id=?',[$cid])->fetchAll()]);return ['id'=>$id,'revision'=>$revision];
-    }catch(Throwable $e){if($e instanceof PDOException&&$e->getCode()==='23000')throw new ApiError('duplicate_catalog',$catalog['kind']==='edo-operators' ? 'Этот код уже есть в справочнике операторов ЭДО.' : ($catalog['kind']==='margin-rules' ? 'На эту дату уже есть правило маржи.' : 'Такое название уже есть в справочнике.'),409);throw $e;}
+        workspace_event('catalog.changed',['catalogId'=>$cid,'id'=>$id,'name'=>$name,'beforeName'=>$old['name']??null,'kind'=>$catalog['kind'],'color'=>$color,'active'=>$active,'revision'=>$revision,'bindings'=>wquery('SELECT b.table_id AS tableId,t.slug AS tableSlug,b.field_key AS fieldKey FROM catalog_bindings b JOIN table_definitions t ON t.id=b.table_id WHERE b.catalog_id=?',[$cid])->fetchAll()]);return ['id'=>$id,'revision'=>$revision];
+    }catch(Throwable $e){if($e instanceof PDOException&&$e->getCode()==='23000')throw new ApiError('duplicate_catalog',$partyCatalog ? 'Контрагент с такими реквизитами уже есть.' : ($catalog['kind']==='edo-operators' ? 'Этот код уже есть в справочнике операторов ЭДО.' : ($catalog['kind']==='margin-rules' ? 'На эту дату уже есть правило маржи.' : 'Такое название уже есть в справочнике.')),409);throw $e;}
 }
 
 function workspace_catalogs_endpoint(string $method): never {

@@ -9,6 +9,7 @@
     if ((catalog === 'entries' || catalog === 'clients') && pageFilters.has('client')) params.set('client',pageFilters.get('client'));
     if (catalog === 'flight-statuses') params.set('table',pageFilters.get('table') || 'vyvoz');
     if (rowFilters) {
+      if (catalog === 'entries' && pageFilters.has('partyRole')) params.set('partyRole',pageFilters.get('partyRole'));
       if (pageFilters.has('archive')) params.set('archive',pageFilters.get('archive'));
       if (catalog && search) params.set('q',search);
     }

@@ -31,6 +31,29 @@
       location.assign(url);
     });
   }
+  const partyFilter = document.querySelector('[data-party-role]');
+  if (partyFilter) {
+    const modes = new Map([['Все роли',''], ...Object.entries(JSON.parse(partyFilter.dataset.partyRoles)).map(([key,label])=>[label,key])]);
+    const initial = [...modes].find(([,key])=>key===partyFilter.dataset.partyRole)?.[0] ?? 'Все роли';
+    const selector = window.VitrineSelect.create([...modes.keys()].map(label=>({value:label,label})),initial);
+    selector.field.setAttribute('aria-label','Фильтр по роли контрагента');
+    partyFilter.append(selector.element);
+    selector.field.addEventListener('change',()=>{
+      const mode = modes.get(selector.resolveValue());
+      if (mode===undefined || mode===partyFilter.dataset.partyRole) return;
+      if (window.VitrineGrid.editing() || document.querySelector('dialog[open]')) {
+        selector.field.value=initial;
+        window.PlanexNotifications.show({tone:'info',message:'Завершите редактирование перед сменой фильтра.'});
+        return;
+      }
+      clearTimeout(timer);
+      const url = new URL(location.href);
+      if (mode) url.searchParams.set('partyRole',mode); else url.searchParams.delete('partyRole');
+      const query=field.value.trim();
+      if (query) url.searchParams.set('q',query); else url.searchParams.delete('q');
+      location.assign(url);
+    });
+  }
   if (!field || !grid) return;
   async function update() {
     clearTimeout(timer);

@@ -58,6 +58,7 @@ function workspace_directory_excel_entries(array $schema): array {
     $secondary=match($kind) {
         'clients'=>workspace_client_manager_values($id),
         'carriers'=>workspace_carrier_directory_values($id),
+        'edo-counterparties'=>workspace_edo_party_profiles($id),
         'margin-rules'=>workspace_margin_rule_profiles($id),
         'dropoff-points'=>workspace_dropoff_profiles($id),
         'managers'=>array_column(workspace_manager_entries($id),null,'id'),
@@ -77,6 +78,7 @@ function workspace_directory_excel_entries(array $schema): array {
             'clients'=>$base+['B'=>$detail??''],
             'carriers'=>$base+($detail??workspace_carrier_values([])),
             'edo-operators'=>workspace_edo_operator_values($entry),
+            'edo-counterparties'=>workspace_edo_party_values($entry['name'],$detail??[]),
             'margin-rules'=>workspace_margin_rule_values($entry['name'],$detail??[]),
             'status','terminals-main','order-statuses'=>$base+['B'=>$palette[$entry['color']]??''],
             'dropoff-points'=>$base+($detail??workspace_dropoff_profile([])),
@@ -98,6 +100,7 @@ function workspace_directory_excel_header(array $labels,array $sheet,string $kin
     if ($kind==='fleet-vehicles') $allowed[]='Тип транспорта';
     $required=array_diff($labels,['Пароль','Доп. телефон']);
     if ($kind==='carriers') unset($required['D']);
+    if ($kind==='edo-counterparties') unset($required['E']);
     if (count($header)!==count(array_unique($header)) || array_diff($header,$allowed) ||
         array_diff($required,$header) || (in_array('ID записи',$header,true)!==in_array('Версия записи',$header,true))) {
         directory_xlsx_error('Проверьте заголовки первой строки. Нужны столбцы: '.implode(', ',$labels).'.');
@@ -116,6 +119,12 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
         $date=workspace_margin_rule_date($values['A']);
         workspace_margin_rule_profile($values);
         return [$date,$payload+['name'=>$date,'marginRule'=>$values]];
+    }
+    if ($kind==='edo-counterparties') {
+        $name=workspace_catalog_validate_name($values['A']);
+        $profile=workspace_edo_party_profile($values);
+        if ($old) workspace_edo_party_assert_roles($old['detail']??[],$profile,(int)$old['id']);
+        return [workspace_edo_party_key($name,$profile),$payload+['name'=>$name,'edoParty'=>$profile]];
     }
     if ($kind==='edo-operators') {
         $code=workspace_edo_operator_code($values['A']);
@@ -167,6 +176,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             $values=[];
             foreach ($schema['labels'] as $letter=>$label) $values[$letter]=trim($cells[$positions[$label]??0]??'');
             if ($kind==='carriers') $values['D']=workspace_carrier_edo_operator(workspace_carrier_edo_id($values['C']));
+            if ($kind==='edo-counterparties') $values=workspace_edo_party_values($values['A'],workspace_edo_party_profile($values));
             if ($kind==='edo-operators') $values['A']=workspace_edo_operator_code($values['A']);
             if ($kind==='margin-rules') $values=workspace_margin_rule_values(workspace_margin_rule_date($values['A']),workspace_margin_rule_profile($values));
             if ($kind==='employees') {
@@ -185,7 +195,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             }
             if (!$id) {
                 $lookup=$kind==='employees' ? $values['B'] : $values['A'];
-                if (in_array($kind,['managers','unload-points','margin-rules',...WORKSPACE_FLEET_KINDS],true)) {
+                if (in_array($kind,['managers','unload-points','margin-rules','edo-counterparties',...WORKSPACE_FLEET_KINDS],true)) {
                     [$lookup]=workspace_directory_excel_payload($schema,$values,null);
                 } else {
                     $lookup=vitrine_status_key($lookup);

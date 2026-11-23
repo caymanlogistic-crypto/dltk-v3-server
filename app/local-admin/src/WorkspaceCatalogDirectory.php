@@ -10,6 +10,7 @@ function workspace_catalog_directory_model(): array {
         'clients'=>['A'=>'Клиент','B'=>'Менеджер'],
         'carriers'=>['A'=>'Перевозчик','B'=>'ИНН','C'=>'Идентификатор ЭДО','D'=>'Оператор ЭДО','E'=>'Логист'],
         'edo-operators'=>['A'=>'Код','B'=>'Оператор ЭДО'],
+        'edo-counterparties'=>['A'=>'Название','B'=>'ИНН','C'=>'КПП','D'=>'ОГРН','E'=>'Оператор ЭДО','F'=>'ID ЭДО']+workspace_edo_party_roles(),
         'margin-rules'=>['A'=>'Дата начала','B'=>'Минимум, %','C'=>'Минимум, ₽'],
         'status'=>['A'=>'Статус','B'=>'Цвет'],
         'assignment-statuses','etrn-statuses'=>['A'=>'Статус'],
@@ -29,7 +30,7 @@ function workspace_catalog_directory_model(): array {
         if ($catalog['kind']==='margin-rules') {
             $column['kind']=$column['compactInput']=workspace_margin_rule_inputs()[$letter];
         }
-        if ($catalog['kind']==='carriers' && $letter==='D') {
+        if (in_array([$catalog['kind'],$letter],[['carriers','D'],['edo-counterparties','E']],true)) {
             $column['derivedSource']='По идентификатору ЭДО';
             $column['derivedEmptyLabel']='Оператор ЭДО не определён';
         }
@@ -63,6 +64,9 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $showDocuments=$driverCatalog && workspace_fleet_can_documents() && workspace_can('catalog',(string)$driverCatalog,'view');
     $canEditDocuments=$showDocuments && $canEdit && workspace_can('catalog',(string)$driverCatalog,'edit');
     $canViewDrivers=$driverCatalog && workspace_can('catalog',(string)$driverCatalog,'view');
+    $partyRoles=$kind==='edo-counterparties' ? workspace_edo_party_roles() : [];
+    $partyProfiles=$partyRoles ? workspace_edo_party_profiles($id) : [];
+    $roleFilter=is_string($_GET['partyRole']??null) && isset($partyRoles[$_GET['partyRole']]) ? $_GET['partyRole'] : '';
     $marginRules=$kind==='margin-rules' ? workspace_margin_rule_profiles($id) : [];
     $dropoffProfiles=$kind==='dropoff-points' ? workspace_dropoff_profiles($id) : [];
     $showAll=$managers && ($_GET['archive'] ?? '')==='all';
@@ -97,6 +101,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $managers=>workspace_manager_values($entry),
             $fleet=>workspace_fleet_values($kind,$entry),
             $kind==='edo-operators'=>workspace_edo_operator_values($entry),
+            $partyRoles!==[]=>workspace_edo_party_values($entry['name'],$partyProfiles[$entryId]??[]),
             $kind==='margin-rules'=>workspace_margin_rule_values($entry['name'],$marginRules[$entryId]??[]),
             default=>['A'=>$entry['name']],
         };
@@ -109,6 +114,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $values=array_replace($values,array_fill_keys(array_keys(workspace_fleet_driver_columns()),''));
         }
         if ($kind==='fleet-vehicles') unset($values['C']);
+        if ($roleFilter!=='' && $values[$roleFilter]!=='Да') continue;
         if ($search !== '' && mb_stripos(implode(' ',$values),$search) === false) continue;
         $rowIds[] = $entryId;
         if ($requested === null ? count($rows)>=100 : !isset($requested[$entryId])) continue;
@@ -119,6 +125,10 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $row['orderFill']=$entry['color'];
             $row['choices']['B']=$choices;
             $row['requiredChoices']['B']=true;
+        }
+        foreach ($partyRoles as $column=>$_label) {
+            $row['choices'][$column]=['Да','Нет'];
+            $row['requiredChoices'][$column]=true;
         }
         if ($managers) {
             $row['archived']=!(bool)$entry['active'];
@@ -164,7 +174,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         'catalogGrid'=>['id'=>$id,'archive'=>$archive,'showAll'=>$showAll,'search'=>$search,'canEdit'=>$canEdit,
             'syncLabel'=>$canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($id) : null,
             'hasDetails'=>(bool)$details,'unkeyedCount'=>(int)($details['unkeyedCount'] ?? 0),
-            'unloadPoints'=>$unload,
+            'unloadPoints'=>$unload,'partyRoles'=>$partyRoles,'partyRole'=>$roleFilter,
             'relatedLabel'=>$clientCatalog ? 'Открыть клиента' : null,
             'clientFilter'=>$clientFilter,
             'draftVersion'=>$unload ? 'client-address' : ($kind==='fleet-vehicles' ? 'vehicle-driver' : ''),
@@ -304,14 +314,22 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         $value=$result['values'][$column];
         json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);
     }
-    if ($kind==='carriers' && $column==='D') {
+    if (in_array([$kind,$column],[['carriers','D'],['edo-counterparties','E']],true)) {
         throw new ApiError('derived_field','Оператор определяется по идентификатору ЭДО.',403);
     }
     $payload = ['catalogId'=>$id,'id'=>$body['row'],'name'=>$entry['name'],'color'=>$entry['color']];
     $updatedValues=[];
     $value = $body['value'];
     $fill = null;
-    if ($kind==='margin-rules') {
+    if ($kind==='edo-counterparties') {
+        $profile=workspace_client_catalog_metadata('edo_party_'.$entry['id']);
+        if ($column==='A') $payload['name']=$value=workspace_catalog_validate_name($value);
+        else $profile[$column]=$value;
+        $payload['edoParty']=workspace_edo_party_profile($profile);
+        $values=workspace_edo_party_values($payload['name'],$payload['edoParty']);
+        $value=$values[$column];
+        if ($column==='F') $updatedValues=['E'=>$values['E']];
+    } elseif ($kind==='margin-rules') {
         $stored=workspace_client_catalog_metadata('margin_rule_'.$entry['id']);
         $values=workspace_margin_rule_values($entry['name'],$stored);
         $values[$column]=$value;

@@ -74,6 +74,7 @@ function workspace_catalog_row_action(string $directory, array $body): array {
             $payload['marginRule']=$values;
             $name=$payload['name'];
         }
+        if ($kind==='edo-counterparties') $payload['edoParty']=workspace_edo_party_profile($values);
         if ($kind==='edo-operators') $payload['operatorCode']=workspace_edo_operator_code($values['A']??'');
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
         if (workspace_catalog_has_palette($kind)) $payload['color'] = workspace_directory_color($values['B'] ?? '');
@@ -83,7 +84,7 @@ function workspace_catalog_row_action(string $directory, array $body): array {
             $payload['logist']=$values['E']??'';
         }
         $previous = wquery('SELECT id,revision FROM catalog_entries WHERE catalog_id=? AND normalized=? AND active=FALSE',
-            [$catalogId,vitrine_status_key($payload['operatorCode']??$name)])->fetch();
+            [$catalogId,$kind==='edo-counterparties' ? workspace_edo_party_key($name,$payload['edoParty']) : vitrine_status_key($payload['operatorCode']??$name)])->fetch();
         if ($previous) $payload += ['id'=>(int)$previous['id'],'revision'=>(int)$previous['revision']];
         return workspace_catalog_save($payload);
     }

@@ -26,5 +26,10 @@ function workspace_edo_operator_assert_unused(string $code): void {
         WHERE c.kind='carriers' AND NOT EXISTS (
             SELECT 1 FROM workspace_meta d WHERE d.`key`=CONCAT('catalog_deleted_client_',e.id))
         AND UPPER(LEFT(JSON_UNQUOTE(JSON_EXTRACT(m.value,'$.edoId')),3))=?", [strtoupper($code)])->fetchColumn();
-    if ($used) throw new ApiError('entry_in_use','Код используется в справочнике «Перевозчики». Связанных записей — '.$used.'.',409);
+    $parties=(int)wquery("SELECT COUNT(*) FROM catalog_entries e JOIN catalogs c ON c.id=e.catalog_id
+        JOIN workspace_meta m ON m.`key`=CONCAT('edo_party_',e.id)
+        WHERE c.kind='edo-counterparties' AND NOT EXISTS (
+            SELECT 1 FROM workspace_meta d WHERE d.`key`=CONCAT('catalog_deleted_client_',e.id))
+        AND UPPER(LEFT(JSON_UNQUOTE(JSON_EXTRACT(m.value,'$.F')),3))=?", [strtoupper($code)])->fetchColumn();
+    if ($used || $parties) throw new ApiError('entry_in_use','Код используется в справочниках. Связанных записей — '.($used+$parties).'.',409);
 }

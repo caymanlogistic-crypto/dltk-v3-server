@@ -16,6 +16,7 @@
     return cell.dataset.column === 'I' && Number(cell.dataset.catalogId) > 0 &&
       document.body.dataset.workspaceTable === 'vyvoz';
   }
+  const isEdoPartyCell = cell => /^(AA|AC|AE|AG)$/.test(cell.dataset.sharedChoices || '');
   const isDropoffCell = cell => Boolean(window.VitrineDropoff?.supports(cell));
   function hasDraft(editor) {
     return editor.field.value !== editor.initialValue
@@ -441,7 +442,7 @@
     const unloadClient = catalog==='entries' && cell.dataset.column==='A' && document.getElementById('unload-contacts-dialog');
     const fleetSearchKey = value => value.toUpperCase().replace(/[АВЕКМНОРСТУХ]/g,
       letter => 'ABEKMHOPCTYX'['АВЕКМНОРСТУХ'.indexOf(letter)]).replace(/[\s-]+/g,'');
-    const searchableCatalog = fleetEditor || dropoffEditor || pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
+    const searchableCatalog = isEdoPartyCell(cell) || fleetEditor || dropoffEditor || pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');
@@ -808,8 +809,8 @@
     const typedText = cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line') && /^\S$/u.test(event.key);
     const typedContainer = cell.dataset.kind === 'container' && /^[a-z]$/i.test(event.key);
     const typedType = isContainerTypeCell(cell) && /^[\p{L}0-9]$/u.test(event.key);
-    const typedUnload = (isUnloadingCell(cell) || isDropoffCell(cell)) && /^[\p{L}0-9]$/u.test(event.key);
-    if ((typedType || typedUnload || ((typedText || typedContainer) && cell.dataset.choices === '[]'))
+    const typedCatalog = (isUnloadingCell(cell) || isDropoffCell(cell) || isEdoPartyCell(cell)) && /^[\p{L}0-9]$/u.test(event.key);
+    if ((typedType || typedCatalog || ((typedText || typedContainer) && cell.dataset.choices === '[]'))
       && !cell.hasAttribute('data-required-choice')
       && !cell.hasAttribute('data-readonly-cell') && !event.defaultPrevented && !event.isComposing
       && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))) {
