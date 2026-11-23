@@ -15,7 +15,7 @@ function workspace_catalog_directory_model(): array {
         'unload-points'=>['A'=>'Клиент','B'=>'Адрес','C'=>'Контакты'],
         'dropoff-points'=>['A'=>'Точка сдачи','B'=>'Адрес','C'=>'Контакты','D'=>'Постоянная инструкция'],
         'fleet-drivers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Телефон','E'=>'Доп. телефон'],
-        'fleet-vehicles'=>['B'=>'Марка тягача','A'=>'Госномер тягача','C'=>'Тип транспорта',
+        'fleet-vehicles'=>['B'=>'Марка тягача','A'=>'Госномер тягача',
             'I'=>'Марка полуприцепа','H'=>'Госномер полуприцепа']+workspace_fleet_driver_columns()+workspace_fleet_document_labels(),
         'managers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Роль','E'=>'Телефон','F'=>'Email'],
         default=>['A'=>'Название'],
@@ -93,6 +93,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         if ($driverCatalog && !$canViewDrivers) {
             $values=array_replace($values,array_fill_keys(array_keys(workspace_fleet_driver_columns()),''));
         }
+        if ($kind==='fleet-vehicles') unset($values['C']);
         if ($search !== '' && mb_stripos(implode(' ',$values),$search) === false) continue;
         $rowIds[] = $entryId;
         if ($requested === null ? count($rows)>=100 : !isset($requested[$entryId])) continue;

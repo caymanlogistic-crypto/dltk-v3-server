@@ -85,12 +85,13 @@ function workspace_directory_excel_entries(array $schema): array {
     return $entries;
 }
 
-function workspace_directory_excel_header(array $labels,array $sheet): array {
+function workspace_directory_excel_header(array $labels,array $sheet,string $kind): array {
     $header=array_filter(array_map('trim',$sheet[1]??[]),'strlen');
     $exportedContacts=($labels['C']??'')==='Основной контакт' && in_array('Контакты',$header,true);
     if ($exportedContacts) $labels['C']='Контакты';
     $allowed=[...array_values($labels),'ID записи','Версия записи','Строка'];
     if (in_array('Клиент',$labels,true) && in_array('Менеджер',$labels,true)) $allowed[]='Точки выгрузки';
+    if ($kind==='fleet-vehicles') $allowed[]='Тип транспорта';
     $required=array_diff($labels,['Пароль','Доп. телефон']);
     if (count($header)!==count(array_unique($header)) || array_diff($header,$allowed) ||
         array_diff($required,$header) || (in_array('ID записи',$header,true)!==in_array('Версия записи',$header,true))) {
@@ -133,9 +134,9 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
 }
 
 function workspace_directory_excel_plan(array $schema,array $entries,array $sheet): array {
-    [$positions,$header,$exportedContacts]=workspace_directory_excel_header($schema['labels'],$sheet);
-    unset($sheet[1]);
     $kind=$schema['kind'];
+    [$positions,$header,$exportedContacts]=workspace_directory_excel_header($schema['labels'],$sheet,$kind);
+    unset($sheet[1]);
     $keys=[];
     foreach ($entries as $id=>$entry) $keys[$entry['normalized']][]=(int)$id;
     $aliases=in_array($kind,['clients','terminals-main'],true) ? workspace_client_catalog_aliases($schema['id']) : [];
@@ -174,8 +175,9 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
                 $id=$matches[0]??0;
                 $old=$entries[$id]??null;
             }
-            if ($kind==='fleet-vehicles' && !isset($positions[$schema['labels']['Q']])) {
-                $values['Q']=$old['values']['Q']??'';
+            if ($kind==='fleet-vehicles' && $old) {
+                if (!isset($positions[$schema['labels']['Q']])) $values['Q']=$old['values']['Q'];
+                $values=array_replace($old['values'],$values);
             }
             if ($exportedContacts) {
                 $primary=$old['values']['C']??'';

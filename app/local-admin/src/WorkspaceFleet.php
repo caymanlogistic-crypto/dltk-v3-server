@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__.'/WorkspaceFleetPhones.php';
+
 const WORKSPACE_FLEET_KINDS = ['fleet-drivers','fleet-vehicles'];
 
 function workspace_fleet_catalog(string $kind): int {
@@ -36,7 +38,7 @@ function workspace_fleet_draft_fields(string $kind): array {
     $text=['type'=>'text'];
     $required=['required'=>true]+$text;
     if ($kind==='fleet-drivers') return ['A'=>$required,'B'=>$required,'C'=>$text,'D'=>$text,'E'=>$text];
-    return ['A'=>$required,'B'=>$text,'C'=>$text]+array_fill_keys([...array_keys(workspace_fleet_driver_columns()),'H','I'],$text);
+    return ['A'=>$required,'B'=>$text]+array_fill_keys([...array_keys(workspace_fleet_driver_columns()),'H','I'],$text);
 }
 
 function workspace_fleet_plate_key(string $value): string {
@@ -51,8 +53,8 @@ function workspace_fleet_values_validated(string $kind,array $values): array {
         $surname=workspace_unload_text($values['A']??'',65);
         $given=workspace_unload_text($values['B']??'',45);
         $patronymic=workspace_unload_text($values['C']??'',45);
-        $phone=workspace_unload_text($values['D']??'',100);
-        $additionalPhone=workspace_unload_text($values['E']??'',100);
+        $phone=workspace_fleet_phone_input(workspace_unload_text($values['D']??'',100));
+        $additionalPhone=workspace_fleet_phone_input(workspace_unload_text($values['E']??'',100));
         if ($surname==='' || $given==='') throw new ApiError('invalid_driver','Укажите фамилию и имя водителя.');
         foreach ([$surname,$given,$patronymic] as $part) {
             if ($part!=='' && !preg_match("/^\p{L}[\p{L}\p{M}'’ -]*$/uD",$part)) {
