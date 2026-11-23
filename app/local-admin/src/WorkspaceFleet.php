@@ -12,7 +12,7 @@ function workspace_fleet_entries(string $kind,int $catalogId): array {
         ? 'JOIN fleet_driver_profiles p ON p.entry_id=e.id'
         : 'JOIN fleet_vehicle_profiles p ON p.entry_id=e.id LEFT JOIN fleet_driver_profiles driver ON driver.entry_id=p.driver_id
             LEFT JOIN fleet_vehicle_trailers link ON link.vehicle_id=e.id LEFT JOIN fleet_trailer_profiles trailer ON trailer.plate_key=link.trailer_key';
-    $label=$kind==='fleet-drivers'?'':',driver.surname,driver.given_name,driver.patronymic,driver.phone,
+    $label=$kind==='fleet-drivers'?'':',driver.surname,driver.given_name,driver.patronymic,driver.phone,driver.additional_phone,
         trailer.plate AS trailer_plate,trailer.brand AS trailer_brand';
     return array_column(wquery("SELECT e.id,e.name,e.normalized,e.active,e.revision,p.* $label
         FROM catalog_entries e $profile WHERE e.catalog_id=? AND NOT EXISTS (
@@ -21,20 +21,21 @@ function workspace_fleet_entries(string $kind,int $catalogId): array {
 }
 
 function workspace_fleet_values(string $kind,array $entry): array {
-    if ($kind==='fleet-drivers') return ['A'=>$entry['surname'],'B'=>$entry['given_name'],'C'=>$entry['patronymic'],'D'=>$entry['phone']];
-    return ['A'=>$entry['name'],'B'=>$entry['brand'],'C'=>$entry['vehicle_type'],
-        'D'=>$entry['surname']??'','E'=>$entry['given_name']??'','F'=>$entry['patronymic']??'','G'=>$entry['phone']??'',
-        'H'=>$entry['trailer_plate']??'','I'=>$entry['trailer_brand']??''];
+    if ($kind==='fleet-drivers') return ['A'=>$entry['surname'],'B'=>$entry['given_name'],'C'=>$entry['patronymic'],'D'=>$entry['phone'],'E'=>$entry['additional_phone']];
+    return ['B'=>$entry['brand'],'A'=>$entry['name'],'C'=>$entry['vehicle_type'],
+        'I'=>$entry['trailer_brand']??'','H'=>$entry['trailer_plate']??'',
+        'D'=>$entry['surname']??'','E'=>$entry['given_name']??'','F'=>$entry['patronymic']??'',
+        'G'=>$entry['phone']??'','Q'=>$entry['additional_phone']??''];
 }
 
 function workspace_fleet_driver_columns(): array {
-    return ['D'=>'Фамилия','E'=>'Имя','F'=>'Отчество','G'=>'Телефон'];
+    return ['D'=>'Фамилия','E'=>'Имя','F'=>'Отчество','G'=>'Телефон','Q'=>'Доп. телефон'];
 }
 
 function workspace_fleet_draft_fields(string $kind): array {
     $text=['type'=>'text'];
     $required=['required'=>true]+$text;
-    if ($kind==='fleet-drivers') return ['A'=>$required,'B'=>$required,'C'=>$text,'D'=>$text];
+    if ($kind==='fleet-drivers') return ['A'=>$required,'B'=>$required,'C'=>$text,'D'=>$text,'E'=>$text];
     return ['A'=>$required,'B'=>$text,'C'=>$text]+array_fill_keys([...array_keys(workspace_fleet_driver_columns()),'H','I'],$text);
 }
 
@@ -51,6 +52,7 @@ function workspace_fleet_values_validated(string $kind,array $values): array {
         $given=workspace_unload_text($values['B']??'',45);
         $patronymic=workspace_unload_text($values['C']??'',45);
         $phone=workspace_unload_text($values['D']??'',100);
+        $additionalPhone=workspace_unload_text($values['E']??'',100);
         if ($surname==='' || $given==='') throw new ApiError('invalid_driver','Укажите фамилию и имя водителя.');
         foreach ([$surname,$given,$patronymic] as $part) {
             if ($part!=='' && !preg_match("/^\p{L}[\p{L}\p{M}'’ -]*$/uD",$part)) {
@@ -58,8 +60,8 @@ function workspace_fleet_values_validated(string $kind,array $values): array {
             }
         }
         $name=implode(' ',array_filter([$surname,$given,$patronymic],'strlen'));
-        return ['name'=>$name,'key'=>vitrine_catalog_key($name),'profile'=>[$surname,$given,$patronymic,$phone],
-            'values'=>['A'=>$surname,'B'=>$given,'C'=>$patronymic,'D'=>$phone]];
+        return ['name'=>$name,'key'=>vitrine_catalog_key($name),'profile'=>[$surname,$given,$patronymic,$phone,$additionalPhone],
+            'values'=>['A'=>$surname,'B'=>$given,'C'=>$patronymic,'D'=>$phone,'E'=>$additionalPhone]];
     }
     $plate=mb_strtoupper(workspace_unload_text($values['A']??'',28));
     $key=workspace_fleet_plate_key($plate);
@@ -71,33 +73,33 @@ function workspace_fleet_values_validated(string $kind,array $values): array {
     $brand=workspace_unload_text($values['B']??'',160);
     $type=workspace_unload_text($values['C']??'',100);
     $driverValues=[];
-    foreach (array_combine(['A','B','C','D'],array_keys(workspace_fleet_driver_columns())) as $target=>$column) {
+    foreach (array_combine(['A','B','C','D','E'],array_keys(workspace_fleet_driver_columns())) as $target=>$column) {
         $driverValues[$target]=trim($values[$column]??'');
     }
     $driver=array_filter($driverValues,'strlen') ? workspace_fleet_values_validated('fleet-drivers',$driverValues) : null;
     return ['name'=>$plate,'key'=>$key,'profile'=>[$brand,$type],
-        'driver'=>$driver,'trailer'=>$trailer,'values'=>['A'=>$plate,'B'=>$brand,'C'=>$type]+
-            array_combine(array_keys(workspace_fleet_driver_columns()),array_values($driver['values']??$driverValues))+
-            ['H'=>$trailer['plate'],'I'=>$trailer['brand']]];
+        'driver'=>$driver,'trailer'=>$trailer,'values'=>['B'=>$brand,'A'=>$plate,'C'=>$type,'I'=>$trailer['brand'],'H'=>$trailer['plate']]+
+            array_combine(array_keys(workspace_fleet_driver_columns()),array_values($driver['values']??$driverValues))];
 }
 
 function workspace_fleet_resolve_driver(?array $driver,?int $previous): ?array {
     if (!$driver) return null;
     $catalog=workspace_fleet_catalog('fleet-drivers');
     workspace_require('catalog',(string)$catalog,'view');
-    $entry=wquery('SELECT e.id,e.active,e.revision,p.surname,p.given_name,p.patronymic,p.phone FROM catalog_entries e
+    $entry=wquery('SELECT e.id,e.active,e.revision,p.surname,p.given_name,p.patronymic,p.phone,p.additional_phone FROM catalog_entries e
         JOIN fleet_driver_profiles p ON p.entry_id=e.id WHERE e.catalog_id=? AND e.normalized=? FOR UPDATE',
         [$catalog,$driver['key']])->fetch();
     if (!$entry) return workspace_fleet_write('fleet-drivers',$catalog,$driver['values']);
     if (!$entry['active']) throw new ApiError('inactive_driver','Водитель находится в архиве.');
     $id=(int)$entry['id'];
     $known=workspace_fleet_values('fleet-drivers',$entry);
-    $phone=$driver['values']['D'];
-    if ($phone!==$known['D'] && ($id===$previous || $phone!=='')) {
-        $known['D']=$phone;
-        return workspace_fleet_write('fleet-drivers',$catalog,$known,$id,(int)$entry['revision']);
+    $next=$known;
+    foreach (['D','E'] as $column) {
+        $value=$driver['values'][$column];
+        if ($id===$previous || $value!=='') $next[$column]=$value;
     }
-    return ['id'=>$id,'values'=>$known];
+    return $next===$known ? ['id'=>$id,'values'=>$known]
+        : workspace_fleet_write('fleet-drivers',$catalog,$next,$id,(int)$entry['revision']);
 }
 
 function workspace_fleet_write(string $kind,int $catalogId,array $values,?int $id=null,?int $revision=null): array {
@@ -131,8 +133,9 @@ function workspace_fleet_write(string $kind,int $catalogId,array $values,?int $i
             $id=(int)workspace_db()->lastInsertId();
         }
         $sql=$kind==='fleet-drivers'
-            ? 'INSERT INTO fleet_driver_profiles(entry_id,surname,given_name,patronymic,phone) VALUES(?,?,?,?,?)
-                ON DUPLICATE KEY UPDATE surname=VALUES(surname),given_name=VALUES(given_name),patronymic=VALUES(patronymic),phone=VALUES(phone)'
+            ? 'INSERT INTO fleet_driver_profiles(entry_id,surname,given_name,patronymic,phone,additional_phone) VALUES(?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE surname=VALUES(surname),given_name=VALUES(given_name),patronymic=VALUES(patronymic),
+                    phone=VALUES(phone),additional_phone=VALUES(additional_phone)'
             : 'INSERT INTO fleet_vehicle_profiles(entry_id,brand,vehicle_type,driver_id) VALUES(?,?,?,?)
                 ON DUPLICATE KEY UPDATE brand=VALUES(brand),vehicle_type=VALUES(vehicle_type),driver_id=VALUES(driver_id)';
         wquery($sql,[$id,...$next['profile']]);

@@ -309,14 +309,16 @@
     }
   }
   function vehicleDriverFields(panel, cell, field) {
-    const columns = ['D','E','F','G'];
+    const columns = ['D','E','F','G','Q'];
     const peers = columns.map(column => cell.parentElement.querySelector('td[data-column="' + column + '"]'));
     const initial = peers.map(peer => peer?.textContent || '');
     const fields = peers.map((peer, index) => {
       const input = columns[index] === cell.dataset.column ? field : element('input','field-input vitrine-editor-field');
       input.type = 'text';
       input.autocomplete = 'off';
-      input.maxLength = columns[index] === 'G' ? 100 : 65;
+      const phone = ['G','Q'].includes(columns[index]);
+      input.maxLength = phone ? 100 : 65;
+      if (phone) input.inputMode = 'tel';
       if (input !== field) input.value = initial[index];
       const title = peer?.dataset.label || columns[index];
       const label = element('label','vitrine-editor-field-group');

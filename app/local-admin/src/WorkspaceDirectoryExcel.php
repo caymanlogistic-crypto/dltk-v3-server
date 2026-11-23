@@ -91,7 +91,7 @@ function workspace_directory_excel_header(array $labels,array $sheet): array {
     if ($exportedContacts) $labels['C']='Контакты';
     $allowed=[...array_values($labels),'ID записи','Версия записи','Строка'];
     if (in_array('Клиент',$labels,true) && in_array('Менеджер',$labels,true)) $allowed[]='Точки выгрузки';
-    $required=($labels['C']??null)==='Пароль' ? array_diff($labels,['Пароль']) : $labels;
+    $required=array_diff($labels,['Пароль','Доп. телефон']);
     if (count($header)!==count(array_unique($header)) || array_diff($header,$allowed) ||
         array_diff($required,$header) || (in_array('ID записи',$header,true)!==in_array('Версия записи',$header,true))) {
         directory_xlsx_error('Проверьте заголовки первой строки. Нужны столбцы: '.implode(', ',$labels).'.');
@@ -173,6 +173,9 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
                 if (count($matches)>1) directory_xlsx_error('Найдено несколько записей с таким названием. Укажите ID записи и её версию.');
                 $id=$matches[0]??0;
                 $old=$entries[$id]??null;
+            }
+            if ($kind==='fleet-vehicles' && !isset($positions[$schema['labels']['Q']])) {
+                $values['Q']=$old['values']['Q']??'';
             }
             if ($exportedContacts) {
                 $primary=$old['values']['C']??'';

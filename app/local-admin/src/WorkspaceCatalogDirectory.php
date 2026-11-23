@@ -14,9 +14,9 @@ function workspace_catalog_directory_model(): array {
         'container-types'=>['A'=>'Тип контейнера'],
         'unload-points'=>['A'=>'Клиент','B'=>'Адрес','C'=>'Контакты'],
         'dropoff-points'=>['A'=>'Точка сдачи','B'=>'Адрес','C'=>'Контакты','D'=>'Постоянная инструкция'],
-        'fleet-drivers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Телефон'],
-        'fleet-vehicles'=>['A'=>'Госномер тягача','B'=>'Марка тягача','C'=>'Тип транспорта',
-            'H'=>'Госномер полуприцепа','I'=>'Марка полуприцепа']+workspace_fleet_driver_columns()+workspace_fleet_document_labels(),
+        'fleet-drivers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Телефон','E'=>'Доп. телефон'],
+        'fleet-vehicles'=>['B'=>'Марка тягача','A'=>'Госномер тягача','C'=>'Тип транспорта',
+            'I'=>'Марка полуприцепа','H'=>'Госномер полуприцепа']+workspace_fleet_driver_columns()+workspace_fleet_document_labels(),
         'managers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Роль','E'=>'Телефон','F'=>'Email'],
         default=>['A'=>'Название'],
     };
@@ -193,6 +193,14 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
                 throw new ApiError('invalid_driver','Проверьте данные водителя.');
             }
             $values=array_replace($values,$driver);
+        }
+        if ($kind==='fleet-vehicles' && (isset($body['fleetDriver']) || in_array($column,['D','E','F'],true))) {
+            $identity=array_flip(['D','E','F']);
+            $oldValues=workspace_fleet_values($kind,$profile);
+            if (vitrine_catalog_key(implode(' ',array_intersect_key($values,$identity)))!==
+                vitrine_catalog_key(implode(' ',array_intersect_key($oldValues,$identity)))) {
+                foreach (['G','Q'] as $phoneColumn) if ($values[$phoneColumn]===$oldValues[$phoneColumn]) $values[$phoneColumn]='';
+            }
         }
         if ($pasteCheck) {
             workspace_fleet_values_validated($kind,$values);
