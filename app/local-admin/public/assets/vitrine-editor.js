@@ -409,7 +409,9 @@
       document.body.dataset.workspaceTable === 'vyvoz';
     const dropoffEditor = isDropoffCell(cell);
     const fleetEditor = !catalog && cell.dataset.column==='O' && Number(cell.dataset.catalogId)>0;
-    const catalogEditor = fleetEditor || dropoffEditor || pickupEditor || (['B', 'I', 'K', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
+    const documentStatusEditor = !catalog && ['T','U'].includes(cell.dataset.column) &&
+      Number(cell.dataset.catalogId)>0 && document.body.dataset.workspaceTable==='vyvoz';
+    const catalogEditor = documentStatusEditor || fleetEditor || dropoffEditor || pickupEditor || (['B', 'I', 'K', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
     const incomeEditor = !catalog && cell.dataset.column==='X' && document.body.dataset.workspaceTable==='vyvoz';
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
     if (mask || isSingleLine || isStatus || catalogEditor || incomeEditor || catalog) {
@@ -447,7 +449,7 @@
         return {value:option.value, label:shortName ? option.value+' '+shortName : option.value,
           search:option.search+' '+fleetSearchKey(driver)};
       });
-      if (!required && !typeEditor && !unloadEditor && (!dropoffEditor || Number(cell.dataset.referenceId)) && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + (fleetEditor ? cell.dataset.fleetDriverSuffix ?? '' : ' · вне справочника')});
+      if (!required && !typeEditor && !unloadEditor && !documentStatusEditor && (!dropoffEditor || Number(cell.dataset.referenceId)) && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + (fleetEditor ? cell.dataset.fleetDriverSuffix ?? '' : ' · вне справочника')});
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableCatalog,
         ...(fleetEditor ? {searchKey:fleetSearchKey,showLabels:true} : {})});
@@ -547,7 +549,7 @@
         if (field.value && event.inputType?.startsWith('insert')) requestField.checked = false;
       });
     } else panel.append(control?.element || field);
-    if (!dropoff && !mask && !isSingleLine && !isStatus && !incomeEditor && !catalog && !orderField) {
+    if (!dropoff && !mask && !isSingleLine && !isStatus && !documentStatusEditor && !incomeEditor && !catalog && !orderField) {
       panel.append(element('p', 'vitrine-editor-help', useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить · Esc — отменить'));
     }
     const error = element('p', 'vitrine-editor-error');
@@ -560,7 +562,7 @@
     saveButton.addEventListener('click', () => save());
     cancelButton.addEventListener('click', close);
     actions.append(saveButton, cancelButton);
-    if (!dropoff && !isStatus && !orderField && cell.classList.contains('local-edited')) {
+    if (!dropoff && !isStatus && !documentStatusEditor && !orderField && cell.classList.contains('local-edited')) {
       const resetButton = element('button', 'btn btn-secondary vitrine-editor-reset', 'Исходное');
       resetButton.type = 'button'; resetButton.addEventListener('click', () => save(true));
       buttons.push(resetButton); actions.append(resetButton);

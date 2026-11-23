@@ -11,6 +11,7 @@ function workspace_catalog_directory_model(): array {
         'carriers'=>['A'=>'Перевозчик','B'=>'ИНН','C'=>'Идентификатор ЭДО','D'=>'Оператор ЭДО','E'=>'Логист'],
         'edo-operators'=>['A'=>'Код','B'=>'Оператор ЭДО'],
         'status'=>['A'=>'Статус','B'=>'Цвет'],
+        'assignment-statuses','etrn-statuses'=>['A'=>'Статус'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
         'container-types'=>['A'=>'Тип контейнера'],
         'unload-points'=>['A'=>'Клиент','B'=>'Адрес','C'=>'Контакты'],

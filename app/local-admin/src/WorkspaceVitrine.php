@@ -48,6 +48,11 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     }
     $catalog=workspace_status_catalog($t);$byId=[];$byName=[];foreach($catalog['statuses'] as &$status){$status['id']=(int)$status['id'];$status['revision']=(int)$status['revision'];$byId[$status['id']]=$status;$byName[vitrine_status_key($status['name'])]=$status;}unset($status);
     [$boundChoices,$boundCatalogs,$entriesByName]=vitrine_catalog_options($t,$links);
+    foreach (['T','U'] as $column) {
+        if (isset($links[$column]) && !isset($boundCatalogs[$column])) {
+            $readOnly[$column]='Нет доступа к справочнику статусов.';
+        }
+    }
     $dropoffCatalog=in_array('M',array_column($columns,'letter'),true) ? ($boundCatalogs['M']??null) : null;
     $dropoffOptions=[];
     if ($dropoffCatalog) {
@@ -75,7 +80,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         foreach($columns as $f){$key=$f['letter'];$cell=$raw[(string)column_number($key)]??[];$kinds[$key]=$key==='A'?'status':(mb_strtolower(trim($f['label']))==='время'?'time':vitrine_clipboard_kind($cell,$key));
             if(!$raw){$kinds[$key]=match(mb_strtolower($f['label'])){'дата'=>'date','время'=>'time',default=>$key==='A'?'status':'text'};}
             if (isset($compactInputs[$key])) $kinds[$key]=$compactInputs[$key];
-            if (in_array($key,['I','K','M','O'],true) && isset($links[$key])) $kinds[$key]='text';
+            if (in_array($key,['I','K','M','O','T','U'],true) && isset($links[$key])) $kinds[$key]='text';
             if (isset($slots[$key])) $kinds[$key]='slot';
             if (isset($singleLine[$key])) $kinds[$key]='text';
             $display=display_cell($cell);if($display!==null){$baseline[$key]=$display;if(!isset($edits[(int)$r['id']][$key]))$values[$key]=$display;}

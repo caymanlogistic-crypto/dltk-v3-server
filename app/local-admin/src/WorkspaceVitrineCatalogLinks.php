@@ -18,9 +18,11 @@ function vitrine_catalog_links(array $table): array {
             'phoneTarget'=>'Q','phoneEmpty'=>'У водителя не указан телефон',
             'documentsTarget'=>'R','documentsEmpty'=>'У водителя нет данных для ПД','invalid'=>'Выберите машину из справочника автотранспорта.'],
         'S'=>['kind'=>'carriers','target'=>'AM','meta'=>'catalog_logists_','source'=>'Из справочника перевозчиков','empty'=>'У перевозчика не указан логист','invalid'=>'Выберите перевозчика из справочника.'],
+        'T'=>['kind'=>'assignment-statuses','invalid'=>'Выберите статус поручения из справочника.'],
+        'U'=>['kind'=>'etrn-statuses','invalid'=>'Выберите статус ЭТрН из справочника.'],
     ];
     $links=[];
-    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','I','K','M','O','S') ORDER BY c.id",[$table['id']])->fetchAll();
+    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','I','K','M','O','S','T','U') ORDER BY c.id",[$table['id']])->fetchAll();
     foreach($bindings as $binding){
         $field=$binding['field_key'];$definition=$definitions[$field];
         if($definition['kind']===$binding['kind']&&!isset($links[$field])){
@@ -35,7 +37,7 @@ function vitrine_bound_catalog_menu(array $tables): array {
         if($table['slug']!=='vyvoz')continue;
         $links=vitrine_catalog_links($table);
         $items=[];
-        foreach(['E','I','K','M','O','S'] as $field){
+        foreach(['E','I','K','M','O','S','T','U'] as $field){
             $link=$links[$field]??null;
             if(!$link||!workspace_can('catalog',(string)$link['id'],'view',$table['id']))continue;
             $title=wquery('SELECT title FROM catalogs WHERE id=?',[$link['id']])->fetchColumn();
@@ -93,8 +95,7 @@ function vitrine_catalog_original_value(array $record,string $column): string {
 }
 
 function vitrine_derived_catalog_columns(array $links): array {
-    $columns=array_column($links,null,'target');
-    unset($columns[0],$columns[1],$columns[2],$columns[3]);
+    $columns=array_column(array_filter($links,static fn(array $link): bool=>isset($link['target'])),null,'target');
     foreach ($links as $link) {
         foreach (['phone','documents'] as $field) {
             if (isset($link[$field.'Target'])) $columns[$link[$field.'Target']]=['source'=>$link['source'],'empty'=>$link[$field.'Empty']];
