@@ -157,7 +157,7 @@ function workspace_directory_draft_fields(string $directory, array $roles = [], 
             $catalogKind==='dropoff-points'=>['A'=>$name,'B'=>['type'=>'text','singleLine'=>false,'maxLength'=>1500],
                 'C'=>['type'=>'text','singleLine'=>false,'maxLength'=>1500],'D'=>['type'=>'text','singleLine'=>false,'maxLength'=>6000]],
             $catalogKind==='edo-counterparties'=>['A'=>$name,'B'=>$name,'C'=>['type'=>'text'],'D'=>['type'=>'text'],'F'=>['type'=>'text']]
-                +array_fill_keys(array_keys(workspace_edo_party_roles()),['type'=>'choice','choices'=>['Да','Нет']]),
+                +array_fill_keys(array_keys(workspace_edo_party_roles()),['type'=>'choice','choices'=>workspace_edo_party_role_choices()]),
             $catalogKind==='edo-operators'=>['A'=>$name,'B'=>$name],
             $catalogKind==='margin-rules'=>array_map(static fn(string $kind): array=>$name+['compactInput'=>$kind],workspace_margin_rule_inputs()),
             $catalogKind==='carriers'=>['A'=>$name,'B'=>$optionalAssignment,'C'=>$optionalAssignment,'E'=>$optionalAssignment],

@@ -127,8 +127,9 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $row['requiredChoices']['B']=true;
         }
         foreach ($partyRoles as $column=>$_label) {
-            $row['choices'][$column]=['Да','Нет'];
+            $row['choices'][$column]=workspace_edo_party_role_choices();
             $row['requiredChoices'][$column]=true;
+            $row['catalogFills'][$column]=workspace_edo_party_role_fill($values[$column]) ?? '';
         }
         if ($managers) {
             $row['archived']=!(bool)$entry['active'];
@@ -319,6 +320,7 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     }
     $payload = ['catalogId'=>$id,'id'=>$body['row'],'name'=>$entry['name'],'color'=>$entry['color']];
     $updatedValues=[];
+    $catalogStyle=[];
     $value = $body['value'];
     $fill = null;
     if ($kind==='edo-counterparties') {
@@ -329,6 +331,7 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         $values=workspace_edo_party_values($payload['name'],$payload['edoParty']);
         $value=$values[$column];
         if ($column==='F') $updatedValues=['E'=>$values['E']];
+        if (isset(workspace_edo_party_roles()[$column])) $catalogStyle=['catalogFill'=>workspace_edo_party_role_fill($value)];
     } elseif ($kind==='margin-rules') {
         $stored=workspace_client_catalog_metadata('margin_rule_'.$entry['id']);
         $values=workspace_margin_rule_values($entry['name'],$stored);
@@ -353,5 +356,5 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     $baseHash = workspace_catalog_directory_hash($id,$body['row']);
     if (($body['baseHash'] ?? null) !== $baseHash || !is_int($body['revision'] ?? null)) workspace_directory_conflict();
     json_response(workspace_catalog_save($payload+['revision'=>$body['revision']])+[
-        'value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false,'orderFill'=>$fill,'values'=>$updatedValues]);
+        'value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false,'orderFill'=>$fill,'values'=>$updatedValues]+$catalogStyle);
 }

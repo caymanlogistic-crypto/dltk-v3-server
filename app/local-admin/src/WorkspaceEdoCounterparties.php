@@ -5,6 +5,14 @@ function workspace_edo_party_roles(): array {
     return ['G'=>'Грузоотправитель','H'=>'Заказчик','I'=>'Грузополучатель','J'=>'Наблюдатель'];
 }
 
+function workspace_edo_party_role_fill(string $value): ?string {
+    return $value==='Да' ? workspace_directory_color('Зелёный') : null;
+}
+
+function workspace_edo_party_role_choices(): array {
+    return [['value'=>'Да','label'=>'Да','color'=>workspace_edo_party_role_fill('Да')],'Нет'];
+}
+
 function workspace_edo_party_links(): array {
     return ['AA'=>['G','AB'],'AC'=>['H','AD'],'AE'=>['I','AF'],'AG'=>['J',null]];
 }
