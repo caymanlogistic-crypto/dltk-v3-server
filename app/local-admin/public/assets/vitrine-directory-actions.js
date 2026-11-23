@@ -3,11 +3,15 @@
   const actions = document.querySelector('[data-directory-row-actions]');
   if (!actions) return;
   const remove = actions.querySelector('[data-directory-delete]');
+  const archiveToggle = actions.querySelector('[data-directory-archive-toggle]');
   const related = actions.querySelector('[data-directory-related]');
   const archive = actions.hasAttribute('data-archive');
   const archiveRows = actions.hasAttribute('data-archive-rows');
   const actionFor = row => archive || row.hasAttribute('data-directory-archived') ? 'restore' : archiveRows ? 'archive' : 'delete';
   const deleteDialog = document.querySelector('[data-directory-delete-dialog]');
+  const reasonField = deleteDialog?.querySelector('[data-directory-reason-field]');
+  const reason = reasonField?.querySelector('textarea');
+  const confirm = deleteDialog?.querySelector('[type="submit"]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const endpoint = window.VitrineGridScope.url('/api/vitrine/cell');
   const table = document.querySelector('.vitrine-table');
@@ -34,7 +38,9 @@
     window.VitrineGrid.select(cell);
     trigger = button;
     returnFocus = cell;
-    if (remove) {
+    if (archiveToggle) {
+      archiveToggle.textContent = actionFor(cell.parentElement)==='restore' ? 'Восстановить строку' : 'Переместить в архив';
+    } else if (remove) {
       const action = actionFor(cell.parentElement);
       remove.textContent = {restore:'Восстановить строку',archive:'В архив',delete:'Удалить строку'}[action];
     }
@@ -126,7 +132,7 @@
       submit.disabled = cancel.disabled = true;
       try { await submitAction(new FormData(form)); }
       catch (error) {
-        if (error.code === 'entry_in_use') dialog.close();
+        if (error.code === 'entry_in_use' && (!reason || reason.disabled)) dialog.close();
         onError(error);
       } finally { submit.disabled = cancel.disabled = false; }
     });
@@ -239,11 +245,11 @@
     },
   });
 
-  remove?.addEventListener('click', async () => {
+  async function confirmRow(forcedAction) {
     const cell = trigger?.closest('tr').querySelector('td[data-edit-cell]');
     if (!cell || pending) return;
     const tr = cell.closest('tr');
-    const action = actionFor(tr);
+    const action = forcedAction || actionFor(tr);
     const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base};
     const label = tr.dataset.directoryActionLabel || tr.querySelector('[data-column="A"]').textContent ||
       tr.querySelector('[data-column="B"]')?.textContent || '';
@@ -259,15 +265,26 @@
         {restore:'Восстановить',archive:'В архив',delete:'Удалить'}[action];
       deleteDialog.querySelector('[data-directory-delete-text]').textContent =
         {restore:'Восстановить',archive:'Перенести в архив',delete:'Удалить'}[action]+' «'+result.name+'»?';
+      if (reason) {
+        reasonField.hidden = reason.disabled = action !== 'delete';
+        reason.required = action === 'delete';
+        reason.value = '';
+        confirm.disabled = !reason.disabled;
+      }
       deleteDialog.showModal();
+      if (reason && !reason.disabled) reason.focus();
     } catch (error) {
       onError(error);
     } finally {
       pending = false;
     }
-  });
-  if (deleteDialog) bindForm(deleteDialog, async () => {
-    await request(target.action,target.row);
+  }
+  archiveToggle?.addEventListener('click',()=>confirmRow());
+  remove?.addEventListener('click',()=>confirmRow(archiveToggle ? 'delete' : null));
+  reason?.addEventListener('input',()=>{confirm.disabled=!reason.value.trim();});
+  if (deleteDialog) bindForm(deleteDialog, async fields => {
+    const payload=reason && !reason.disabled ? {...target.row,reason:fields.get('reason').trim()} : target.row;
+    await request(target.action,payload);
     refresh({restore:'Запись восстановлена.',archive:'Запись перенесена в архив.',delete:'Запись удалена.'}[target.action]);
   });
 })();

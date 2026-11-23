@@ -28,7 +28,11 @@ function workspace_catalog_validate_name(string $value): string {
     return $name;
 }
 
-function workspace_catalog_save(array $b): array {
+function workspace_client_is_deleted(int $id): bool {
+    return (bool)wquery('SELECT 1 FROM workspace_meta WHERE `key`=?',['catalog_deleted_client_'.$id])->fetchColumn();
+}
+
+function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
     $cid=(int)($b['catalogId']??0);$catalog=wquery('SELECT * FROM catalogs WHERE id=?',[$cid])->fetch();if(!$catalog)throw new ApiError('not_found','Справочник не найден.',404);
     workspace_require('catalog',(string)$cid,'edit');$name=workspace_catalog_validate_name((string)($b['name']??''));$color=$b['color']??null;
     if(!workspace_catalog_has_palette($catalog['kind']))$color=null;
@@ -42,6 +46,9 @@ function workspace_catalog_save(array $b): array {
     workspace_begin();try{
         $old=isset($b['id'])?wquery('SELECT * FROM catalog_entries WHERE id=? AND catalog_id=? FOR UPDATE',[(int)$b['id'],$cid])->fetch():null;
         if(isset($b['id'])&&!$old)throw new ApiError('not_found','Запись не найдена.',404);
+        if ($old && $catalog['kind']==='clients' && workspace_client_is_deleted((int)$old['id'])) {
+            throw new ApiError('not_found','Запись удалена.',404);
+        }
         if($old&&(int)$old['revision']!==(int)($b['revision']??0))throw new ApiError('revision_conflict','Запись уже изменена. Откройте её заново; ваш ввод сохранён.',409);
         $profileCatalog=in_array($catalog['kind'],['unload-points','managers'],true);
         if($profileCatalog&&(!$old||!isset($b['active'])||$name!==$old['name'])){
@@ -59,13 +66,15 @@ function workspace_catalog_save(array $b): array {
             }
         }
         $archive=($b['archive']??null)===true && in_array($catalog['kind'],['clients','managers'],true);
-        if ($old && $old['active'] && !$active && !$archive) workspace_assert_catalog_entry_unused($catalog['kind'],$cid,$old);
+        if ($deleteReason!==null || ($old && $old['active'] && !$active && !$archive)) {
+            workspace_assert_catalog_entry_unused($catalog['kind'],$cid,$old);
+        }
         $logists=$hasLogist?workspace_client_catalog_metadata('catalog_logists_'.$cid):[];
         $beforeLogist=$old?($logists[$old['id']]??''):'';
         $logistChanged=$hasLogist&&$beforeLogist!==$logist;
         $beforeManager=$old&&$hasManager?(workspace_client_manager_values($cid)[$old['id']]??''):'';
         $managerChanged=$hasManager&&$beforeManager!==$manager;
-        if($old&&$old['name']===$name&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged){workspace_db()->commit();return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
+        if($deleteReason===null&&$old&&$old['name']===$name&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged){workspace_db()->commit();return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
         if($old){wquery('UPDATE catalog_entries SET name=?,normalized=?,color=?,active=?,revision=? WHERE id=?',[$name,$norm,$color,(int)$active,$revision,$old['id']]);$id=(int)$old['id'];}
         else{wquery('INSERT INTO catalog_entries(catalog_id,name,normalized,color,active) VALUES(?,?,?,?,?)',[$cid,$name,$norm,$color,(int)$active]);$id=(int)workspace_db()->lastInsertId();}
         if($managerChanged)workspace_client_set_manager($cid,$id,$manager);
@@ -85,7 +94,15 @@ function workspace_catalog_save(array $b): array {
             $after['logist']=$logist;
         }
         $action=!$old?'create':(!$active?'archive':(!$old['active']?'restore':'edit'));
-        workspace_audit(['category'=>'catalog','label'=>$catalog['title'],'before'=>$before,'after'=>$after,'action'=>$action]);
+        $audit=['category'=>'catalog','label'=>$catalog['title']];
+        if ($deleteReason!==null) {
+            wquery('INSERT INTO workspace_meta (`key`,value) VALUES(?,?)',['catalog_deleted_client_'.$id,'true']);
+            $action='delete';
+            $after+=['deleted'=>true,'reason'=>$deleteReason];
+            $tableId=wquery("SELECT table_id FROM catalog_bindings WHERE catalog_id=? AND field_key='B' ORDER BY table_id LIMIT 1",[$cid])->fetchColumn();
+            if ($tableId) $audit['tableId']=(int)$tableId;
+        }
+        workspace_audit($audit+['before'=>$before,'after'=>$after,'action'=>$action]);
         workspace_event('catalog.changed',['catalogId'=>$cid,'id'=>$id,'name'=>$name,'beforeName'=>$old['name']??null,'color'=>$color,'active'=>$active,'revision'=>$revision,'bindings'=>wquery('SELECT b.table_id AS tableId,t.slug AS tableSlug,b.field_key AS fieldKey FROM catalog_bindings b JOIN table_definitions t ON t.id=b.table_id WHERE b.catalog_id=?',[$cid])->fetchAll()]);workspace_db()->commit();return ['id'=>$id,'revision'=>$revision];
     }catch(Throwable $e){if(workspace_db()->inTransaction())workspace_db()->rollBack();if($e instanceof PDOException&&$e->getCode()==='23000')throw new ApiError('duplicate_catalog','Такое название уже есть в справочнике.',409);throw $e;}
 }
@@ -154,6 +171,9 @@ function workspace_catalogs_endpoint(string $method): never {
     $hasDetails=(bool)$detailsSummary;
     $sourceSyncLabel=$hasDetails&&function_exists('workspace_catalog_source_label')&&workspace_can('catalog',(string)$id,'edit')
         ?workspace_catalog_source_label($id):null;
-    $entries=wquery('SELECT id,name,color,revision,active FROM catalog_entries WHERE catalog_id=? ORDER BY active DESC,id',[$id])->fetchAll();foreach($entries as &$e){$e['id']=(int)$e['id'];$e['revision']=(int)$e['revision'];$e['active']=(bool)$e['active'];}unset($e);
+    $clientVisibility=$catalog['kind']==='clients'
+        ? " AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('catalog_deleted_client_',e.id))" : '';
+    $entries=wquery('SELECT id,name,color,revision,active FROM catalog_entries e WHERE catalog_id=?'.$clientVisibility.
+        ' ORDER BY active DESC,id',[$id])->fetchAll();foreach($entries as &$e){$e['id']=(int)$e['id'];$e['revision']=(int)$e['revision'];$e['active']=(bool)$e['active'];}unset($e);
     json_response(['catalog'=>$catalog,'entries'=>$entries,'hasDetails'=>$hasDetails,'unkeyedCount'=>(int)($detailsSummary['unkeyedCount']??0),'sourceSyncLabel'=>$sourceSyncLabel,'palette'=>array_map(fn($p)=>$p+['key'=>$p['fill'],'hex'=>$p['fill']],workspace_palette())]);
 }

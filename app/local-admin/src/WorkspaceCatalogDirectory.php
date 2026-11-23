@@ -47,6 +47,9 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $entries = match (true) {
         $unload=>workspace_unload_points($id),
         $managers=>workspace_manager_entries($id),
+        $kind==='clients'=>wquery("SELECT id,name,color,revision,active FROM catalog_entries e WHERE catalog_id=? AND active=?
+            AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('catalog_deleted_client_',e.id))
+            ORDER BY name,id",[$id,(int)!$archive])->fetchAll(),
         default=>wquery('SELECT id,name,color,revision,active FROM catalog_entries WHERE catalog_id=? AND active=? ORDER BY name,id',[$id,(int)!$archive])->fetchAll(),
     };
     $palette = array_column(workspace_palette(),'name','fill');

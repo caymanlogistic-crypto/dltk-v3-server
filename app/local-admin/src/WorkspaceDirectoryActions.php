@@ -65,7 +65,9 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         return workspace_catalog_save($payload);
     }
     $entry = wquery('SELECT * FROM catalog_entries WHERE catalog_id=? AND id=?',[$catalogId,$body['row']])->fetch();
-    if (!$entry || (bool)$entry['active'] === ($action === 'restore')) {
+    $clientDeletion=$kind==='clients' && in_array($action,['delete','check_delete'],true);
+    if (!$entry || ($kind==='clients' && workspace_client_is_deleted((int)$entry['id'])) ||
+        (!$clientDeletion && (bool)$entry['active'] === ($action === 'restore'))) {
         throw new ApiError('not_found','Запись справочника не найдена.',404);
     }
     if ((int)$entry['revision'] !== $body['revision']) workspace_directory_conflict();
@@ -73,8 +75,15 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         workspace_assert_catalog_entry_unused($kind,$catalogId,$entry);
         return ['name'=>$entry['name']];
     }
+    $reason=null;
+    if ($clientDeletion) {
+        $reason=is_string($body['reason']??null) ? trim($body['reason']) : '';
+        if ($reason==='' || !preg_match('/\S/u',$reason) || mb_strlen($reason)>1000) {
+            throw new ApiError('invalid_delete_reason','Укажите причину удаления до 1000 символов.');
+        }
+    }
     return workspace_catalog_save(['catalogId'=>$catalogId,'id'=>$body['row'],'revision'=>$body['revision'],
-        'name'=>$entry['name'],'color'=>$entry['color'],'active'=>$action === 'restore','archive'=>$action==='archive']);
+        'name'=>$entry['name'],'color'=>$entry['color'],'active'=>$action === 'restore','archive'=>$action==='archive'],$reason);
 }
 
 function workspace_directory_conflict(): never {
@@ -96,7 +105,7 @@ function workspace_assert_catalog_entry_unused(string $kind, int $catalogId, arr
         if ($clients) throw new ApiError('entry_in_use','Менеджер назначен у клиентов: '.$clients.'. Удалить его нельзя.',409);
     }
     if ($kind==='clients' && workspace_unload_catalog_id()) {
-        $points=(int)wquery('SELECT COUNT(*) FROM unload_points p JOIN catalog_entries e ON e.id=p.entry_id WHERE p.client_id=? AND e.active=TRUE',[$id])->fetchColumn();
+        $points=(int)wquery('SELECT COUNT(*) FROM unload_points WHERE client_id=?',[$id])->fetchColumn();
         if ($points) throw new ApiError('entry_in_use','У клиента есть точки выгрузки: '.$points.'. Удалить его нельзя.',409);
     }
     $names = [$entry['normalized']];

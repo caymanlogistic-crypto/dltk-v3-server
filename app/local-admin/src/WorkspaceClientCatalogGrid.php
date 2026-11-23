@@ -35,7 +35,7 @@ function workspace_directory_client_filter(int $catalogId): ?array {
     if (!isset($_GET['client'])) return null;
     $id=filter_var($_GET['client'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
     $client=$id ? wquery('SELECT id,name FROM catalog_entries WHERE catalog_id=? AND id=?',[$catalogId,$id])->fetch() : null;
-    if (!$client) throw new ApiError('not_found','Клиент не найден в справочнике.',404);
+    if (!$client || workspace_client_is_deleted((int)$client['id'])) throw new ApiError('not_found','Клиент не найден в справочнике.',404);
     return $client;
 }
 
@@ -52,7 +52,8 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
     $search = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']), 0, 160) : '';
     $managers = workspace_client_manager_values($catalogId);
     $entries = wquery(
-        'SELECT id,name,revision,active FROM catalog_entries WHERE catalog_id=?'.
+        "SELECT id,name,revision,active FROM catalog_entries e WHERE catalog_id=?
+         AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('catalog_deleted_client_',e.id))".
         ($showAll ? '' : ' AND active=?').' ORDER BY name,id',
         $showAll ? [$catalogId] : [$catalogId, (int)!$archive],
     )->fetchAll();
