@@ -26,6 +26,9 @@ function workspace_catalog_directory_model(): array {
     $columns = [];
     foreach ($labels as $letter=>$label) {
         $column=compact('letter','label');
+        if ($catalog['kind']==='margin-rules') {
+            $column['kind']=$column['compactInput']=workspace_margin_rule_inputs()[$letter];
+        }
         if ($catalog['kind']==='carriers' && $letter==='D') {
             $column['derivedSource']='По идентификатору ЭДО';
             $column['derivedEmptyLabel']='Оператор ЭДО не определён';

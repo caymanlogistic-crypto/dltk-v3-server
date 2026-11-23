@@ -2,6 +2,10 @@
 declare(strict_types=1);
 require_once __DIR__.'/VitrineClipboard.php';
 
+function workspace_margin_rule_inputs(): array {
+    return ['A'=>'date','B'=>'percent','C'=>'money'];
+}
+
 function workspace_margin_calendar_date(mixed $value): ?string {
     if (!is_string($value)) return null;
     $value=trim($value);
@@ -15,8 +19,9 @@ function workspace_margin_calendar_date(mixed $value): ?string {
 }
 
 function workspace_margin_rule_date(mixed $value): string {
-    return workspace_margin_calendar_date($value)
-        ?? throw new ApiError('invalid_margin_rule_date','Укажите дату начала в формате ДД.ММ.ГГГГ.');
+    $date=is_string($value) ? vitrine_compact_input($value,'date') : null;
+    return workspace_margin_calendar_date($date)
+        ?? throw new ApiError('invalid_margin_rule_date','Введите действительную дату в формате ДДММГГ.');
 }
 
 function workspace_margin_rule_date_label(string $iso): string {
@@ -33,8 +38,8 @@ function workspace_margin_rule_profile(mixed $values): array {
     if ($basis>10000) throw new ApiError('invalid_margin_percent','Укажите процент от 0 до 100.');
     $amount=$values['C']??'';
     $formatted=is_string($amount) ? vitrine_compact_input($amount,'money') : null;
-    if ($formatted===null || $formatted==='' || !vitrine_compact_integer_in_range($formatted,[0,9999999])) {
-        throw new ApiError('invalid_margin_minimum','Укажите минимальную сумму от 0 до 9 999 999 ₽ целым числом.');
+    if ($formatted===null || $formatted==='' || !vitrine_compact_integer_in_range($formatted,vitrine_compact_integer_bounds('money'))) {
+        throw new ApiError('invalid_margin_minimum','Укажите минимальную сумму от 1 000 до 9 999 999 ₽ целым числом.');
     }
     return ['basis'=>$basis,'rubles'=>(int)str_replace(' ','',$formatted)];
 }
@@ -44,7 +49,7 @@ function workspace_margin_rule_percent_label(int $basis): string {
 }
 
 function workspace_margin_rule_values(string $date,array $profile): array {
-    return ['A'=>workspace_margin_rule_date_label($date),
+    return ['A'=>vitrine_compact_input($date,'date')??workspace_margin_rule_date_label($date),
         'B'=>isset($profile['basis']) ? workspace_margin_rule_percent_label($profile['basis']) : '',
         'C'=>isset($profile['rubles']) ? vitrine_compact_input((string)$profile['rubles'],'money') : ''];
 }

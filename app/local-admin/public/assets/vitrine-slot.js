@@ -76,6 +76,40 @@
     return iso ? iso.slice(1).reverse().join('') : '';
   }
 
+  function validDate(digits) {
+    if (digits.length!==6) return false;
+    const [day,month,year]=digits.match(/../g).map(Number);
+    const checked=new Date(Date.UTC(2000+year,month-1,day));
+    return checked.getUTCMonth()===month-1 && checked.getUTCDate()===day;
+  }
+
+  function readPercent(value) {
+    const number=value.trim().replace(/\s*%$/,'').replace('.',',');
+    return /^[0-9]{1,3}(?:,[0-9]{1,2})?$/.test(number) ? number : '';
+  }
+
+  function bindPercent(field) {
+    field.inputMode='decimal';
+    field.placeholder='10,5';
+    const replaceSelection=text=>field.value.slice(0,field.selectionStart)+text+field.value.slice(field.selectionEnd);
+    const partial=/^[0-9]{0,3}(?:[.,][0-9]{0,2})?$/;
+    field.addEventListener('beforeinput',event=>{
+      if (event.inputType==='insertText' && !partial.test(replaceSelection(event.data??''))) event.preventDefault();
+    });
+    field.addEventListener('input',()=>{
+      const {selectionStart,selectionEnd}=field;
+      field.value=field.value.replace('.',',');
+      field.setSelectionRange(selectionStart,selectionEnd);
+    });
+    field.addEventListener('paste',event=>{
+      event.preventDefault();
+      const value=readPercent(event.clipboardData.getData('text/plain'));
+      if (!value || !partial.test(replaceSelection(value))) return;
+      field.setRangeText(value,field.selectionStart,field.selectionEnd,'end');
+      field.dispatchEvent(new InputEvent('input',{inputType:'insertFromPaste',bubbles:true}));
+    });
+  }
+
   function readTime(value) {
     const input = value.trim();
     if (/^[0-9]{1,4}$/.test(input)) return input;
@@ -102,11 +136,17 @@
     ...mask(maxDigits,'с 00 до 12 - 25.10.26',format,read),requestLabel,isRequest
   });
   window.VitrineCompactInput = Object.freeze({
-    date:mask(6,'25.10.26',digits=>digits.match(/.{1,2}/g)?.join('.') ?? '',readDate),
+    date:{...mask(6,'25.10.26',digits=>digits.match(/.{1,2}/g)?.join('.') ?? '',readDate),
+      valid:validDate,invalidMessage:'Введите действительную дату в формате ДДММГГ.'},
     time:mask(4,'08:00',digits=>digits.length>2
       ? digits.slice(0,-2)+':'+digits.slice(-2) : digits,readTime),
     weight:mask(15000,'25 990',formatInteger,readInteger),
     distance:mask(15000,'1 250',formatInteger,readInteger),
-    money:mask(15000,'25 000',formatInteger,readInteger)
+    money:{...mask(15000,'25 000',formatInteger,readInteger),
+      valid:value=>Number(value)>=1000 && Number(value)<=9999999,
+      invalidMessage:'Введите сумму от 1 000 до 9 999 999.'},
+    percent:{read:readPercent,format:value=>value,bind:bindPercent,
+      valid:value=>Number(value.replace(',','.'))>=0 && Number(value.replace(',','.'))<=100,
+      invalidMessage:'Введите процент от 0 до 100, до двух знаков после запятой.'}
   });
 })();

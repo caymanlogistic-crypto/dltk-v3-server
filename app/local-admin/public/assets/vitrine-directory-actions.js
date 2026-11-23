@@ -201,6 +201,12 @@
     else if (value && (Array.from(value).length < 8 || new TextEncoder().encode(value).length > 72)) {
       throw new Error('Пароль должен содержать от 8 символов и занимать до 72 байт.');
     }
+    if (value && field.compactInput) {
+      const input=window.VitrineCompactInput[field.compactInput];
+      const raw=input.read(value);
+      if (!raw || !input.valid(raw)) throw new Error(input.invalidMessage);
+      value=input.format(raw);
+    }
     if (value && field.type === 'choice' && !choice(column,value)) throw new Error('Выберите значение из списка.');
     const maxLength=field.maxLength ?? 160;
     if (field.type === 'text' && (Array.from(value).length > maxLength || (field.singleLine !== false && /[\r\n]/.test(value)))) {
