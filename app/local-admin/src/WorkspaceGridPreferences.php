@@ -34,6 +34,32 @@ function workspace_catalog_preferences_key(array $grid, int $userId): string {
     return 'catalog_preferences_'.$userId.'_'.$grid['catalogId'];
 }
 
+function workspace_width_defaults_key(array $grid): string {
+    if (isset($grid['directoryKey'])) return 'directory_width_defaults_'.$grid['directoryKey'];
+    if (isset($grid['catalogId'])) return 'catalog_width_defaults_'.$grid['catalogId'];
+    return 'table_width_defaults_'.$grid['id'];
+}
+
+function workspace_read_width_defaults(array $grid): array {
+    $key=workspace_width_defaults_key($grid);
+    $saved=wquery('SELECT value FROM workspace_meta WHERE `key`=?',[$key])->fetchColumn();
+    if ($saved!==false) return json_decode($saved,true);
+
+    // Older installations stored the superadmin's widths in their personal settings.
+    $admins=wquery("SELECT u.id FROM users u JOIN user_roles ur ON ur.user_id=u.id
+        JOIN roles r ON r.id=ur.role_id WHERE u.active=TRUE AND r.code='superadmin' ORDER BY u.id")->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($admins as $adminId) {
+        $widths=workspace_read_preferences($grid,(int)$adminId)['settings']['widths']??[];
+        if (is_array($widths) && $widths) return ['widths'=>$widths,'version'=>0];
+    }
+    return ['widths'=>[],'version'=>0];
+}
+
+function workspace_effective_preferences(array $personal, array $widthDefaults, bool $editsDefaults): array {
+    if ($editsDefaults) $personal['settings']['widths']=$widthDefaults['widths'];
+    return $personal+['widthDefaults'=>$widthDefaults,'editsWidthDefaults'=>$editsDefaults];
+}
+
 function workspace_read_color_preset(int $userId): ?array {
     $stored=wquery('SELECT value FROM workspace_meta WHERE `key`=?',['grid_color_preset_'.$userId])->fetchColumn();
     if ($stored!==false) return json_decode($stored,true);
@@ -83,7 +109,14 @@ function workspace_validate_preferences(mixed $settings, array $columns): void {
 
 function workspace_preferences(array $grid, ?array $body = null): array {
     $userId = (int)workspace_current_user()['id'];
-    if ($body === null) return workspace_read_preferences($grid, $userId)+['colorPreset'=>workspace_read_color_preset($userId)];
+    $editsDefaults=(bool)wquery("SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id
+        WHERE ur.user_id=? AND r.code='superadmin'",[$userId])->fetchColumn();
+    $widthKey=workspace_width_defaults_key($grid);
+    if ($body === null) {
+        return workspace_effective_preferences(workspace_read_preferences($grid,$userId),
+            workspace_read_width_defaults($grid),$editsDefaults)+
+            ['colorPreset'=>workspace_read_color_preset($userId),'widthDefaultsKey'=>$widthKey];
+    }
     $patch = $body['changes'] ?? null;
     if ($patch !== null && !is_array($patch)) throw new ApiError('invalid_preferences', 'Некорректные изменения настроек.');
     $columns = array_column($grid['columns'], 'letter');
@@ -91,14 +124,24 @@ function workspace_preferences(array $grid, ?array $body = null): array {
     workspace_begin();
     try {
         $previous = workspace_read_preferences($grid, $userId);
+        $widthDefaults=workspace_read_width_defaults($grid);
         $version = $previous['version'];
         if ($patch === null && isset($body['expectedVersion']) && (int)$body['expectedVersion'] !== $version) {
             throw new ApiError('preference_conflict', 'Настройки изменены в другом окне. Повторите изменение.', 409);
         }
         $prior=workspace_prune_preference_columns($previous['settings']??$defaults,$columns);
+        if ($editsDefaults) $prior['widths']=array_intersect_key($widthDefaults['widths'],array_fill_keys($columns,true));
         $settings = $patch === null ? ($body['settings'] ?? null) : workspace_merge_preferences($prior,$patch);
         workspace_validate_preferences($settings, $columns);
         $submitted=$patch ?? $settings;
+        $columnKeys=array_fill_keys($columns,true);
+        if ($editsDefaults && array_key_exists('widths',$submitted)) {
+            $widthDefaults=['widths'=>($settings['widths']??[])+array_diff_key($widthDefaults['widths'],$columnKeys),
+                'version'=>$widthDefaults['version']+1];
+            wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',[$widthKey,wjson($widthDefaults)]);
+            workspace_event('grid.widths.changed',['widthDefaultsKey'=>$widthKey,'widthDefaults'=>$widthDefaults]);
+        }
+        $settings['widths']=($settings['widths']??[])+array_diff_key($previous['settings']['widths']??[],$columnKeys);
         $colorPreset=workspace_read_color_preset($userId);
         if (array_key_exists('preset',$submitted)) {
             $chosen=$submitted['preset'];
@@ -116,6 +159,7 @@ function workspace_preferences(array $grid, ?array $body = null): array {
             wquery('INSERT INTO user_view_preferences(user_id,table_id,settings,version) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE settings=VALUES(settings),version=VALUES(version)', [$userId, $grid['id'], wjson($settings), $result['version']]);
         }
         $result['colorPreset']=$colorPreset;
+        $result=workspace_effective_preferences($result,$widthDefaults,$editsDefaults)+['widthDefaultsKey'=>$widthKey];
         workspace_event('preferences.changed', ['userId'=>$userId, 'tableSlug'=>$grid['slug']] + $result);
         workspace_db()->commit();
         return $result;

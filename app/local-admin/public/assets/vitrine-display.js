@@ -6,6 +6,9 @@
   const legacyPresetKey='dltk-v3.vitrine.display.v2.'+userId+'.vyvoz';
   let serverPreferences={};try{serverPreferences=JSON.parse(document.getElementById('workspace-preferences')?.content||'{}');}catch{}
   let sharedPreset=serverPreferences.colorPreset;
+  let widthDefaults=serverPreferences.widthDefaults;
+  let widthsChanged=false;
+  const editsWidthDefaults=serverPreferences.editsWidthDefaults===true;
   let preferenceVersion=Number(serverPreferences.version||0),saveTimer=0,inFlight=false,pendingChanges={},lastLocalSnapshot=null,bufferedRemote=null;
   const csrf=document.querySelector('meta[name=csrf-token]')?.content||'';
   const copy=value=>JSON.parse(JSON.stringify(value));
@@ -29,6 +32,7 @@
       const response=await fetch(url('/api/workspace/preferences'),{method:'POST',credentials:'same-origin',keepalive,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({changes})});
       const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось сохранить личные настройки.');
       receiveColorPreset(result.colorPreset);
+      receiveWidthDefaults(result.widthDefaults);
       queueRemote(result);
     }catch(error){
       pendingChanges=mergeChanges(mergeChanges({},changes),pendingChanges);
@@ -48,11 +52,17 @@
       applyBuffered();
     }
   }
+  function receiveWidthDefaults(incoming) {
+    if(!incoming || Number(incoming.version)<=Number(widthDefaults?.version??-1))return;
+    widthDefaults=incoming;
+    widthsChanged=true;
+    applyBuffered();
+  }
   function hasOpenEditor() {
     return document.querySelector('.vitrine-editor:not(dialog):not([hidden]), dialog.vitrine-editor[open], .vitrine-time-inline:not([hidden])')!==null;
   }
   function applyBuffered(){
-    if(!bufferedRemote && (!sharedPreset || sharedPreset.value===state.preset))return;
+    if(!bufferedRemote && !widthsChanged && (!sharedPreset || sharedPreset.value===state.preset))return;
     if(inFlight||Object.keys(pendingChanges).length||document.querySelector('.vitrine-display-dialog[open]')||hasOpenEditor()||document.body.classList.contains('is-column-resizing'))return;
     const incoming=bufferedRemote;bufferedRemote=null;
     const preset=validPreset(sharedPreset?.value) ? sharedPreset.value : state.preset;
@@ -61,13 +71,19 @@
       preferenceVersion=Number(incoming.version);const saved=incoming.settings;
       next={order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset,lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
     }
-    if(JSON.stringify(state)!==JSON.stringify(next)){
+    if(widthsChanged && editsWidthDefaults)next.widths=validWidths(widthDefaults.widths);
+    const settingsChanged=JSON.stringify(state)!==JSON.stringify(next);
+    if(settingsChanged){
       state=next;applyWidths(state.widths);applyLines();applyLayoutWidth();applyOrder(state.order);applyVisibility(state.hidden);paintAll();
-    }
+    }else if(widthsChanged)applyWidths(state.widths);
+    widthsChanged=false;
     lastLocalSnapshot=copy(state);try{localStorage.setItem(key,JSON.stringify(state));}catch{}
   }
   window.addEventListener('workspace:event',event=>{
     const item=event.detail,data=item?.data;
+    if(item?.event==='grid.widths.changed' && data?.widthDefaultsKey===serverPreferences.widthDefaultsKey){
+      receiveWidthDefaults(data.widthDefaults);return;
+    }
     if(item?.event!=='preferences.changed'||!data||(data.userId&&String(data.userId)!==userId))return;
     receiveColorPreset(data.colorPreset);
     if(data.tableSlug===tableSlug)queueRemote(data);
@@ -190,8 +206,10 @@
   widthRules.textContent=columns.map(column=>'.vitrine .vitrine-table [data-column="'+column.letter+'"] { --column-width:var(--vitrine-width-'+column.letter+','+(table.querySelector('th[data-column="'+column.letter+'"]').classList.contains('vitrine-time-column')?'var(--time-column-width,64px)':'var(--vitrine-default-width-'+column.letter+',190px)')+'); width:var(--column-width); min-width:var(--column-width); max-width:var(--column-width); }').join('\n');
   document.head.append(widthRules);
   function applyWidths(widths) {
+    const defaults=editsWidthDefaults ? {} : validWidths(widthDefaults?.widths);
     for(const letter of originalOrder){
-      if(widths[letter]!==undefined)table.style.setProperty('--vitrine-width-'+letter,widths[letter]+'px');
+      const width=widths[letter]??defaults[letter];
+      if(width!==undefined)table.style.setProperty('--vitrine-width-'+letter,width+'px');
       else table.style.removeProperty('--vitrine-width-'+letter);
     }
   }
@@ -205,12 +223,14 @@
   function commitWidth(letter,width) {
     const next={...state,widths:{...state.widths}};
     if(width===null)delete next.widths[letter];else next.widths[letter]=width;
-    try{localStorage.setItem(key,JSON.stringify(next));state=next;applyWidths(state.widths);persist(state);}
-    catch{applyWidths(state.widths);window.PlanexNotifications.show({tone:'danger',message:'Не удалось сохранить ширину столбца в этом браузере.'});}
+    state=next;applyWidths(state.widths);persist(state);
+    try{localStorage.setItem(key,JSON.stringify(state));}catch{}
   }
   for(const header of table.querySelectorAll('thead th[data-column]')){
     const letter=header.dataset.column;
-    const grip=document.createElement('span');grip.className='display-column-resize';grip.tabIndex=-1;grip.setAttribute('role','separator');grip.setAttribute('aria-orientation','vertical');grip.setAttribute('aria-label','Ширина столбца '+letter);grip.setAttribute('aria-valuemin','44');grip.setAttribute('aria-valuemax','1200');grip.title='Потяните для изменения ширины. Двойной щелчок — стандартная ширина.';
+    const grip=document.createElement('span');grip.className='display-column-resize';grip.tabIndex=document.body.dataset.vitrineCatalog ? 0 : -1;grip.setAttribute('role','separator');grip.setAttribute('aria-orientation','vertical');grip.setAttribute('aria-label','Ширина столбца '+letter);grip.setAttribute('aria-valuemin','44');grip.setAttribute('aria-valuemax','1200');grip.title=editsWidthDefaults
+      ? 'Потяните для изменения ширины по умолчанию. Двойной щелчок — исходная ширина.'
+      : 'Потяните для изменения личной ширины. Двойной щелчок — ширина по умолчанию.';
     grip.addEventListener('focus',()=>grip.setAttribute('aria-valuenow',String(Math.round(header.getBoundingClientRect().width))));
     let drag=null,frame=0;
     function preview(){frame=0;if(drag){table.style.setProperty('--vitrine-width-'+letter,drag.width+'px');grip.setAttribute('aria-valuenow',String(drag.width));}}
@@ -218,8 +238,8 @@
       if(!drag)return;
       if(frame){cancelAnimationFrame(frame);frame=0;}
       if(!cancel)drag.width=Math.max(44,Math.min(1200,Math.round(drag.startWidth+event.clientX-drag.x)));
-      const width=drag.width;drag=null;document.body.classList.remove('is-column-resizing');
-      if(cancel)applyWidths(state.widths);else commitWidth(letter,width);
+      const {width,startWidth}=drag;drag=null;document.body.classList.remove('is-column-resizing');
+      if(cancel || width===Math.round(startWidth))applyWidths(state.widths);else commitWidth(letter,width);
     }
     grip.addEventListener('pointerdown',event=>{
       if(event.button!==0)return;event.preventDefault();event.stopPropagation();
@@ -342,8 +362,7 @@
   }
   function save() {
     if(draft.hidden.length>=originalOrder.length){window.PlanexNotifications.show({tone:'danger',message:'Оставьте видимым хотя бы один столбец.'});return;}
-    try { localStorage.setItem(key,JSON.stringify(draft)); }
-    catch { window.PlanexNotifications.show({tone:'danger',message:'Не удалось сохранить настройки в этом браузере.'});return; }
+    try { localStorage.setItem(key,JSON.stringify(draft)); } catch {}
     const orderChanged=state.order.join(',')!==draft.order.join(',');
     state={order:[...draft.order],hidden:[...draft.hidden],widths:{...draft.widths},preset:draft.preset,lines:draft.lines,layoutWidth:draft.layoutWidth};
     applyWidths(state.widths);
