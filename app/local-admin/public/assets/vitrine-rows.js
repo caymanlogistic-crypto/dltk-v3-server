@@ -273,8 +273,32 @@
     return refreshTask;
   }
   window.addEventListener('vitrine-editor-closed',()=>{if(manifestDeferred){manifestDeferred=false;refreshManifest().catch(report);}});
+  const fleetDocumentRequests=new WeakMap();
+  async function refreshFleetDocuments(rowNumber) {
+    const row=cache.get(Number(rowNumber));
+    const cell=row?.querySelector('td[data-fleet-documents-visible]');
+    if (!cell) return;
+    const request=Symbol();
+    fleetDocumentRequests.set(cell,request);
+    const response=await fetch(window.VitrineGridScope.url('/api/vitrine/rows',{ids:[Number(rowNumber)]}),{credentials:'same-origin',cache:'no-store'});
+    const data=await response.json();
+    if (!response.ok || typeof data.html!=='string') throw new Error(data.error?.message || 'Не удалось обновить ПД.');
+    const template=document.createElement('template');
+    template.innerHTML='<table><tbody>'+data.html+'</tbody></table>';
+    const fresh=template.content.querySelector('td[data-fleet-documents-visible]');
+    if (!fresh || cache.get(Number(rowNumber))!==row || fleetDocumentRequests.get(cell)!==request) return;
+    if (cell.textContent!==fresh.textContent) {
+      cell.textContent=fresh.textContent;
+      cell.title=fresh.title;
+      cell.classList.remove('just-saved');
+      void cell.offsetWidth;
+      cell.classList.add('just-saved');
+    }
+  }
+
   window.VitrineRows=Object.freeze({
     refreshManifest,
+    refreshFleetDocuments,
     exportRows,
     filterDirectory(query){
       requestedSearch=query;

@@ -18,7 +18,13 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $links=vitrine_catalog_links($t);
     $orderStatusEnabled=isset($links['B']) && workspace_client_order_status_can_view($t);
     $derivedByColumn=vitrine_derived_catalog_columns($links);
+    $documentsColumn=$links['O']['documentsTarget']??null;
+    $canViewDocuments=$documentsColumn!==null && workspace_fleet_trip_documents_can_view($t['id']);
     foreach($columns as &$column){
+        if ($column['letter']===$documentsColumn) {
+            $column['export']=false;
+            $column['fleetDocumentsVisible']=$canViewDocuments;
+        }
         if(isset($derivedByColumn[$column['letter']])){
             $link=$derivedByColumn[$column['letter']];
             $column['derivedSource']=$link['source'];
@@ -32,6 +38,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         : ($archive ? array_values(array_intersect($requestedRows,$rowIds))
             : array_values(array_unique(array_filter($requestedRows,fn($x)=>is_int($x)&&$x>1))));
     $records=$wanted?wquery('SELECT * FROM records WHERE table_id=? AND archived=? AND row_num IN ('.implode(',',array_fill(0,count($wanted),'?')).') ORDER BY row_num DESC',[$t['id'],(int)$archive,...$wanted])->fetchAll():[];
+    $documentSnapshots=$canViewDocuments ? workspace_fleet_trip_documents_values(array_column($records,'id')) : [];
     $canManageRows=workspace_can('table',(string)$t['id'],'edit',$t['id']);
     $catalog=workspace_status_catalog($t);$byId=[];$byName=[];foreach($catalog['statuses'] as &$status){$status['id']=(int)$status['id'];$status['revision']=(int)$status['revision'];$byId[$status['id']]=$status;$byName[vitrine_status_key($status['name'])]=$status;}unset($status);
     [$boundChoices,$boundCatalogs,$entriesByName]=vitrine_catalog_options($t,$links);
@@ -71,8 +78,15 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         foreach($values as &$v)$v=workspace_string($v);unset($v);foreach($baseline as &$v)$v=workspace_string($v);unset($v);
         $rowEdits=[];foreach($edits[(int)$r['id']]??[] as $key=>$e){$values[$key]=$e['active']?$e['value']:($baseline[$key]??'');$rowEdits[$key]=['revision'=>(int)$e['revision'],'conflict'=>false,'value'=>$values[$key],'active'=>(bool)$e['active']];}
         foreach($refs[(int)$r['id']]??[] as $key=>$ref) {
-            if (isset($links['O']) && in_array($key,['O','P',$links['O']['phoneTarget']],true)) continue;
+            if (isset($links['O']) && in_array($key,['O','P',$links['O']['phoneTarget'],$documentsColumn],true)) continue;
             $values[$key]=$ref['name'];
+        }
+        if ($documentsColumn!==null) {
+            if (!$canViewDocuments) {
+                unset($values[$documentsColumn],$baseline[$documentsColumn],$rowEdits[$documentsColumn]);
+            } elseif (array_key_exists((int)$r['id'],$documentSnapshots)) {
+                $values[$documentsColumn]=$documentSnapshots[(int)$r['id']];
+            }
         }
         foreach (array_keys($slots) as $key) {
             if (isset($values[$key])) $values[$key] = vitrine_slot_input($values[$key]) ?? $values[$key];
@@ -203,6 +217,7 @@ function vitrine_store(array $body): array {
             }
         }
         $dependentPatch=$phonePatch=null;
+        $documentsChanged=false;
         if(isset($link['target'])&&($reference||$value!==$before||(in_array($key,['K','O'],true)&&$body['reset']))){
             if ($key==='K') {
                 $previous=workspace_string($values['L']??'');
@@ -217,6 +232,8 @@ function vitrine_store(array $body): array {
                 $phones=$body['reset'] ? vitrine_catalog_original_value($r,$phoneColumn) : ($assigned['phones']??'');
                 $phonePatch=vitrine_update_catalog_value($t,$r,$values,$phoneColumn,$phones,
                     workspace_string($values[$phoneColumn]??''),$u,$action,$request,$operation,false);
+                $documentsChanged=workspace_fleet_trip_documents_save($t,$r,(int)($assigned['id']??0),
+                    $body['reset'],$action,$request,$operation);
             } else {
                 $entries=vitrine_catalog_values($link);
                 $previousEntry=vitrine_find_catalog_entry($binding,$before,$link['kind']==='clients');
@@ -232,6 +249,7 @@ function vitrine_store(array $body): array {
         }
         $derived=$dependentPatch&&workspace_can('field',$link['target'],'view',$t['id'])?['dependentCell'=>$dependentPatch]:[];
         if ($phonePatch && workspace_can('field',$phonePatch['column'],'view',$t['id'])) $derived['dependentCells']=[$phonePatch];
+        if ($documentsChanged) $derived['fleetDocumentsChanged']=true;
         if($before===$value && !$orderChanged && !$dropoffChanged){
             $result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request]+$derived+$orderResult+$catalogStyle+$unloadResult+$dropoffResult;
             if($link&&$reference){

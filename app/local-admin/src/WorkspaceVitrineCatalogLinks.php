@@ -15,7 +15,8 @@ function vitrine_catalog_links(array $table): array {
         'K'=>['kind'=>'unload-points','target'=>'L','source'=>'Контакт из справочника точек выгрузки','empty'=>'У точки не указан контакт','invalid'=>'Выберите адрес выгрузки выбранного клиента.'],
         'M'=>['kind'=>'dropoff-points','invalid'=>'Выберите точку сдачи из справочника.'],
         'O'=>['kind'=>'fleet-vehicles','target'=>'P','source'=>'Из справочника автотранспорта','empty'=>'За машиной не закреплён водитель',
-            'phoneTarget'=>'Q','phoneEmpty'=>'У водителя не указан телефон','invalid'=>'Выберите машину из справочника автотранспорта.'],
+            'phoneTarget'=>'Q','phoneEmpty'=>'У водителя не указан телефон',
+            'documentsTarget'=>'R','documentsEmpty'=>'У водителя нет данных для ПД','invalid'=>'Выберите машину из справочника автотранспорта.'],
         'S'=>['kind'=>'carriers','target'=>'AM','meta'=>'catalog_logists_','source'=>'Из справочника перевозчиков','empty'=>'У перевозчика не указан логист','invalid'=>'Выберите перевозчика из справочника.'],
     ];
     $links=[];
@@ -95,8 +96,8 @@ function vitrine_derived_catalog_columns(array $links): array {
     $columns=array_column($links,null,'target');
     unset($columns[0],$columns[1],$columns[2],$columns[3]);
     foreach ($links as $link) {
-        if (isset($link['phoneTarget'])) {
-            $columns[$link['phoneTarget']]=['source'=>$link['source'],'empty'=>$link['phoneEmpty']];
+        foreach (['phone','documents'] as $field) {
+            if (isset($link[$field.'Target'])) $columns[$link[$field.'Target']]=['source'=>$link['source'],'empty'=>$link[$field.'Empty']];
         }
     }
     return $columns;

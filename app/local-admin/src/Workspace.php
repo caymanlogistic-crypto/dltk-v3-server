@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__.'/WorkspaceCatalogs.php';
 require_once __DIR__.'/WorkspaceFleet.php';
 require_once __DIR__.'/WorkspaceFleetDetails.php';
+require_once __DIR__.'/WorkspaceFleetTripDocuments.php';
 require_once __DIR__.'/WorkspaceClientCatalogGrid.php';
 require_once __DIR__.'/WorkspaceEmployees.php';
 require_once __DIR__.'/WorkspaceEmployeeGrid.php';
@@ -155,8 +156,14 @@ function workspace_api(string $path): never {
         if(!empty($_GET['column'])){$where[]='h.field_key=?';$args[]=(string)$_GET['column'];}
         if(!empty($_GET['category'])){$where[]='h.category=?';$args[]=(string)$_GET['category'];}
         foreach(['from'=>'>=','to'=>'<='] as $key=>$op)if(!empty($_GET[$key])){ $date=(string)$_GET[$key];if(!preg_match('/^\d{4}-\d{2}-\d{2}$/D',$date))throw new ApiError('invalid_date','Некорректная дата фильтра.');$where[]="h.created_at $op ?";$args[]=$date.($key==='to'?' 23:59:59.999999':' 00:00:00'); }
-        $limit=max(1,min(100,(int)($_GET['limit']??50)));$rows=wquery('SELECT h.*,t.title AS table_title FROM change_history h LEFT JOIN table_definitions t ON t.id=h.table_id WHERE '.implode(' AND ',$where).' ORDER BY h.id DESC LIMIT '.($limit+1),$args)->fetchAll();$more=count($rows)>$limit;$rows=array_slice($rows,0,$limit);$events=[];
-        foreach($rows as $r){if($r['table_id']&&!workspace_can('table',(string)$r['table_id'],'view',(int)$r['table_id']))continue;$events[]=['id'=>(int)$r['id'],'createdAt'=>utc_iso($r['created_at']),'actorName'=>$r['actor_name'],'actorId'=>$r['actor_id'],'tableTitle'=>$r['table_title']??'Система / справочники','rowNumber'=>$r['row_num'],'recordId'=>$r['record_id'],'columnLabel'=>$r['column_label'],'column'=>$r['field_key'],'beforeValue'=>json_decode($r['before_value']??'null',true),'afterValue'=>json_decode($r['after_value']??'null',true),'action'=>$r['action'],'category'=>$r['category'],'operationId'=>$r['operation_id']];}
+        $limit=max(1,min(100,(int)($_GET['limit']??50)));$rows=wquery('SELECT h.*,t.title AS table_title,t.slug AS table_slug FROM change_history h LEFT JOIN table_definitions t ON t.id=h.table_id WHERE '.implode(' AND ',$where).' ORDER BY h.id DESC LIMIT '.($limit+1),$args)->fetchAll();$more=count($rows)>$limit;$rows=array_slice($rows,0,$limit);$events=[];
+        $fleetDocuments=workspace_fleet_catalog('fleet-vehicles')>0;
+        foreach($rows as $r){if($r['table_id']&&!workspace_can('table',(string)$r['table_id'],'view',(int)$r['table_id']))continue;
+            if ($fleetDocuments && $r['table_slug']==='vyvoz' && $r['field_key']==='R'
+                && !workspace_fleet_trip_documents_can_view((int)$r['table_id'])) {
+                $r['before_value']=$r['after_value']=null;
+            }
+            $events[]=['id'=>(int)$r['id'],'createdAt'=>utc_iso($r['created_at']),'actorName'=>$r['actor_name'],'actorId'=>$r['actor_id'],'tableTitle'=>$r['table_title']??'Система / справочники','rowNumber'=>$r['row_num'],'recordId'=>$r['record_id'],'columnLabel'=>$r['column_label'],'column'=>$r['field_key'],'beforeValue'=>json_decode($r['before_value']??'null',true),'afterValue'=>json_decode($r['after_value']??'null',true),'action'=>$r['action'],'category'=>$r['category'],'operationId'=>$r['operation_id']];}
         json_response(['events'=>$events,'nextCursor'=>$more&&$rows?(int)end($rows)['id']:null]);
     }
     if($path==='/api/workspace/users')workspace_employees_endpoint($method);
