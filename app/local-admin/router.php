@@ -21,6 +21,7 @@ try {
     }
     if($path==='/workspace'){$currentUser=workspace_current_user();require __DIR__.'/views/workspace.php';return;}
     if($path==='/'||$path==='/index.php'){header('Location: '.app_url_path('/vitrine?table=vyvoz'),true,302);return;}
+    if($path==='/api/vitrine/directory-excel') { require __DIR__.'/src/Vitrine.php'; workspace_directory_excel_endpoint(); }
     if(in_array($path,['/api/vitrine/rows','/api/vitrine/paste-check','/api/vitrine/statuses','/api/vitrine/cell','/vitrine','/vitrine/'],true)){
         require __DIR__.'/src/Vitrine.php';
         match($path){'/api/vitrine/rows'=>vitrine_rows_endpoint(),'/api/vitrine/paste-check'=>vitrine_paste_check(),'/api/vitrine/statuses'=>vitrine_statuses_endpoint(),'/api/vitrine/cell'=>vitrine_save_cell(),default=>render_vitrine()};return;

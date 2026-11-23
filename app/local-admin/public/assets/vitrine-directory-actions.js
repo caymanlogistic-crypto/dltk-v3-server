@@ -3,8 +3,14 @@
   const actions = document.querySelector('[data-directory-row-actions]');
   if (!actions) return;
   const remove = actions.querySelector('[data-directory-delete]');
+  const archiveToggle = actions.querySelector('[data-directory-archive-toggle]');
+  const related = actions.querySelector('[data-directory-related]');
   const archive = actions.hasAttribute('data-archive');
+  const archiveActionFor = row => archive || row.hasAttribute('data-directory-archived') ? 'restore' : 'archive';
   const deleteDialog = document.querySelector('[data-directory-delete-dialog]');
+  const reasonField = deleteDialog?.querySelector('[data-directory-reason-field]');
+  const reason = reasonField?.querySelector('textarea');
+  const confirm = deleteDialog?.querySelector('[type="submit"]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const endpoint = window.VitrineGridScope.url('/api/vitrine/cell');
   const table = document.querySelector('.vitrine-table');
@@ -31,6 +37,15 @@
     window.VitrineGrid.select(cell);
     trigger = button;
     returnFocus = cell;
+    if (archiveToggle) {
+      archiveToggle.textContent = archiveActionFor(cell.parentElement)==='restore' ? 'Восстановить строку' : 'Переместить в архив';
+    }
+    if (related) {
+      const href = cell.parentElement.dataset.relatedUrl;
+      related.hidden = !href;
+      if (href) related.setAttribute('href',href);
+      else related.removeAttribute('href');
+    }
     button.setAttribute('aria-expanded','true');
     actions.hidden = false;
     const bounds = button.getBoundingClientRect();
@@ -38,7 +53,7 @@
     const y = bounds.bottom+actions.offsetHeight+8 <= innerHeight ? bounds.bottom : bounds.top-actions.offsetHeight;
     actions.style.left = Math.max(8,x)+'px';
     actions.style.top = Math.max(8,y)+'px';
-    remove.focus({preventScroll:true});
+    actions.querySelector('[role="menuitem"]:not([hidden])')?.focus({preventScroll:true});
   }
 
   table.addEventListener('click', event => {
@@ -58,6 +73,13 @@
     openMenu(button,cell);
   });
   actions.addEventListener('keydown',event=>{
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      const items = [...actions.querySelectorAll('[role="menuitem"]:not([hidden])')];
+      const offset = event.key === 'ArrowDown' ? 1 : -1;
+      items[(items.indexOf(document.activeElement)+offset+items.length)%items.length]?.focus();
+      return;
+    }
     if (event.key !== 'Escape' && event.key !== 'Tab') return;
     event.preventDefault();
     event.stopPropagation();
@@ -106,7 +128,7 @@
       submit.disabled = cancel.disabled = true;
       try { await submitAction(new FormData(form)); }
       catch (error) {
-        if (error.code === 'entry_in_use') dialog.close();
+        if (error.code === 'entry_in_use' && (!reason || reason.disabled)) dialog.close();
         onError(error);
       } finally { submit.disabled = cancel.disabled = false; }
     });
@@ -114,7 +136,8 @@
 
   const draftBody = document.getElementById('vitrine-draft-rows');
   const fields = JSON.parse(draftBody?.dataset.draftFields || '{}');
-  const draftKey = 'dltk-v3.directory-drafts.' + document.body.dataset.workspaceUser + '.' + document.body.dataset.workspaceTable;
+  const draftKey = ['dltk-v3.directory-drafts', document.body.dataset.workspaceUser,
+    document.body.dataset.workspaceTable, draftBody?.dataset.draftVersion].filter(Boolean).join('.');
   const legacyKey = draftKey.replace('directory-drafts','flight-status-drafts');
   const isFlight = document.body.dataset.vitrineCatalog === 'flight-statuses';
   let stored = {};
@@ -156,6 +179,7 @@
       const column = cell.dataset.column;
       const value = values[column];
       const field = fields[column];
+      if (!field) continue;
       const display = field.type === 'password' && value ? 'Введён' : value;
       cell.textContent = display;
       cell.toggleAttribute('data-draft-allow-empty',Boolean(field.allowEmpty));
@@ -180,13 +204,17 @@
       if (draft.saving) throw new Error('Дождитесь сохранения строки.');
       const column = cell.dataset.column;
       const field = fields[column];
+      if (!field) throw new Error('Сначала добавьте запись в справочник.');
       if (field.type !== 'password') value = value.trim();
       else if (value && (Array.from(value).length < 8 || new TextEncoder().encode(value).length > 72)) {
         throw new Error('Пароль должен содержать от 8 символов и занимать до 72 байт.');
       }
       if (value && field.type === 'choice' && !choice(column,value)) throw new Error('Выберите значение из списка.');
-      if (field.type === 'text' && (Array.from(value).length > 160 || /[\r\n]/.test(value))) {
-        throw new Error('Введите текст одной строкой, до 160 символов.');
+      const maxLength = field.maxLength ?? 160;
+      if (field.type === 'text' && (Array.from(value).length > maxLength || (field.singleLine !== false && /[\r\n]/.test(value)))) {
+        throw new Error(field.singleLine === false
+          ? `Введите не более ${maxLength} символов.`
+          : `Введите текст одной строкой, до ${maxLength} символов.`);
       }
       draft.values[column] = value;
       if (field.allowEmpty) draft.confirmed.add(column);
@@ -213,27 +241,46 @@
     },
   });
 
-  remove.addEventListener('click', async () => {
+  async function confirmRow(forcedAction) {
     const cell = trigger?.closest('tr').querySelector('td[data-edit-cell]');
     if (!cell || pending) return;
-    const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base};
-    const label = cell.closest('tr').querySelector('[data-column="A"]').textContent;
+    const tr = cell.closest('tr');
+    const action = forcedAction || archiveActionFor(tr);
+    const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base,rowToken:tr.dataset.rowToken};
+    const label = tr.dataset.rowToken ? 'Строка '+row.row : tr.dataset.directoryActionLabel || tr.querySelector('[data-column="A"]').textContent ||
+      tr.querySelector('[data-column="B"]')?.textContent || '';
     closeMenu(true);
     pending = true;
     try {
-      const result = archive ? {name:label} : await request('check_delete',row);
+      const result = action === 'delete' ? await request('check_delete',row) : {name:label};
       if (window.VitrineGrid.editing()) return;
-      target = row;
-      deleteDialog.querySelector('[data-directory-delete-text]').textContent = (archive ? 'Восстановить' : 'Удалить')+' «'+result.name+'»?';
+      target = {action,row};
+      const heading = {restore:'Восстановить запись',archive:'Архивировать запись',delete:'Удалить запись'}[action];
+      deleteDialog.querySelector('#directory-delete-title').textContent = heading;
+      deleteDialog.querySelector('[type="submit"]').textContent =
+        {restore:'Восстановить',archive:'В архив',delete:'Удалить'}[action];
+      deleteDialog.querySelector('[data-directory-delete-text]').textContent =
+        {restore:'Восстановить',archive:'Перенести в архив',delete:'Удалить'}[action]+' «'+result.name+'»?';
+      if (reason) {
+        reasonField.hidden = reason.disabled = action !== 'delete';
+        reason.required = action === 'delete';
+        reason.value = '';
+        confirm.disabled = !reason.disabled;
+      }
       deleteDialog.showModal();
+      if (reason && !reason.disabled) reason.focus();
     } catch (error) {
       onError(error);
     } finally {
       pending = false;
     }
-  });
-  bindForm(deleteDialog, async () => {
-    await request(archive ? 'restore' : 'delete',target);
-    refresh(archive ? 'Запись восстановлена.' : 'Запись удалена.');
+  }
+  archiveToggle?.addEventListener('click',()=>confirmRow());
+  remove?.addEventListener('click',()=>confirmRow('delete'));
+  reason?.addEventListener('input',()=>{confirm.disabled=!reason.value.trim();});
+  if (deleteDialog) bindForm(deleteDialog, async fields => {
+    const payload=reason && !reason.disabled ? {...target.row,reason:fields.get('reason').trim()} : target.row;
+    await request(target.action,payload);
+    refresh({restore:'Запись восстановлена.',archive:'Запись перенесена в архив.',delete:'Запись удалена.'}[target.action]);
   });
 })();

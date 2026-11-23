@@ -9,6 +9,23 @@ function vitrine_directory_requested(): ?string {
     return $_GET['catalog'];
 }
 
+function workspace_directory_row_order_key(int|string $catalogId): string {
+    return 'directory_excel_order_'.($catalogId==='client-order-statuses' || !$catalogId ? 'client_order_statuses' : $catalogId);
+}
+
+function workspace_directory_row_order(int|string $catalogId): array {
+    return workspace_client_catalog_metadata(workspace_directory_row_order_key($catalogId));
+}
+
+function workspace_directory_order_entries(array $entries,int|string $catalogId): array {
+    $order=workspace_directory_row_order($catalogId);
+    if (!$order) return $entries;
+    $position=array_flip($order);
+    uasort($entries,static fn(array $left,array $right): int =>
+        ($position[$left['id']]??PHP_INT_MAX)<=>($position[$right['id']]??PHP_INT_MAX));
+    return $entries;
+}
+
 function workspace_directory_grid_model(string $directory): array {
     if ($directory === 'entries') return workspace_catalog_directory_model();
     if ($directory === 'clients') return workspace_client_grid_model();
@@ -30,7 +47,7 @@ function workspace_directory_grid_model(string $directory): array {
     foreach ($labels as $letter => $label) $columns[] = ['letter'=>$letter,'label'=>$label];
     return [
         'id'=>0, 'directoryKey'=>$directory, 'slug'=>'catalog-'.$directory,
-        'title'=>$employees ? 'Сотрудники' : 'Роли', 'columns'=>$columns,
+        'title'=>$employees ? 'Учётные записи' : 'Роли', 'columns'=>$columns,
     ];
 }
 
@@ -54,7 +71,8 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
             [$table,$catalog] = workspace_flight_status_grid();
             $canEditStatuses = $catalog['id'] && workspace_can('catalog',(string)$catalog['id'],'edit',$table['id']);
             $flightEntries = $archive && $catalog['id']
-                ? wquery('SELECT id,name,color,revision FROM catalog_entries WHERE catalog_id=? AND active=FALSE ORDER BY id',[$catalog['id']])->fetchAll()
+                ? wquery("SELECT id,name,color,revision FROM catalog_entries e WHERE catalog_id=? AND active=FALSE
+                    AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('catalog_deleted_client_',e.id)) ORDER BY id",[$catalog['id']])->fetchAll()
                 : ($archive ? [] : $catalog['statuses']);
             foreach ($flightEntries as $status) {
                 $status['id'] = (int)$status['id'];
@@ -64,11 +82,14 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         } else {
             $canEditStatuses = workspace_can('system','client-order-statuses','edit');
             foreach (workspace_client_order_statuses() as $code=>$status) {
-                if ($status['active'] === $archive) continue;
+                if (!empty($status['deleted']) || $status['active'] === $archive) continue;
                 $entries[] = ['id'=>$status['id'],'name'=>$status['label'],'color'=>$status['color'],
                     'revision'=>$status['revision'],'baseHash'=>hash('sha256','client-order-status:'.$code)];
             }
         }
+    }
+    if (!$archive) {
+        $entries=workspace_directory_order_entries($entries,$flightStatuses ? (int)$catalog['id'] : $directory);
     }
     $scope = $employees ? workspace_employee_editor_scope() : null;
     $roleChoices = $scope === null ? [] : array_column(workspace_employee_role_options($scope),'name');
@@ -133,6 +154,8 @@ function workspace_directory_draft_fields(string $directory, array $roles = [], 
         'clients'=>['A'=>$name,'B'=>$optionalAssignment],
         'entries'=>match (true) {
             workspace_catalog_has_palette($catalogKind)=>['A'=>$name,'B'=>$color],
+            $catalogKind==='dropoff-points'=>['A'=>$name,'B'=>['type'=>'text','singleLine'=>false,'maxLength'=>1500],
+                'C'=>['type'=>'text','singleLine'=>false,'maxLength'=>1500],'D'=>['type'=>'text','singleLine'=>false,'maxLength'=>6000]],
             in_array($catalogKind,['clients','carriers'],true)=>['A'=>$name,'B'=>$optionalAssignment],
             default=>['A'=>$name],
         },

@@ -6,6 +6,7 @@ require_once __DIR__.'/WorkspaceEmployees.php';
 require_once __DIR__.'/WorkspaceEmployeeGrid.php';
 require_once __DIR__.'/WorkspaceDirectoryGrid.php';
 require_once __DIR__.'/WorkspaceDirectoryActions.php';
+require_once __DIR__.'/WorkspaceTableRowActions.php';
 require_once __DIR__.'/WorkspaceRoleDirectory.php';
 require_once __DIR__.'/WorkspaceCatalogDirectory.php';
 require_once __DIR__.'/WorkspaceClientOrderStatuses.php';
@@ -87,8 +88,11 @@ function workspace_table(?string $slug=null): array {
     $t=wquery('SELECT * FROM table_definitions WHERE slug=?',[$slug])->fetch();if(!$t)throw new ApiError('table_not_found','Таблица не найдена.',404);
     $t['id']=(int)$t['id'];workspace_require('table',(string)$t['id'],'view',$t['id']);$t['columns']=json_decode($t['columns_json'],true);return $t;
 }
-function workspace_manifest(array $t): array {
-    return array_map('intval',wquery("SELECT row_num FROM records WHERE table_id=? AND archived=FALSE AND (metadata_zlib IS NULL OR REGEXP_LIKE(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(values_json,?)),''),'[^[:space:] ]')) ORDER BY row_num DESC LIMIT 6000",[$t['id'],'$.'.$t['carrier_column']])->fetchAll(PDO::FETCH_COLUMN));
+function workspace_manifest(array $t, bool $archive=false): array {
+    $filter=$archive ? "AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('directory_deleted_record_',r.id))"
+        : "AND (metadata_zlib IS NULL OR REGEXP_LIKE(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(values_json,?)),''),'[^[:space:] ]'))";
+    $args=$archive ? [$t['id'],1] : [$t['id'],0,'$.'.$t['carrier_column']];
+    return array_map('intval',wquery("SELECT row_num FROM records r WHERE table_id=? AND archived=? $filter ORDER BY row_num DESC LIMIT 6000",$args)->fetchAll(PDO::FETCH_COLUMN));
 }
 function workspace_begin(): void {
     workspace_db()->beginTransaction();
@@ -108,7 +112,7 @@ function workspace_api(string $path): never {
     if($path==='/api/workspace/bootstrap'&&$method==='GET')json_response(['user'=>workspace_current_user(),'tables'=>workspace_tables(),'catalogs'=>workspace_catalogs(),'roles'=>wquery('SELECT id,name FROM roles ORDER BY id')->fetchAll(),'policyMode'=>'open','googleSyncEnabled'=>false]);
     if($path==='/api/workspace/manifest'&&$method==='GET'){
         $directory=vitrine_directory_requested();
-        json_response(['rowIds'=>$directory ? workspace_directory_grid_data($directory,[])['rowIds'] : workspace_manifest(workspace_table())]);
+        json_response(['rowIds'=>$directory ? workspace_directory_grid_data($directory,[])['rowIds'] : workspace_manifest(workspace_table(),($_GET['archive']??null)==='1')]);
     }
     if($path==='/api/workspace/preferences'){
         $directory=vitrine_directory_requested();

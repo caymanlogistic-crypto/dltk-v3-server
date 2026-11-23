@@ -19,7 +19,7 @@
  toolbar.append(tab.wrap,row.wrap,person.wrap,button('Показать изменения',()=>load(),true));root.append(toolbar,el('p','ws-muted','Выберите таблицу и номер строки, чтобы увидеть всю её историю. Пустой номер — общий журнал.'),holder);liveRefresh=()=>load();await load();}
  function time(value){if(!value)return'—';const d=new Date(String(value).replace(' ','T')+(/Z$|[+]\d\d:\d\d$/.test(value)?'':'Z'));return Number.isNaN(+d)?value:d.toLocaleString('ru-RU',{timeZone:'Europe/Moscow'});}
  function format(value){return value===null?'∅':typeof value==='object'?JSON.stringify(value):String(value??'');}
- function action(v){return({edit:'Изменение',save:'Изменение',create:'Создание',reset:'Исходное',archive:'Архивация',restore:'Восстановление',paste:'Вставка',undo:'Отмена',import:'Импорт'})[v]||v;}
+ function action(v){return({edit:'Изменение',save:'Изменение',create:'Создание',reset:'Исходное',archive:'Архивация',restore:'Восстановление',delete:'Удаление',paste:'Вставка',undo:'Отмена',import:'Импорт'})[v]||v;}
  function check(label,checked){const wrap=el('label','checkbox-item'),field=el('input');field.type='checkbox';field.checked=checked;wrap.append(field,el('span','',label));return{wrap,field};}
  const renderCatalogs = window.WorkspaceCatalogs.create({root,api,el,button,input,check,table,modal});
  async function catalogs() { liveRefresh = catalogs; await renderCatalogs(); }

@@ -12,7 +12,9 @@ function workspace_employee_roles(bool $archive = false): array {
     $knownNames = workspace_employee_role_names();
     $archived = workspace_client_catalog_metadata('directory_archived_roles');
     $roles = [];
-    foreach (wquery('SELECT id,code,name FROM roles ORDER BY id')->fetchAll() as $role) {
+    foreach (wquery("SELECT id,code,name FROM roles r
+        WHERE NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('directory_deleted_role_',r.id))
+        ORDER BY id")->fetchAll() as $role) {
         $id = (int)$role['id'];
         $code = $role['code'];
         if (!isset($knownNames[$code]) && !str_starts_with($code,'directory_')) continue;
@@ -28,7 +30,7 @@ function workspace_employee_records(?int $id = null, ?bool $active = null): arra
             FROM users u
             LEFT JOIN workspace_meta m ON m.`key`=CONCAT('employee_email_',u.id)
             LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id";
-    $where = [];
+    $where = ["NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('directory_deleted_user_',u.id))"];
     $args = [];
     if ($id !== null) { $where[] = 'u.id=?'; $args[] = $id; }
     if ($active !== null) { $where[] = 'u.active=?'; $args[] = (int)$active; }
@@ -116,7 +118,19 @@ function workspace_employee_profile_value(string $field, mixed $value): string {
     return $value;
 }
 
-function workspace_employee_save(array $input, bool $cellEdit = false): array {
+function workspace_employee_save(array $input, bool $cellEdit = false, ?string $deleteReason=null): array {
+    workspace_begin();
+    try {
+        $result=workspace_employee_write($input,$cellEdit,$deleteReason);
+        workspace_db()->commit();
+        return $result;
+    } catch (Throwable $error) {
+        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
+        throw $error;
+    }
+}
+
+function workspace_employee_write(array $input, bool $cellEdit = false, ?string $deleteReason=null): array {
     $profile = [];
     foreach (['name','login','email'] as $field) {
         if (isset($input[$field])) $profile[$field] = workspace_employee_profile_value($field,$input[$field]);
@@ -143,7 +157,6 @@ function workspace_employee_save(array $input, bool $cellEdit = false): array {
     if (isset($input['active']) && !is_bool($input['active'])) throw new ApiError('invalid_user','Некорректное состояние учётной записи.');
     $passwordHash = $password === '' ? null : password_hash($password,PASSWORD_DEFAULT);
 
-    workspace_begin();
     try {
         $scope = workspace_employee_editor_scope();
         if ($scope === null) throw new ApiError('forbidden','Редактирование доступно администратору.',403);
@@ -164,7 +177,7 @@ function workspace_employee_save(array $input, bool $cellEdit = false): array {
             throw new ApiError('invalid_role','Эту роль нельзя назначить.',403);
         }
         $active = $input['active'] ?? ($old['active'] ?? true);
-        if ($old && $old['active'] && !$active) workspace_assert_employee_unused($old);
+        if ($old && ($deleteReason!==null || $old['active'] && !$active)) workspace_assert_employee_unused($old);
         if ($id === workspace_current_user()['id'] && (!$active || $roleChanged)) {
             throw new ApiError('own_account','Свою роль и активность изменить нельзя.');
         }
@@ -191,14 +204,17 @@ function workspace_employee_save(array $input, bool $cellEdit = false): array {
             'active'=>$employee['active'], 'roleIds'=>array_column($employee['roles'],'id'),
         ];
         $after = workspace_employee_records($id)[0];
+        $deletion=[];
+        if ($deleteReason!==null) {
+            workspace_mark_row_deleted('directory_deleted_user_',$id);
+            $deletion=['deleted'=>true,'reason'=>$deleteReason];
+        }
         workspace_audit(['category'=>'management','label'=>'Сотрудник','before'=>$old ? $audit($old) : null,
-            'after'=>$audit($after)+['emailChanged'=>$email !== ($old['email'] ?? ''), 'passwordChanged'=>$passwordHash !== null],
-            'action'=>$old ? 'edit' : 'create']);
+            'after'=>$audit($after)+['emailChanged'=>$email !== ($old['email'] ?? ''), 'passwordChanged'=>$passwordHash !== null]+$deletion,
+            'action'=>$deleteReason!==null ? 'delete' : ($old ? 'edit' : 'create')]);
         workspace_event('users.changed',['id'=>$id]);
-        workspace_db()->commit();
         return $cellEdit ? $after : workspace_employee_form_data($after);
     } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
         if ($error instanceof PDOException && $error->getCode()==='23000') {
             throw new ApiError('duplicate_login','Этот логин уже используется.',409);
         }

@@ -3,7 +3,12 @@
   const {tableSlug,url}=window.VitrineGridScope;
   const userId=document.body.dataset.workspaceUser||'anonymous';
   const key='dltk-v3.vitrine.display.v2.'+userId+'.'+tableSlug;
+  const legacyPresetKey='dltk-v3.vitrine.display.v2.'+userId+'.vyvoz';
   let serverPreferences={};try{serverPreferences=JSON.parse(document.getElementById('workspace-preferences')?.content||'{}');}catch{}
+  let sharedPreset=serverPreferences.colorPreset;
+  let widthDefaults=serverPreferences.widthDefaults;
+  let widthsChanged=false;
+  const editsWidthDefaults=serverPreferences.editsWidthDefaults===true;
   let preferenceVersion=Number(serverPreferences.version||0),saveTimer=0,inFlight=false,pendingChanges={},lastLocalSnapshot=null,bufferedRemote=null;
   const csrf=document.querySelector('meta[name=csrf-token]')?.content||'';
   const copy=value=>JSON.parse(JSON.stringify(value));
@@ -11,9 +16,10 @@
     for(const [key,value] of Object.entries(changes))if(key==='widths')target.widths={...(target.widths||{}),...value};else target[key]=value;
     return target;
   }
-  function persist(settings){
+  function persist(settings,savePreset=false){
     const before=lastLocalSnapshot||settings,changes={};
     for(const key of ['order','hidden','preset','lines','layoutWidth'])if(JSON.stringify(before[key])!==JSON.stringify(settings[key]))changes[key]=copy(settings[key]);
+    if(savePreset)changes.preset=settings.preset;
     for(const letter of new Set([...Object.keys(before.widths||{}),...Object.keys(settings.widths||{})]))if(before.widths?.[letter]!==settings.widths?.[letter]){changes.widths||={};changes.widths[letter]=settings.widths?.[letter]??null;}
     lastLocalSnapshot=copy(settings);mergeChanges(pendingChanges,changes);
     clearTimeout(saveTimer);saveTimer=setTimeout(()=>flushPreferences(),250);
@@ -25,6 +31,8 @@
     try{
       const response=await fetch(url('/api/workspace/preferences'),{method:'POST',credentials:'same-origin',keepalive,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({changes})});
       const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось сохранить личные настройки.');
+      receiveColorPreset(result.colorPreset);
+      receiveWidthDefaults(result.widthDefaults);
       queueRemote(result);
     }catch(error){
       pendingChanges=mergeChanges(mergeChanges({},changes),pendingChanges);
@@ -38,20 +46,47 @@
     if(!bufferedRemote||Number(result.version)>=Number(bufferedRemote.version))bufferedRemote=result;
     applyBuffered();
   }
-  function applyBuffered(){
-    if(!bufferedRemote||inFlight||Object.keys(pendingChanges).length||document.querySelector('.vitrine-display-dialog[open],.vitrine-editor,.vitrine-time-inline')||document.body.classList.contains('is-column-resizing'))return;
-    const incoming=bufferedRemote;bufferedRemote=null;
-    if(Number(incoming.version)<preferenceVersion)return;
-    preferenceVersion=Number(incoming.version);const saved=incoming.settings;
-    const next={order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:presets.some(p=>p.id===saved.preset)?saved.preset:'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
-    if(JSON.stringify(state)!==JSON.stringify(next)){
-      state=next;applyWidths(state.widths);applyLines();applyLayoutWidth();applyOrder(state.order);applyVisibility(state.hidden);paintAll();
+  function receiveColorPreset(incoming) {
+    if (incoming && validPreset(incoming.value) && Number(incoming.version)>=Number(sharedPreset?.version??-1)) {
+      sharedPreset=incoming;
+      applyBuffered();
     }
+  }
+  function receiveWidthDefaults(incoming) {
+    if(!incoming || Number(incoming.version)<=Number(widthDefaults?.version??-1))return;
+    widthDefaults=incoming;
+    widthsChanged=true;
+    applyBuffered();
+  }
+  function hasOpenEditor() {
+    return document.querySelector('.vitrine-editor:not(dialog):not([hidden]), dialog.vitrine-editor[open], .vitrine-time-inline:not([hidden])')!==null;
+  }
+  function applyBuffered(){
+    if(!bufferedRemote && !widthsChanged && (!sharedPreset || sharedPreset.value===state.preset))return;
+    if(inFlight||Object.keys(pendingChanges).length||document.querySelector('.vitrine-display-dialog[open]')||hasOpenEditor()||document.body.classList.contains('is-column-resizing'))return;
+    const incoming=bufferedRemote;bufferedRemote=null;
+    const preset=validPreset(sharedPreset?.value) ? sharedPreset.value : state.preset;
+    let next={...state,preset};
+    if(incoming && Number(incoming.version)>=preferenceVersion){
+      preferenceVersion=Number(incoming.version);const saved=incoming.settings;
+      next={order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset,lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
+    }
+    if(widthsChanged && editsWidthDefaults)next.widths=validWidths(widthDefaults.widths);
+    const settingsChanged=JSON.stringify(state)!==JSON.stringify(next);
+    if(settingsChanged){
+      state=next;applyWidths(state.widths);applyLines();applyLayoutWidth();applyOrder(state.order);applyVisibility(state.hidden);paintAll();
+    }else if(widthsChanged)applyWidths(state.widths);
+    widthsChanged=false;
     lastLocalSnapshot=copy(state);try{localStorage.setItem(key,JSON.stringify(state));}catch{}
   }
   window.addEventListener('workspace:event',event=>{
     const item=event.detail,data=item?.data;
-    if(item?.event==='preferences.changed'&&data?.tableSlug===tableSlug&&(!data.userId||String(data.userId)===userId))queueRemote(data);
+    if(item?.event==='grid.widths.changed' && data?.widthDefaultsKey===serverPreferences.widthDefaultsKey){
+      receiveWidthDefaults(data.widthDefaults);return;
+    }
+    if(item?.event!=='preferences.changed'||!data||(data.userId&&String(data.userId)!==userId))return;
+    receiveColorPreset(data.colorPreset);
+    if(data.tableSlug===tableSlug)queueRemote(data);
   });
   window.addEventListener('pagehide',()=>flushPreferences(true));
   document.addEventListener('visibilitychange',()=>{if(document.hidden)flushPreferences(true);else applyBuffered();});
@@ -77,6 +112,7 @@
     {id:'saturated',name:'Насыщенный',note:'Те же девять цветовых групп, более насыщенные',colors:['#E6ABAD','#EDBC8B','#EDE19A','#B2D1A0','#94CFC3','#A9C8E6','#B8AFE0','#DCAACD','#C9C9C9']},
     {id:'acid',name:'Кислотный',note:'Яркие базовые RGB-цвета, как в примере',colors:['#FF0000','#FF8000','#FFFF00','#00FF00','#00FFFF','#0000FF','#8000FF','#FF00FF','#C0C0C0']}
   ];
+  const validPreset = value => presets.some(p=>p.id===value);
   const linePresets=[{id:'base',name:'Текущие',color:null},{id:'dark',name:'Потемнее',color:'#A0988C'},{id:'black',name:'Чёрные',color:'#000000'}];
   const widthModes = [
     {id:'full',name:'По ширине области'},
@@ -105,8 +141,13 @@
   let state = {order:[...originalOrder],hidden:[],widths:{},preset:'base',lines:'base',layoutWidth:defaultWidth};
   try {
     const saved = serverPreferences.settings && Object.keys(serverPreferences.settings).length ? serverPreferences.settings : JSON.parse(localStorage.getItem(key) || 'null');
-    if (saved) state = {order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:presets.some(p => p.id === saved.preset) ? saved.preset : 'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
+    if (saved) state = {order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
   } catch {}
+  try {
+    const fallback=JSON.parse(localStorage.getItem(legacyPresetKey)||'null')?.preset;
+    if (validPreset(fallback)) state.preset=fallback;
+  } catch {}
+  if (validPreset(sharedPreset?.value)) state.preset=sharedPreset.value;
   lastLocalSnapshot=copy(state);
   function color(fill) {
     const index = base.indexOf(String(fill).toUpperCase());
@@ -165,8 +206,10 @@
   widthRules.textContent=columns.map(column=>'.vitrine .vitrine-table [data-column="'+column.letter+'"] { --column-width:var(--vitrine-width-'+column.letter+','+(table.querySelector('th[data-column="'+column.letter+'"]').classList.contains('vitrine-time-column')?'var(--time-column-width,64px)':'var(--vitrine-default-width-'+column.letter+',190px)')+'); width:var(--column-width); min-width:var(--column-width); max-width:var(--column-width); }').join('\n');
   document.head.append(widthRules);
   function applyWidths(widths) {
+    const defaults=editsWidthDefaults ? {} : validWidths(widthDefaults?.widths);
     for(const letter of originalOrder){
-      if(widths[letter]!==undefined)table.style.setProperty('--vitrine-width-'+letter,widths[letter]+'px');
+      const width=widths[letter]??defaults[letter];
+      if(width!==undefined)table.style.setProperty('--vitrine-width-'+letter,width+'px');
       else table.style.removeProperty('--vitrine-width-'+letter);
     }
   }
@@ -180,12 +223,14 @@
   function commitWidth(letter,width) {
     const next={...state,widths:{...state.widths}};
     if(width===null)delete next.widths[letter];else next.widths[letter]=width;
-    try{localStorage.setItem(key,JSON.stringify(next));state=next;applyWidths(state.widths);persist(state);}
-    catch{applyWidths(state.widths);window.PlanexNotifications.show({tone:'danger',message:'Не удалось сохранить ширину столбца в этом браузере.'});}
+    state=next;applyWidths(state.widths);persist(state);
+    try{localStorage.setItem(key,JSON.stringify(state));}catch{}
   }
   for(const header of table.querySelectorAll('thead th[data-column]')){
     const letter=header.dataset.column;
-    const grip=document.createElement('span');grip.className='display-column-resize';grip.tabIndex=-1;grip.setAttribute('role','separator');grip.setAttribute('aria-orientation','vertical');grip.setAttribute('aria-label','Ширина столбца '+letter);grip.setAttribute('aria-valuemin','44');grip.setAttribute('aria-valuemax','1200');grip.title='Потяните для изменения ширины. Двойной щелчок — стандартная ширина.';
+    const grip=document.createElement('span');grip.className='display-column-resize';grip.tabIndex=document.body.dataset.vitrineCatalog ? 0 : -1;grip.setAttribute('role','separator');grip.setAttribute('aria-orientation','vertical');grip.setAttribute('aria-label','Ширина столбца '+letter);grip.setAttribute('aria-valuemin','44');grip.setAttribute('aria-valuemax','1200');grip.title=editsWidthDefaults
+      ? 'Потяните для изменения ширины по умолчанию. Двойной щелчок — исходная ширина.'
+      : 'Потяните для изменения личной ширины. Двойной щелчок — ширина по умолчанию.';
     grip.addEventListener('focus',()=>grip.setAttribute('aria-valuenow',String(Math.round(header.getBoundingClientRect().width))));
     let drag=null,frame=0;
     function preview(){frame=0;if(drag){table.style.setProperty('--vitrine-width-'+letter,drag.width+'px');grip.setAttribute('aria-valuenow',String(drag.width));}}
@@ -193,12 +238,12 @@
       if(!drag)return;
       if(frame){cancelAnimationFrame(frame);frame=0;}
       if(!cancel)drag.width=Math.max(44,Math.min(1200,Math.round(drag.startWidth+event.clientX-drag.x)));
-      const width=drag.width;drag=null;document.body.classList.remove('is-column-resizing');
-      if(cancel)applyWidths(state.widths);else commitWidth(letter,width);
+      const {width,startWidth}=drag;drag=null;document.body.classList.remove('is-column-resizing');
+      if(cancel || width===Math.round(startWidth))applyWidths(state.widths);else commitWidth(letter,width);
     }
     grip.addEventListener('pointerdown',event=>{
       if(event.button!==0)return;event.preventDefault();event.stopPropagation();
-      if(document.querySelector('.vitrine-editor,.vitrine-time-inline')){window.PlanexNotifications.show({tone:'warning',message:'Сначала сохраните правку ячейки или нажмите «Отмена».'});return;}
+      if(hasOpenEditor()){window.PlanexNotifications.show({tone:'warning',message:'Сначала сохраните правку ячейки или нажмите «Отмена».'});return;}
       drag={x:event.clientX,startWidth:header.getBoundingClientRect().width,width:Math.round(header.getBoundingClientRect().width)};grip.setPointerCapture(event.pointerId);document.body.classList.add('is-column-resizing');
     });
     grip.addEventListener('pointermove',event=>{if(!drag)return;event.stopPropagation();drag.width=Math.max(44,Math.min(1200,Math.round(drag.startWidth+event.clientX-drag.x)));if(!frame)frame=requestAnimationFrame(preview);});
@@ -317,15 +362,14 @@
   }
   function save() {
     if(draft.hidden.length>=originalOrder.length){window.PlanexNotifications.show({tone:'danger',message:'Оставьте видимым хотя бы один столбец.'});return;}
-    try { localStorage.setItem(key,JSON.stringify(draft)); }
-    catch { window.PlanexNotifications.show({tone:'danger',message:'Не удалось сохранить настройки в этом браузере.'});return; }
+    try { localStorage.setItem(key,JSON.stringify(draft)); } catch {}
     const orderChanged=state.order.join(',')!==draft.order.join(',');
     state={order:[...draft.order],hidden:[...draft.hidden],widths:{...draft.widths},preset:draft.preset,lines:draft.lines,layoutWidth:draft.layoutWidth};
     applyWidths(state.widths);
     applyLines();applyLayoutWidth();
     if(orderChanged) applyOrder(state.order);
     applyVisibility(state.hidden);
-    paintAll();persist(state);close();
+    paintAll();persist(state,mode==='colors');close();
   }
   const dialogModes={
     columns:{title:'Столбцы: порядок и видимость',render:renderOrder,resetLabel:'Исходный порядок',reset:()=>{draft.order=[...originalOrder];}},
@@ -335,7 +379,7 @@
   };
   document.querySelectorAll('[data-display-open]').forEach(trigger=>trigger.addEventListener('click',event=>{
     event.preventDefault();
-    if(document.querySelector('.vitrine-editor,.vitrine-time-inline')){window.PlanexNotifications.show({tone:'warning',message:'Сначала сохраните правку ячейки или нажмите «Отмена».'});return;}
+    if(hasOpenEditor()){window.PlanexNotifications.show({tone:'warning',message:'Сначала сохраните правку ячейки или нажмите «Отмена».'});return;}
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder=>folder.open=false);
     createDialog();opener=trigger;mode=trigger.dataset.displayOpen;draft=copy(state);
     const options=dialogModes[mode];

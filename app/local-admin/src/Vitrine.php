@@ -5,6 +5,7 @@ require_once __DIR__.'/Format.php';
 require_once __DIR__.'/VitrineClipboard.php';
 
 require_once __DIR__.'/WorkspaceVitrine.php';
+require_once __DIR__.'/WorkspaceDirectoryExcel.php';
 require_once __DIR__.'/WorkspaceClientCatalogGrid.php';
 
 function vitrine_status_key(string $name): string { return mb_strtolower(trim(preg_replace('/\s+/u',' ',$name))); }
@@ -31,7 +32,7 @@ function vitrine_rows_endpoint(): never {
     if (!is_string($value) || !preg_match('/^\d+(?:,\d+){0,99}$/D',$value)) throw new ApiError('invalid_rows','Запрашивайте от 1 до 100 строк.');
     $ids = array_map('intval',explode(',',$value));
     $directory = vitrine_directory_requested();
-    $data = $directory ? workspace_directory_grid_data($directory,$ids) : vitrine_data($ids);
+    $data = $directory ? workspace_directory_grid_data($directory,$ids) : vitrine_data($ids,($_GET['archive']??null)==='1');
     $catalogGrid = $data['catalogGrid'] ?? null;
     $columns=$data['columns']; $rows=$data['rows'];
     $escape=static fn(mixed $value): string => htmlspecialchars((string)$value,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
@@ -46,15 +47,24 @@ function vitrine_validate_single_line(string $value, array $row, string $column)
     }
 }
 
+function vitrine_require_weight_range(string $weight): void {
+    if (!vitrine_weight_in_range($weight)) {
+        throw new ApiError('weight_out_of_range','Введите вес от 1 000 до 50 000.');
+    }
+}
+
 function vitrine_validate_paste(array $body, array $data, array $target): void {
     vitrine_require_manual_field($data['table'],$body['column']);
+    if ($body['column']==='M' && !empty($target['catalogBindings']['M'])) {
+        throw new ApiError('invalid_dropoff','Откройте поле «Сдача» и выберите точку из справочника.');
+    }
     $paste = $body['paste'] ?? null;
     if (!is_array($paste) || !array_key_exists('source',$paste)) throw new ApiError('invalid_clipboard','Не удалось определить содержимое буфера обмена.');
     vitrine_validate_single_line($body['value'],$target,$body['column']);
     $kind = $target['kinds'][$body['column']] ?? 'text';
     $compact = isset($target['compactInputs'][$body['column']]);
     if (!$compact && $kind === 'time') $body['value'] = vitrine_time_input($body['value']) ?? $body['value'];
-    $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','slot'=>'Слот','boolean'=>'TRUE/FALSE'];
+    $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','slot'=>'Слот','container'=>'Номер КТК','weight'=>'Вес','boolean'=>'TRUE/FALSE'];
     if ($paste['source'] !== null) {
         $source = $paste['source'];
         if (!is_array($source) || !is_int($source['row']??null) || !is_string($source['column']??null) || !is_int($source['revision']??null) || !is_string($source['baseHash']??null) || !is_string($source['value']??null)) throw new ApiError('invalid_clipboard','Некорректный формат скопированной ячейки.');
@@ -64,7 +74,9 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
         $sourceKind = $sourceRow['kinds'][$source['column']];
         if ($sourceKind!==$kind) throw new ApiError('clipboard_type_mismatch','Форматы ячеек не совпадают: '.$labels[$sourceKind].' → '.$labels[$kind].'. Вставка отменена.');
     }
-    $accepted = $compact ? vitrine_compact_input($body['value'],$kind) !== null
+    $normalized = $compact ? vitrine_compact_input($body['value'],$kind) : null;
+    if ($kind === 'weight' && $normalized !== null) vitrine_require_weight_range($normalized);
+    $accepted = $compact ? $normalized !== null
         : vitrine_clipboard_accepts($body['value'],$kind,$target['choices'][$body['column']]??[]);
     if (!$accepted) throw new ApiError('clipboard_value_mismatch','Значение не подходит для формата «'.$labels[$kind].'» или заданного списка. Вставка отменена.');
 }
@@ -102,6 +114,7 @@ function vitrine_save_cell(): never {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method','Метод не поддерживается.',405);
     $raw = file_get_contents('php://input', false, null, 0, 100000);
     $body = json_decode((string)$raw, true);
+    if (is_array($body) && isset($body['action'])) json_response(workspace_table_row_action($body));
     if (!is_array($body) || !is_int($body['row'] ?? null) || !is_string($body['column'] ?? null) || !is_string($body['value'] ?? null) || mb_strlen($body['value'])>20000 || !is_int($body['revision'] ?? null) || $body['revision']<0 || !is_string($body['baseHash'] ?? null) || !is_bool($body['reset'] ?? null)) throw new ApiError('invalid_edit','Некорректные данные ячейки или текст длиннее 20 000 символов.');
     $data = vitrine_data(vitrine_edit_row_ids($body));
     if (!in_array($body['column'], array_column($data['columns'],'letter'),true)) throw new ApiError('invalid_column','Столбец не найден.',404);
@@ -111,12 +124,20 @@ function vitrine_save_cell(): never {
     $compactKind = $current['compactInputs'][$body['column']] ?? null;
     if (!$body['reset'] && $compactKind !== null) {
         $normalized = vitrine_compact_input($body['value'],$compactKind);
-        if ($normalized === null && $body['value'] !== ($current['values'][$body['column']] ?? '')) {
-            $message = $compactKind === 'date' ? 'Введите действительную дату в формате ДДММГГ.'
-                : 'Введите время в формате ЧЧММ. Часы 00–23, минуты 00–59.';
+        if ($normalized === null && (in_array($compactKind,['container','weight'],true)
+            || $body['value'] !== ($current['values'][$body['column']] ?? ''))) {
+            $message = match ($compactKind) {
+                'container'=>'Введите номер ISO 6346: три латинские буквы, U и семь цифр. Проверьте последнюю цифру.',
+                'weight'=>'Введите вес целым числом, только цифрами.',
+                'date'=>'Введите действительную дату в формате ДДММГГ.',
+                'time'=>'Введите время в формате ЧЧММ. Часы 00–23, минуты 00–59.',
+            };
             throw new ApiError('invalid_'.$compactKind,$message);
         }
-        if ($normalized !== null) $body['value'] = $normalized;
+        if ($normalized !== null) {
+            if ($compactKind === 'weight') vitrine_require_weight_range($normalized);
+            $body['value'] = $normalized;
+        }
     } elseif (!$body['reset'] && ($current['kinds'][$body['column']] ?? '') === 'time') {
         $normalized = vitrine_time_input($body['value']);
         if ($normalized === null && $body['value'] !== ($current['values'][$body['column']] ?? '')) throw new ApiError('invalid_time','Введите время: 800 или 0800 → 08:00. Часы 00–23, минуты 00–59.');
@@ -150,7 +171,20 @@ function vitrine_save_cell(): never {
         }
         $orderEdit=['orderStatus'=>$code];
     }
-    $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'']+$orderEdit);
+    $comparison = [];
+    if ($body['column']==='M' && !empty($current['catalogBindings']['M']) && !array_key_exists('dropoffDetails',$body)) {
+        throw new ApiError('invalid_dropoff','Откройте поле «Сдача» и выберите точку из справочника.');
+    }
+    if (array_key_exists('dropoffDetails',$body)) {
+        if ($body['column']!=='M' || $body['reset'] || empty($current['catalogBindings']['M']) || $body['value']==='') {
+            throw new ApiError('invalid_dropoff','Выберите точку сдачи.');
+        }
+        $comparison['dropoffDetails']=workspace_dropoff_flight_details($body['dropoffDetails']);
+    }
+    if ($compactKind==='weight') $comparison['comparisonOriginal']=$body['reset']
+        ? $original : (vitrine_compact_input($original,'weight')??$original);
+    $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'']+$orderEdit+$comparison);
+    if ($compactKind==='weight') $result['value']=vitrine_compact_input($result['value'],'weight')??$result['value'];
     if (($current['kinds'][$body['column']] ?? '') === 'slot') {
         $result['value'] = vitrine_slot_input($result['value']) ?? $result['value'];
     }
@@ -168,7 +202,7 @@ function render_vitrine(): void {
     $error = null;
     $data = ['columns'=>[], 'rows'=>[], 'lastSuccess'=>null, 'sheetTitle'=>'ВЫВОЗ'];
     $directory = vitrine_directory_requested();
-    try { $data = $directory ? workspace_directory_grid_data($directory) : vitrine_data(); }
+    try { $data = $directory ? workspace_directory_grid_data($directory) : vitrine_data(archive:($_GET['archive']??null)==='1'); }
     catch (Throwable $e) {
         http_response_code($directory && $e instanceof ApiError ? $e->httpStatus : 503);
         $error = $e instanceof ApiError ? $e->publicMessage : 'Не удалось прочитать данные. Проверьте доступность локальной базы и обновите страницу.';

@@ -5,8 +5,18 @@
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
   const orderLabels = Object.fromEntries(Object.entries(orderStatuses).map(([code,status])=>[status.label,code]));
+  const normalizeContainer = value => value.replace(/[ \t\u00a0\u202f-]+/g,'').toUpperCase();
+  function isUnloadingCell(cell) {
+    return cell.dataset.column==='K' && Number(cell.dataset.catalogId)>0 && document.body.dataset.workspaceTable==='vyvoz';
+  }
+  function isContainerTypeCell(cell) {
+    return cell.dataset.column === 'I' && Number(cell.dataset.catalogId) > 0 &&
+      document.body.dataset.workspaceTable === 'vyvoz';
+  }
+  const isDropoffCell = cell => Boolean(window.VitrineDropoff?.supports(cell));
   function hasDraft(editor) {
     return editor.field.value !== editor.initialValue
+      || editor.dropoff?.dirty()
       || (editor.orderField && editor.orderField.value !== editor.initialOrder)
       || (editor.requestField && editor.requestField.checked !== editor.initialRequest);
   }
@@ -37,12 +47,16 @@
   }
   function position() {
     if (!active) return;
-    const rect = active.cell.getBoundingClientRect();
     const panel = active.panel;
     if (active.inline) {
+      const rect = active.cell.getBoundingClientRect();
       Object.assign(panel.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'});
       return;
     }
+    positionPanel(panel,active.cell);
+  }
+  function positionPanel(panel,cell) {
+    const rect = cell.getBoundingClientRect();
     const width = panel.offsetWidth;
     const height = panel.offsetHeight;
     panel.style.left = Math.max(10, Math.min(rect.left, window.innerWidth - width - 10)) + 'px';
@@ -106,11 +120,22 @@
   }
   function applyResult(cell, result) {
     if (Number(cell.dataset.revision || 0) > result.revision) return;
+    window.VitrineDropoff?.update(cell,result);
     const slotRequested = cell.dataset.kind === 'slot' && window.VitrineSlot.isRequest(result.value);
     cell.toggleAttribute('data-slot-request',slotRequested);
-    cell.textContent = slotRequested ? window.VitrineSlot.requestLabel : result.value;
+    const weightMask = cell.dataset.kind === 'weight' ? window.VitrineCompactInput.weight : null;
+    const weightDigits = weightMask?.read(result.value);
+    cell.textContent = slotRequested ? window.VitrineSlot.requestLabel
+      : weightDigits ? weightMask.format(weightDigits) : result.value;
     cell.dataset.original = result.original ?? '';
     cell.dataset.revision = String(result.revision);
+    if (result.unloadChoices) {
+      const unload=cell.parentElement.querySelector('td[data-column="K"]');
+      if (unload) unload.dataset.choices=JSON.stringify(result.unloadChoices);
+    }
+    if (result.values) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
+      if (Object.hasOwn(result.values,sibling.dataset.column)) sibling.textContent = result.values[sibling.dataset.column];
+    }
     if (catalog) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
       sibling.dataset.revision = String(result.revision);
       if (catalog === 'employees') sibling.dataset.base = result.baseHash;
@@ -147,18 +172,19 @@
     if (cell.dataset.orderStatus) cell.title += ' · ' + (orderStatuses[cell.dataset.orderStatus]?.label || '');
     if (cell.dataset.kind === 'time' && !cell.dataset.compactInput) cell.title = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' + result.value;
   }
-  async function writeCell(cell, value, reset = false, paste = null, editAction = null, orderStatus = undefined) {
+  async function writeCell(cell, value, reset = false, paste = null, editAction = null, orderStatus = undefined, dropoffDetails = undefined) {
     if (cell.closest('[data-draft-slot]')) return window.VitrineDirectoryDrafts.write(cell,value);
     const response = await fetch(window.VitrineGridScope.url('/api/vitrine/cell'), {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
       body:JSON.stringify({row:Number(cell.dataset.row),column:cell.dataset.column,value,
-        revision:Number(cell.dataset.revision || 0),baseHash:cell.dataset.base,reset,requestId:crypto.randomUUID(),editAction:editAction||(reset?'reset':paste?'paste':'edit'),...(paste ? {paste} : {}),orderStatus})
+        revision:Number(cell.dataset.revision || 0),baseHash:cell.dataset.base,reset,requestId:crypto.randomUUID(),editAction:editAction||(reset?'reset':paste?'paste':'edit'),...(paste ? {paste} : {}),orderStatus,dropoffDetails})
     });
     const result = await response.json();
     if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось сохранить ячейку.');
     if (typeof result.value !== 'string' || !Number.isInteger(result.revision) || typeof result.baseHash !== 'string') throw new Error('Неполный ответ сервера. Обновите страницу.');
     if (result.dependentCell) window.VitrineRows?.patch(result.dependentCell);
+    for (const patch of result.unloadCells ?? []) window.VitrineRows?.patch(patch);
     if (result.reauthenticate) location.assign(window.DltkPaths?.path('/login') ?? '/login');
     return result;
   }
@@ -212,8 +238,15 @@
     }
     const value = editor.requestField?.checked ? window.VitrineSlot.requestLabel
       : editor.resolveValue ? editor.resolveValue() : editor.field.value;
+    if (editor.dropoff && !value) {
+      report('Выберите точку сдачи из списка.','info');
+      editor.field.focus();
+      return;
+    }
     if (!reset && value === null) {
-      report('Выберите клиента из подсказок.','danger');
+      report(isContainerTypeCell(editor.cell)
+        ? 'Выберите тип контейнера из подсказок.'
+        : isUnloadingCell(editor.cell) ? 'Выберите точку выгрузки из подсказок.' : 'Выберите клиента из подсказок.','danger');
       editor.field.focus();
       return;
     }
@@ -223,12 +256,14 @@
     editor.field.disabled = true;
     if (editor.orderField) editor.orderField.disabled = true;
     if (editor.requestField) editor.requestField.disabled = true;
+    editor.dropoff?.fields.forEach(field=>field.disabled=true);
     editor.saveButton.textContent = 'Сохраняю…';
     editor.panel.setAttribute('aria-busy', 'true');
     const cell = editor.cell;
     const before = snapshot(cell);
     try {
-      const result = await writeCell(cell, value, reset, reset ? null : editor.paste,null,!reset && editor.orderField ? (orderLabels[editor.orderField.value] || '') : undefined);
+      const result = await writeCell(cell, value, reset, reset ? null : editor.paste,null,
+        !reset && editor.orderField ? (orderLabels[editor.orderField.value] || '') : undefined,editor.dropoff?.values());
       applyResult(cell,result);
       if (!reset && editor.paste && !result.draft) rememberPaste(before,result);
       editor.saving = false;
@@ -242,19 +277,22 @@
     } catch (error) {
       editor.saving = false;
       editor.buttons.forEach(button => { button.disabled = false; });
-      editor.field.disabled = Boolean(editor.requestField?.checked);
+      editor.field.disabled = false;
       if (editor.orderField) editor.orderField.disabled = false;
       if (editor.requestField) editor.requestField.disabled = false;
+      editor.dropoff?.fields.forEach(field=>field.disabled=false);
       editor.saveButton.textContent = 'Сохранить';
       editor.panel.removeAttribute('aria-busy');
       editor.error.textContent = error instanceof TypeError ? 'Нет связи с сервером. Текст сохранён в поле — повторите попытку.' : error.message;
       report(editor.error.textContent, 'danger');
       position();
-      (editor.field.disabled ? editor.requestField : editor.field).focus();
+      editor.field.focus();
     }
   }
   function open(cell, firstCharacter = null) {
-    if (cell.hasAttribute('data-readonly-cell')) {
+    const card = {'unload-contacts':window.VitrineUnloadContacts,'client-unload-points':window.VitrineClientUnloadPoints,
+      'client-managers':window.VitrineClientManagers}[cell.dataset.kind];
+    if (cell.hasAttribute('data-readonly-cell') && !card) {
       report(cell.dataset.readonlyCell, 'info');
       return;
     }
@@ -269,16 +307,24 @@
       active.field.focus();
       return;
     }
+    if (card) {
+      select(cell);
+      cell.focus({preventScroll:true});
+      card.open(cell);
+      return;
+    }
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder => { folder.open = false; });
     const panel = element('section', 'vitrine-editor');
     panel.setAttribute('role', 'dialog');
     const isStatus = cell.dataset.kind === 'status';
     const isSlot = cell.dataset.kind === 'slot';
     const mask = isSlot ? window.VitrineSlot : window.VitrineCompactInput[cell.dataset.compactInput];
-    const isSingleLine = cell.hasAttribute('data-single-line');
+    const isContainer = cell.dataset.kind === 'container';
+    const isSingleLine = isContainer || cell.hasAttribute('data-single-line');
     const pickupEditor = cell.dataset.column === 'E' && Number(cell.dataset.catalogId) > 0 &&
       document.body.dataset.workspaceTable === 'vyvoz';
-    const catalogEditor = pickupEditor || (['B', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
+    const dropoffEditor = isDropoffCell(cell);
+    const catalogEditor = dropoffEditor || pickupEditor || (['B', 'I', 'K', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
     if (mask || isSingleLine || isStatus || catalogEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
@@ -293,13 +339,16 @@
     try { choices = JSON.parse(cell.dataset.choices || '[]'); } catch {}
     if (!Array.isArray(choices)) choices = [];
     const useCustom = !mask && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
-    const searchableCatalog = pickupEditor || cell.hasAttribute('data-order-status');
+    const typeEditor = isContainerTypeCell(cell);
+    const unloadEditor = isUnloadingCell(cell);
+    const unloadClient = catalog==='entries' && cell.dataset.column==='A' && document.getElementById('unload-contacts-dialog');
+    const searchableCatalog = dropoffEditor || pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');
       const options = required ? [] : [{value:'',label:'Не выбран'}];
       const items = isStatus ? (window.vitrineStatusCatalog?.statuses || []).map(status => ({value:status.name,label:status.name,color:status.color})) : choices.map(option => option && typeof option === 'object' ? option : {value:String(option),label:String(option)});
-      if (!required && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
+      if (!required && !typeEditor && !unloadEditor && (!dropoffEditor || Number(cell.dataset.referenceId)) && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + ' · вне справочника'});
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableCatalog});
     }
@@ -309,6 +358,7 @@
     field.setAttribute('aria-label', 'Значение ячейки');
     const draftType = cell.dataset.draftType;
     let initialValue = draftType === 'password' ? window.VitrineDirectoryDrafts.secret(cell) : cell.textContent;
+    if (dropoffEditor && !Number(cell.dataset.referenceId)) initialValue='';
     let replaceLegacyValue = false;
     if (mask) {
       const digits = mask.read(initialValue);
@@ -322,11 +372,47 @@
     if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
     field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : isSingleLine && catalog ? 160 : 20000;
     field.value = mask && firstCharacter !== null ? mask.format(firstCharacter) : firstCharacter ?? initialValue;
+    if (isContainer) {
+      const prefix = /^(?:[A-Z]{0,3}|[A-Z]{3}U[0-9]{0,7})$/;
+      const stored = normalizeContainer(initialValue);
+      replaceLegacyValue = initialValue !== '' && !prefix.test(stored);
+      if (!replaceLegacyValue) initialValue = stored;
+      field.value = firstCharacter?.toUpperCase() ?? initialValue;
+      field.placeholder = 'BICU6658782';
+      field.spellcheck = false;
+      field.addEventListener('beforeinput',event=>{
+        if (event.inputType !== 'insertText') return;
+        const typed = event.data ?? '';
+        const start = field.selectionStart;
+        const end = field.selectionEnd;
+        const before = field.value.slice(0,start);
+        const after = field.value.slice(end);
+        const addCategory = /^[A-Z]{3}$/.test(before) && /^[0-9]+$/.test(typed);
+        const inserted = addCategory ? 'U'+typed : typed;
+        if (!/^[A-Za-z0-9]+$/.test(typed) || !prefix.test((before+inserted+after).toUpperCase())) {
+          event.preventDefault();
+          return;
+        }
+        if (addCategory) {
+          event.preventDefault();
+          field.setRangeText(inserted,start,end,'end');
+          field.dispatchEvent(new InputEvent('input',{inputType:'insertText',bubbles:true}));
+        }
+      });
+      field.addEventListener('input',()=>{
+        const position = field.selectionStart;
+        field.value = field.value.toUpperCase();
+        field.setSelectionRange(position,position);
+      });
+    }
     if (useCustom) field.dataset.customSelect = 'true';
     let orderField = null;
     let requestField = null;
     const initialRequest = isSlot && window.VitrineSlot.isRequest(cell.textContent);
-    if (cell.hasAttribute('data-order-status')) {
+    let dropoff=null;
+    if (dropoffEditor) {
+      dropoff=window.VitrineDropoff.attach(panel,control,cell);
+    } else if (cell.hasAttribute('data-order-status')) {
       field.setAttribute('aria-label','Клиент');
       const clientGroup = element('div','vitrine-editor-field-group');
       clientGroup.append(element('div','field-label','Клиент'),control?.element || field);
@@ -352,12 +438,11 @@
       label.append(requestField,mark,element('span','checkbox-label','Запросить слот'));
       group.append(field,label);
       panel.append(group);
-      field.disabled = requestField.checked;
-      requestField.addEventListener('change',()=>{
-        field.disabled = requestField.checked;
+      field.addEventListener('input',event=>{
+        if (field.value && event.inputType?.startsWith('insert')) requestField.checked = false;
       });
     } else panel.append(control?.element || field);
-    if (!mask && !isSingleLine && !isStatus && !catalog && !orderField) {
+    if (!dropoff && !mask && !isSingleLine && !isStatus && !catalog && !orderField) {
       panel.append(element('p', 'vitrine-editor-help', useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить · Esc — отменить'));
     }
     const error = element('p', 'vitrine-editor-error');
@@ -370,7 +455,7 @@
     saveButton.addEventListener('click', () => save());
     cancelButton.addEventListener('click', close);
     actions.append(saveButton, cancelButton);
-    if (!isStatus && !orderField && cell.classList.contains('local-edited')) {
+    if (!dropoff && !isStatus && !orderField && cell.classList.contains('local-edited')) {
       const resetButton = element('button', 'btn btn-secondary vitrine-editor-reset', 'Исходное');
       resetButton.type = 'button'; resetButton.addEventListener('click', () => save(true));
       buttons.push(resetButton); actions.append(resetButton);
@@ -379,14 +464,14 @@
     document.body.append(panel);
     cell.classList.add('is-editing');
     select(cell);
-    active = { panel, cell, field, initialValue, orderField, initialOrder:orderField?.value, requestField, initialRequest, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
+    active = { panel, cell, field, initialValue, orderField, initialOrder:orderField?.value, requestField, initialRequest, dropoff, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
     window.dispatchEvent(new CustomEvent('vitrine-editor-opened',{detail:{row:Number(cell.dataset.row),column:cell.dataset.column}}));
     table?.classList.add('has-editor');
     panel.addEventListener('keydown', event => {
       const directions = {ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[-1,0],ArrowDown:[1,0]};
       if (!directions[event.key] || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.isComposing || active?.saving) return;
       if (field.dataset.customSelect && (field.getAttribute('aria-expanded') === 'true' || event.key === 'ArrowDown' || event.key === 'ArrowUp')) return;
-      if (mask || orderField || isSingleLine || hasDraft(active)) return;
+      if (dropoff || mask || orderField || isSingleLine || hasDraft(active)) return;
       event.preventDefault(); event.stopImmediatePropagation();
       close(); move(cell,...directions[event.key],false);
     }, true);
@@ -394,7 +479,7 @@
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
       if (event.key === 'Enter' && (event.target === field || event.target === orderField || event.target === requestField) && !event.shiftKey && !event.isComposing) { event.preventDefault(); save(); }
       if (event.key === 'Tab') {
-        const focusable = [field, orderField, requestField, ...buttons].filter(node => node && !node.disabled);
+        const focusable = [field, orderField, requestField, ...(dropoff?.fields??[]), ...buttons].filter(node => node && !node.disabled);
         const first = focusable[0], last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
@@ -402,9 +487,12 @@
     });
     field.addEventListener('input',fitEditor);
     fitEditor();
-    (field.disabled ? requestField : field).focus();
-    if (searchableCatalog || (replaceLegacyValue && firstCharacter === null)) field.select();
+    field.focus();
+    if (firstCharacter === null && (searchableCatalog || replaceLegacyValue)) field.select();
     else field.setSelectionRange(field.value.length, field.value.length);
+    if ((dropoffEditor || typeEditor || unloadEditor) && firstCharacter !== null) {
+      field.dispatchEvent(new InputEvent('input',{inputType:'insertText',bubbles:true}));
+    }
   }
   window.addEventListener('vitrine-statuses-updated', event => {
     const statuses = event.detail.statuses;
@@ -455,6 +543,7 @@
   document.addEventListener('click', event => {
     const cell = event.target.closest('td[data-edit-cell]');
     if (!cell) return;
+    if (['unload-contacts','client-unload-points','client-managers'].includes(cell.dataset.kind)) { open(cell); return; }
     if (cell.dataset.kind === 'time' || cell.dataset.derivedSource || cell.hasAttribute('data-readonly-cell')) {
       select(cell);
       cell.focus({preventScroll:true});
@@ -537,18 +626,21 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
-    if (cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line')
-      && !cell.hasAttribute('data-required-choice') && cell.dataset.choices === '[]'
+    const typedText = cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line') && /^\S$/u.test(event.key);
+    const typedContainer = cell.dataset.kind === 'container' && /^[a-z]$/i.test(event.key);
+    const typedType = isContainerTypeCell(cell) && /^[\p{L}0-9]$/u.test(event.key);
+    const typedUnload = (isUnloadingCell(cell) || isDropoffCell(cell)) && /^[\p{L}0-9]$/u.test(event.key);
+    if ((typedType || typedUnload || ((typedText || typedContainer) && cell.dataset.choices === '[]'))
+      && !cell.hasAttribute('data-required-choice')
       && !cell.hasAttribute('data-readonly-cell') && !event.defaultPrevented && !event.isComposing
-      && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))
-      && /^\S$/u.test(event.key)) {
+      && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))) {
       event.preventDefault();
       const startTyping = target => open(target,event.key);
       if (window.VitrineRows && !cell.isConnected) window.VitrineRows.activate(cell,startTyping);
       else startTyping(cell);
       return;
     }
-    if ((cell.dataset.kind === 'slot' || cell.dataset.compactInput) && /^[0-9]$/.test(event.key) && !cell.hasAttribute('data-readonly-cell')
+    if ((cell.dataset.kind === 'slot' || window.VitrineCompactInput[cell.dataset.compactInput]) && /^[0-9]$/.test(event.key) && !cell.hasAttribute('data-readonly-cell')
       && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing) {
       event.preventDefault();
       const start = target=>open(target,event.key);
@@ -584,11 +676,14 @@
     let cell = eventCell(event);
     const inEditor = active && event.target === active.field;
     if ((!cell && !inEditor) || !event.clipboardData) return;
-    if (inEditor && (active.cell.dataset.kind === 'slot' || active.cell.dataset.compactInput || active.field.getAttribute('aria-autocomplete') === 'list'
+    if (inEditor && (active.cell.dataset.kind === 'slot' || window.VitrineCompactInput[active.cell.dataset.compactInput] || active.field.getAttribute('aria-autocomplete') === 'list'
       || active.cell.closest('[data-draft-slot]'))) return;
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
+    if (target.dataset.kind==='client-managers') { report('Откройте список менеджеров из ячейки.','info'); return; }
+    if (target.dataset.kind==='client-unload-points') { report('Откройте точки выгрузки из ячейки.','info'); return; }
+    if (target.dataset.kind==='unload-contacts') { report('Откройте редактор контактов из ячейки.','info'); return; }
     if (!inEditor && target.dataset.draftType === 'password') {
       report('Откройте поле пароля для вставки.','info');
       return;
@@ -608,7 +703,8 @@
         const response = await fetch(window.VitrineGridScope.url('/api/vitrine/paste-check'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({row:Number(target.dataset.row),column:target.dataset.column,value,paste})});
         const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'Не удалось проверить формат.');
         if (active !== editor) return;
-        if (active.field.dataset.customSelect) active.field.value = value;
+        if (target.dataset.kind === 'container') active.field.value = normalizeContainer(value);
+        else if (active.field.dataset.customSelect) active.field.value = value;
         else active.field.setRangeText(value,active.field.selectionStart,active.field.selectionEnd,'end');
         active.paste = paste;
         fitEditor();
@@ -628,5 +724,5 @@
   });
   document.querySelector('.vitrine-table-scroll')?.addEventListener('scroll', position);
   window.addEventListener('resize', fitEditor);
-  window.VitrineGrid=Object.freeze({select,reveal,editing:()=>Boolean(active),editingCell:()=>active?.cell||null,applyRemote});
+  window.VitrineGrid=Object.freeze({select,reveal,positionPanel,editing:()=>Boolean(active),editingCell:()=>active?.cell||null,applyRemote});
 })();

@@ -16,7 +16,7 @@ jobs:
       - name: Test runtimes
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq php-cli php-mbstring
+          sudo apt-get install -y -qq php-cli php-mbstring php-xml php-zip
           python3 -m venv .ci-venv
           .ci-venv/bin/pip install -q -r requirements.txt
       - name: Syntax and regression checks
@@ -30,6 +30,7 @@ jobs:
               for file in Path(folder).rglob('*.py'):
                   ast.parse(file.read_text(encoding='utf-8'),filename=str(file))
           PY
+          php -r 'exit(class_exists("ZipArchive") && class_exists("DOMDocument") ? 0 : 1);'
           php tests/vitrine_clipboard_check.php
           php tests/runtime_config_check.php
           .ci-venv/bin/python -m unittest discover -s tests -p 'test_server_*.py'

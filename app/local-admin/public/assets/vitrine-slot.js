@@ -61,7 +61,9 @@
       const start = digitOffset(field.selectionStart);
       const end = digitOffset(field.selectionEnd);
       const digits = digitsOnly(field.value), next = digits.slice(0,start)+value+digits.slice(end);
-      if (next.length<=maxDigits) setValue(next,start+value.length);
+      if (next.length>maxDigits) return;
+      setValue(next,start+value.length);
+      field.dispatchEvent(new InputEvent('input',{inputType:'insertFromPaste',bubbles:true}));
     });
   }
 
@@ -81,6 +83,18 @@
     return parts ? parts[1].padStart(2,'0')+parts[2] : '';
   }
 
+  function readWeight(value) {
+    const input = value.trim();
+    return /^(?:[0-9]+|[0-9]{1,3}(?:[ \u00a0\u202f][0-9]{3})+)$/.test(input) ? digitsOnly(input) : '';
+  }
+
+  function formatWeight(digits) {
+    const first = digits.length % 3;
+    const groups = digits.slice(first).match(/[0-9]{3}/g) ?? [];
+    if (first) groups.unshift(digits.slice(0,first));
+    return groups.join(' ');
+  }
+
   function mask(maxDigits,placeholder,format,read) {
     return {format,read,bind:field=>bindDigits(field,{maxDigits,placeholder,format,read})};
   }
@@ -90,6 +104,7 @@
   window.VitrineCompactInput = Object.freeze({
     date:mask(6,'25.10.26',digits=>digits.match(/.{1,2}/g)?.join('.') ?? '',readDate),
     time:mask(4,'08:00',digits=>digits.length>2
-      ? digits.slice(0,-2)+':'+digits.slice(-2) : digits,readTime)
+      ? digits.slice(0,-2)+':'+digits.slice(-2) : digits,readTime),
+    weight:mask(15000,'25 990',formatWeight,readWeight)
   });
 })();

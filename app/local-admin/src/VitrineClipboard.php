@@ -44,10 +44,35 @@ function vitrine_time_input(string $value): ?string {
     return str_pad($value, strlen($value) + (strpos($value,':') === 1 ? 1 : 0), '0', STR_PAD_LEFT);
 }
 
-/** Normalize the digit masks used by the date and time columns in «Вывоз». */
+/** ISO 6346 identification of a freight container, including the check digit. */
+function vitrine_container_input(string $value): ?string {
+    $value = trim($value);
+    if ($value === '') return '';
+    $value = strtoupper(preg_replace('/[ \t\x{00A0}\x{202F}-]+/u','',$value) ?? $value);
+    if (!preg_match('/^[A-Z]{3}U[0-9]{7}$/D',$value)) return null;
+    $sum = 0;
+    for ($position=0;$position<10;$position++) {
+        $code = ord($value[$position]);
+        $number = $position < 4 ? $code-55 : $code-48;
+        // The ISO letter values skip multiples of 11.
+        if ($position < 4) $number += intdiv($number-1,10);
+        $sum += $number * (1 << $position);
+    }
+    return $sum % 11 % 10 === (int)$value[10] ? $value : null;
+}
+
+/** Normalize the compact fields in «Вывоз». */
 function vitrine_compact_input(string $value, string $kind): ?string {
     $value = trim($value);
     if ($value === '') return '';
+    if ($kind === 'container') return vitrine_container_input($value);
+    if ($kind === 'weight') {
+        if (!preg_match('/^(?:[0-9]+|[0-9]{1,3}(?:[ \x{00A0}\x{202F}][0-9]{3})+)$/uD',$value)) return null;
+        $digits = str_replace([' ',"\u{00A0}","\u{202F}"],'',$value);
+        if (strlen($digits)>15000) return null;
+        $digits = ltrim($digits,'0') ?: '0';
+        return strrev(implode(' ',str_split(strrev($digits),3)));
+    }
     if ($kind === 'time') {
         $time = vitrine_time_input($value);
         return $time !== null && strlen($time) === 5 ? $time : null;
@@ -73,6 +98,11 @@ function vitrine_slot_input(string $value): ?string {
     [, $from, $to, $day, $month, $year] = $parts;
     if ((int)$from>23 || (int)$to>23 || !checkdate((int)$month,(int)$day,2000+(int)$year)) return null;
     return "с $from до $to - $day.$month.$year";
+}
+
+function vitrine_weight_in_range(string $formatted): bool {
+    $digits = str_replace(' ','',$formatted);
+    return $digits === '' || ($digits >= 1000 && $digits <= 50000);
 }
 
 /** Validate pasted text without coercing it, evaluating formulas, or rewriting the source. */
