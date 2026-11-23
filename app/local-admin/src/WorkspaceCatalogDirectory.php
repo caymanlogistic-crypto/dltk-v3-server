@@ -28,7 +28,8 @@ function workspace_catalog_directory_model(): array {
     }
     if ($catalog['kind']==='unload-points') $columns[2]['kind']='unload-contacts';
     return ['id'=>0,'catalogId'=>(int)$id,'catalogKind'=>$catalog['kind'],'slug'=>'catalog-entries-'.$id,
-        'title'=>$catalog['title'],'columns'=>$columns];
+        'title'=>$catalog['title'],'columns'=>$columns]+
+        ($catalog['kind']==='fleet-vehicles' ? ['columnOrderVersion'=>1] : []);
 }
 
 function workspace_catalog_directory_data(?array $requestedRows): array {

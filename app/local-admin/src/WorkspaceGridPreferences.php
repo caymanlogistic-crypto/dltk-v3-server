@@ -23,7 +23,15 @@ function workspace_read_preferences(array $grid, int $userId): array {
     if (isset($grid['catalogId']) || isset($grid['directoryKey'])) {
         $key = workspace_catalog_preferences_key($grid, $userId);
         $value = wquery('SELECT value FROM workspace_meta WHERE `key`=?', [$key])->fetchColumn();
-        return $value === false ? ['settings'=>null, 'version'=>0] : json_decode($value, true);
+        $preferences=$value === false ? ['settings'=>null, 'version'=>0] : json_decode($value, true);
+        $orderVersion=$grid['columnOrderVersion']??null;
+        if ($orderVersion!==null && ($preferences['columnOrderVersion']??null)!==$orderVersion) {
+            if (is_array($preferences['settings'])) {
+                $preferences['settings']['order']=array_column($grid['columns'],'letter');
+            }
+            $preferences['columnOrderVersion']=$orderVersion;
+        }
+        return $preferences;
     }
     $row = wquery('SELECT settings,version FROM user_view_preferences WHERE user_id=? AND table_id=?', [$userId, $grid['id']])->fetch();
     return $row ? ['settings'=>json_decode($row['settings'], true), 'version'=>(int)$row['version']] : ['settings'=>null, 'version'=>0];
@@ -120,6 +128,9 @@ function workspace_preferences(array $grid, ?array $body = null): array {
     $patch = $body['changes'] ?? null;
     if ($patch !== null && !is_array($patch)) throw new ApiError('invalid_preferences', 'Некорректные изменения настроек.');
     $columns = array_column($grid['columns'], 'letter');
+    $orderVersion=$grid['columnOrderVersion']??null;
+    $staleOrder=$orderVersion!==null && ($body['columnOrderVersion']??null)!==$orderVersion;
+    if ($staleOrder && $patch!==null) unset($patch['order']);
     $defaults = ['order'=>$columns, 'hidden'=>[], 'widths'=>[], 'preset'=>'base', 'lines'=>'base', 'layoutWidth'=>$grid['defaultGridWidth'] ?? 'full'];
     workspace_begin();
     try {
@@ -132,6 +143,7 @@ function workspace_preferences(array $grid, ?array $body = null): array {
         $prior=workspace_prune_preference_columns($previous['settings']??$defaults,$columns);
         if ($editsDefaults) $prior['widths']=array_intersect_key($widthDefaults['widths'],array_fill_keys($columns,true));
         $settings = $patch === null ? ($body['settings'] ?? null) : workspace_merge_preferences($prior,$patch);
+        if ($staleOrder && is_array($settings)) $settings['order']=$prior['order']??$columns;
         workspace_validate_preferences($settings, $columns);
         $submitted=$patch ?? $settings;
         $columnKeys=array_fill_keys($columns,true);
@@ -153,6 +165,7 @@ function workspace_preferences(array $grid, ?array $body = null): array {
                 ['grid_color_preset_'.$userId,wjson($colorPreset)]);
         }
         $result = ['settings'=>$settings, 'version'=>$version+1];
+        if ($orderVersion!==null) $result['columnOrderVersion']=$orderVersion;
         if (isset($grid['catalogId']) || isset($grid['directoryKey'])) {
             wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [workspace_catalog_preferences_key($grid, $userId), wjson($result)]);
         } else {

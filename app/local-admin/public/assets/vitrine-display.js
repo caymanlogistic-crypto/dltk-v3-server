@@ -29,7 +29,7 @@
     if(inFlight||!Object.keys(pendingChanges).length)return;
     const changes=pendingChanges;pendingChanges={};inFlight=true;
     try{
-      const response=await fetch(url('/api/workspace/preferences'),{method:'POST',credentials:'same-origin',keepalive,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({changes})});
+      const response=await fetch(url('/api/workspace/preferences'),{method:'POST',credentials:'same-origin',keepalive,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({changes,columnOrderVersion:serverPreferences.columnOrderVersion})});
       const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось сохранить личные настройки.');
       receiveColorPreset(result.colorPreset);
       receiveWidthDefaults(result.widthDefaults);
@@ -140,8 +140,10 @@
   }
   let state = {order:[...originalOrder],hidden:[],widths:{},preset:'base',lines:'base',layoutWidth:defaultWidth};
   try {
-    const saved = serverPreferences.settings && Object.keys(serverPreferences.settings).length ? serverPreferences.settings : JSON.parse(localStorage.getItem(key) || 'null');
-    if (saved) state = {order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
+    const savedOnServer=serverPreferences.settings && Object.keys(serverPreferences.settings).length>0;
+    const saved = savedOnServer ? serverPreferences.settings : JSON.parse(localStorage.getItem(key) || 'null');
+    const legacyLocalOrder=!savedOnServer && serverPreferences.columnOrderVersion!==undefined;
+    if (saved) state = {order:validOrder(legacyLocalOrder ? null : saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
   } catch {}
   try {
     const fallback=JSON.parse(localStorage.getItem(legacyPresetKey)||'null')?.preset;
