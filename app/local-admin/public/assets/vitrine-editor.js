@@ -392,7 +392,8 @@
     const pickupEditor = cell.dataset.column === 'E' && Number(cell.dataset.catalogId) > 0 &&
       document.body.dataset.workspaceTable === 'vyvoz';
     const dropoffEditor = isDropoffCell(cell);
-    const catalogEditor = dropoffEditor || pickupEditor || (['B', 'I', 'K', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
+    const fleetEditor = !catalog && cell.dataset.column==='O' && Number(cell.dataset.catalogId)>0;
+    const catalogEditor = fleetEditor || dropoffEditor || pickupEditor || (['B', 'I', 'K', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
     if (mask || isSingleLine || isStatus || catalogEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
@@ -414,7 +415,6 @@
     const typeEditor = isContainerTypeCell(cell);
     const unloadEditor = isUnloadingCell(cell);
     const unloadClient = catalog==='entries' && cell.dataset.column==='A' && document.getElementById('unload-contacts-dialog');
-    const fleetEditor = !catalog && cell.dataset.column==='O' && Number(cell.dataset.catalogId)>0;
     const fleetSearchKey = value => value.toUpperCase().replace(/[АВЕКМНОРСТУХ]/g,
       letter => 'ABEKMHOPCTYX'['АВЕКМНОРСТУХ'.indexOf(letter)]).replace(/[\s-]+/g,'');
     const searchableCatalog = fleetEditor || dropoffEditor || pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
