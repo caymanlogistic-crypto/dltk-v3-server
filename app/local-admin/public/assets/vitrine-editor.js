@@ -120,6 +120,11 @@
       report(error instanceof TypeError ? 'Нет связи с сервером. Отмена не выполнена.' : error.message,'danger');
     } finally { undoing = false; pendingCells.delete(cell); cell.removeAttribute('aria-busy'); }
   }
+  function updateDerivedTitle(cell,value) {
+    cell.title = cell.dataset.derivedSource + '. ' + (value || cell.dataset.emptyLabel + '.');
+    if (value) cell.removeAttribute('aria-label');
+    else cell.setAttribute('aria-label',cell.dataset.emptyLabel);
+  }
   function applyResult(cell, result) {
     if (Number(cell.dataset.revision || 0) > result.revision) return;
     window.VitrineDropoff?.update(cell,result);
@@ -136,7 +141,14 @@
       if (unload) unload.dataset.choices=JSON.stringify(result.unloadChoices);
     }
     if (result.values) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
-      if (Object.hasOwn(result.values,sibling.dataset.column)) sibling.textContent = result.values[sibling.dataset.column];
+      if (!Object.hasOwn(result.values,sibling.dataset.column)) continue;
+      const value=result.values[sibling.dataset.column];
+      const changed=sibling.textContent!==value;
+      sibling.textContent=value;
+      if (sibling.dataset.derivedSource) {
+        updateDerivedTitle(sibling,value);
+        if (changed) flash(sibling);
+      }
     }
     if (result.fleetDocuments) {
       const docs = result.fleetDocuments;
@@ -186,9 +198,7 @@
     window.VitrineDisplay?.paintCell(cell);
     if (cell.dataset.column==='P') window.VitrineRows?.updateVehicleDriver(cell.parentElement);
     if (cell.dataset.derivedSource) {
-      cell.title = cell.dataset.derivedSource + '. ' + (result.value || cell.dataset.emptyLabel + '.');
-      if (result.value) cell.removeAttribute('aria-label');
-      else cell.setAttribute('aria-label', cell.dataset.emptyLabel);
+      updateDerivedTitle(cell,result.value);
       return;
     }
     cell.title = (result.edited ? 'Изменено в БД. ' : '') + 'Щелчок — изменить. ' + result.value;

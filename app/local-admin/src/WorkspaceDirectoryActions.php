@@ -73,8 +73,8 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         if (workspace_catalog_has_palette($kind)) $payload['color'] = workspace_directory_color($values['B'] ?? '');
         if ($kind === 'clients' && isset($values['B'])) $payload['manager'] = $values['B'];
         if ($kind==='carriers') {
-            $payload['carrierDetails']=workspace_carrier_details($values);
-            $payload['logist']=$values['D']??'';
+            $payload['carrierDetails']=workspace_carrier_details(['B'=>$values['B']??'','edoId'=>$values['C']??'']);
+            $payload['logist']=$values['E']??'';
         }
         $previous = wquery('SELECT id,revision FROM catalog_entries WHERE catalog_id=? AND normalized=? AND active=FALSE',
             [$catalogId,vitrine_status_key($name)])->fetch();

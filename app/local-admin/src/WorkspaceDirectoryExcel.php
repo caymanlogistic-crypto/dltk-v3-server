@@ -74,7 +74,7 @@ function workspace_directory_excel_entries(array $schema): array {
         $base=['A'=>$entry['name']];
         $entry['values']=match($kind) {
             'clients'=>$base+['B'=>$detail??''],
-            'carriers'=>$base+($detail??workspace_carrier_details([])+['D'=>'']),
+            'carriers'=>$base+($detail??workspace_carrier_values([])),
             'status','terminals-main','order-statuses'=>$base+['B'=>$palette[$entry['color']]??''],
             'dropoff-points'=>$base+($detail??workspace_dropoff_profile([])),
             'managers'=>workspace_manager_values($detail),
@@ -94,6 +94,7 @@ function workspace_directory_excel_header(array $labels,array $sheet,string $kin
     if (in_array('Клиент',$labels,true) && in_array('Менеджер',$labels,true)) $allowed[]='Точки выгрузки';
     if ($kind==='fleet-vehicles') $allowed[]='Тип транспорта';
     $required=array_diff($labels,['Пароль','Доп. телефон']);
+    if ($kind==='carriers') unset($required['D']);
     if (count($header)!==count(array_unique($header)) || array_diff($header,$allowed) ||
         array_diff($required,$header) || (in_array('ID записи',$header,true)!==in_array('Версия записи',$header,true))) {
         directory_xlsx_error('Проверьте заголовки первой строки. Нужны столбцы: '.implode(', ',$labels).'.');
@@ -126,8 +127,8 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
             }
         }
         if ($kind==='carriers') {
-            $payload['carrierDetails']=workspace_carrier_details($values);
-            $payload['logist']=workspace_client_validate_manager($values['D']);
+            $payload['carrierDetails']=workspace_carrier_details(['B'=>$values['B'],'edoId'=>$values['C']]);
+            $payload['logist']=workspace_client_validate_manager($values['E']);
         }
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
         if ($kind==='status' || $kind==='order-statuses' || ($kind==='terminals-main' && $values['B']!=='')) {
@@ -153,6 +154,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             }
             $values=[];
             foreach ($schema['labels'] as $letter=>$label) $values[$letter]=trim($cells[$positions[$label]??0]??'');
+            if ($kind==='carriers') $values['D']=workspace_carrier_edo_operator(workspace_carrier_edo_id($values['C']));
             if ($kind==='employees') {
                 if (!in_array($values['C'],['','Скрыт'],true)) directory_xlsx_error('Пароли сотрудников задаются только в карточке.');
                 $values['C']='Скрыт';

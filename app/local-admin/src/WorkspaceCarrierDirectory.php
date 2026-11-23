@@ -11,7 +11,46 @@ function workspace_carrier_details(mixed $values): array {
         }
         $details[$column]=trim($value);
     }
+    $details['edoId']=workspace_carrier_edo_id($values['edoId']??'');
     return $details;
+}
+
+function workspace_carrier_edo_id(mixed $value): string {
+    if (!is_string($value)) throw new ApiError('invalid_edo_id','Укажите полный идентификатор участника ЭДО.');
+    $id=trim($value);
+    if ($id!=='' && !preg_match('/^2[A-Z0-9]{2}-?[A-Z0-9][A-Z0-9@.\-]{0,155}$/iD',$id)) {
+        throw new ApiError('invalid_edo_id','Укажите полный идентификатор участника ЭДО.');
+    }
+    return $id;
+}
+
+function workspace_carrier_edo_operator(string $id): string {
+    // Codes verified against the operators’ published roaming directory.
+    return match (strtoupper(substr($id,0,3))) {
+        '2AD'=>'Русь-Телеком',
+        '2AE'=>'Калуга Астрал',
+        '2AH'=>'ИнфоТеКС Интернет Траст',
+        '2AL'=>'Такском',
+        '2BA'=>'НТЦ СТЭК',
+        '2BE'=>'Тензор (СБИС / Saby)',
+        '2BK'=>'СберКорус',
+        '2BM'=>'Контур.Диадок',
+        '2EE'=>'Электронный Экспресс',
+        '2GP'=>'КДС',
+        '2HX'=>'КРИПТЭКС',
+        '2IJ'=>'Эдивеб',
+        '2JF'=>'ЭДО.МИГ24',
+        '2LH'=>'ФораПром',
+        '2LT'=>'Оператор-ЦРПТ (ЭДО Лайт)',
+        '2MH'=>'Точка',
+        '2VO'=>'Эвотор ОФД',
+        default=>'',
+    };
+}
+
+function workspace_carrier_values(array $details,string $logist=''): array {
+    return ['B'=>$details['B']??'', 'C'=>$details['edoId']??'',
+        'D'=>workspace_carrier_edo_operator($details['edoId']??''), 'E'=>$logist];
 }
 
 function workspace_carrier_entry_details(int $entryId): array {
@@ -26,7 +65,7 @@ function workspace_carrier_directory_values(int $catalogId): array {
         WHERE e.catalog_id=?",[$catalogId])->fetchAll() as $row) {
         $id=(int)$row['id'];
         $details=$row['value']===null ? [] : (json_decode($row['value'],true)??[]);
-        $values[$id]=workspace_carrier_details($details)+['D'=>$logists[$id]??''];
+        $values[$id]=workspace_carrier_values(workspace_carrier_details($details),$logists[$id]??'');
     }
     return $values;
 }

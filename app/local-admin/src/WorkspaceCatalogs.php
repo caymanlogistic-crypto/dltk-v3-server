@@ -93,6 +93,7 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
         $beforeManager=$old&&$hasManager?(workspace_client_manager_values($cid)[$old['id']]??''):'';
         $managerChanged=$hasManager&&$beforeManager!==$manager;
         $beforeCarrier=$carrierDetails!==null && $old ? workspace_carrier_entry_details((int)$old['id']) : workspace_carrier_details([]);
+        if ($carrierDetails!==null) $carrierDetails['C']=$beforeCarrier['C']; // Preserve the archived source text.
         $carrierChanged=$carrierDetails!==null && $beforeCarrier!==$carrierDetails;
         $beforeDropoff=$dropoffProfile!==null && $old ? workspace_dropoff_profiles($cid)[(int)$old['id']]??[] : [];
         $dropoffChanged=$dropoffProfile!==null && $beforeDropoff!==$dropoffProfile;

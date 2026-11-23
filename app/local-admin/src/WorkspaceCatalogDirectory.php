@@ -8,7 +8,7 @@ function workspace_catalog_directory_model(): array {
     workspace_require('catalog',(string)$id,'view');
     $labels = match ($catalog['kind']) {
         'clients'=>['A'=>'Клиент','B'=>'Менеджер'],
-        'carriers'=>['A'=>'Перевозчик','B'=>'ИНН','C'=>'Оператор ЭДО','D'=>'Логист'],
+        'carriers'=>['A'=>'Перевозчик','B'=>'ИНН','C'=>'Идентификатор ЭДО','D'=>'Оператор ЭДО','E'=>'Логист'],
         'status'=>['A'=>'Статус','B'=>'Цвет'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
         'container-types'=>['A'=>'Тип контейнера'],
@@ -23,6 +23,10 @@ function workspace_catalog_directory_model(): array {
     $columns = [];
     foreach ($labels as $letter=>$label) {
         $column=compact('letter','label');
+        if ($catalog['kind']==='carriers' && $letter==='D') {
+            $column['derivedSource']='По идентификатору ЭДО';
+            $column['derivedEmptyLabel']='Оператор ЭДО не определён';
+        }
         if ($catalog['kind']==='fleet-vehicles' && isset(workspace_fleet_document_fields()[$letter])) $column['export']=false;
         $columns[]=$column;
     }
@@ -31,7 +35,7 @@ function workspace_catalog_directory_model(): array {
         'title'=>$catalog['title'],'columns'=>$columns]+
         (match ($catalog['kind']) {
             'fleet-vehicles'=>['columnOrderVersion'=>2],
-            'carriers'=>['columnOrderVersion'=>1],
+            'carriers'=>['columnOrderVersion'=>2],
             default=>[],
         });
 }
@@ -91,7 +95,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         if ($kind==='dropoff-points') $values+=($dropoffProfiles[$entryId]??workspace_dropoff_profile([]));
         if (workspace_catalog_has_palette($kind)) $values['B'] = $palette[$entry['color']] ?? '';
         if ($kind==='clients') $values['B'] = $clientManagers[$entryId] ?? '';
-        if ($kind==='carriers') $values+=($carrierValues[$entryId]??workspace_carrier_details([])+['D'=>'']);
+        if ($kind==='carriers') $values+=($carrierValues[$entryId]??workspace_carrier_values([]));
         if ($driverCatalog && !$canViewDrivers) {
             $values=array_replace($values,array_fill_keys(array_keys(workspace_fleet_driver_columns()),''));
         }
@@ -279,20 +283,26 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         $value=$result['values'][$column];
         json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);
     }
+    if ($kind==='carriers' && $column==='D') {
+        throw new ApiError('derived_field','Оператор определяется по идентификатору ЭДО.',403);
+    }
     $payload = ['catalogId'=>$id,'id'=>$body['row'],'name'=>$entry['name'],'color'=>$entry['color']];
+    $updatedValues=[];
     $value = $body['value'];
     $fill = null;
     if ($column === 'A') $payload['name'] = $value = workspace_catalog_validate_name($value);
     elseif (workspace_catalog_has_palette($kind)) $payload['color'] = $fill = workspace_directory_color($value);
-    elseif ($kind==='carriers' && $column!=='D') {
+    elseif ($kind==='carriers' && in_array($column,['B','C'],true)) {
         $details=workspace_carrier_entry_details((int)$entry['id']);
-        $details[$column]=$value;
+        $field=$column==='C' ? 'edoId' : 'B';
+        $details[$field]=$value;
         $payload['carrierDetails']=workspace_carrier_details($details);
-        $value=$payload['carrierDetails'][$column];
+        $value=$payload['carrierDetails'][$field];
+        if ($column==='C') $updatedValues=['D'=>workspace_carrier_edo_operator($value)];
     } else $payload[$kind === 'clients' ? 'manager' : 'logist'] = $value = workspace_client_validate_manager($value);
     if ($pasteCheck) json_response(['accepted'=>true]);
     $baseHash = workspace_catalog_directory_hash($id,$body['row']);
     if (($body['baseHash'] ?? null) !== $baseHash || !is_int($body['revision'] ?? null)) workspace_directory_conflict();
     json_response(workspace_catalog_save($payload+['revision'=>$body['revision']])+[
-        'value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false,'orderFill'=>$fill]);
+        'value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false,'orderFill'=>$fill,'values'=>$updatedValues]);
 }
