@@ -83,10 +83,16 @@ function workspace_can(string $type,string $resource,string $action,?int $tableI
     return true;
 }
 function workspace_require(string $type,string $id,string $action,?int $tableId=null): void {if(!workspace_can($type,$id,$action,$tableId))throw new ApiError('forbidden','Для этого действия нет доступа.',403);}
+function workspace_table_display_title(string $slug,string $title): string {
+    return $slug==='vyvoz' ? 'Автовывоз' : $title;
+}
+
 function workspace_table(?string $slug=null): array {
     $slug=$slug??(is_string($_GET['table']??null)?$_GET['table']:'vyvoz');
     $t=wquery('SELECT * FROM table_definitions WHERE slug=?',[$slug])->fetch();if(!$t)throw new ApiError('table_not_found','Таблица не найдена.',404);
-    $t['id']=(int)$t['id'];workspace_require('table',(string)$t['id'],'view',$t['id']);$t['columns']=json_decode($t['columns_json'],true);return $t;
+    $t['id']=(int)$t['id'];workspace_require('table',(string)$t['id'],'view',$t['id']);$t['columns']=json_decode($t['columns_json'],true);
+    $t['title']=workspace_table_display_title($t['slug'],$t['title']);
+    return $t;
 }
 function workspace_manifest(array $t, bool $archive=false): array {
     $filter=$archive ? "AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('directory_deleted_record_',r.id))"
@@ -105,7 +111,17 @@ function workspace_audit(array $e): int {
     wquery('INSERT INTO change_history(actor_id,actor_name,table_id,record_id,row_num,field_key,column_label,before_value,after_value,action,category,operation_id,request_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',[$u['id'],$u['name'],$e['tableId']??null,$e['recordId']??null,$e['row']??null,$e['column']??null,$e['label']??null,wjson($e['before']??null),wjson($e['after']??null),$e['action']??'edit',$e['category']??'cell',$e['operationId']??bin2hex(random_bytes(12)),$e['requestId']??null]);return (int)workspace_db()->lastInsertId();
 }
 function workspace_tables(): array {
-    $out=[];foreach(wquery('SELECT t.id,t.slug,t.title,t.is_demo,COUNT(r.id) AS rowCount FROM table_definitions t LEFT JOIN records r ON r.table_id=t.id AND r.archived=FALSE GROUP BY t.id ORDER BY t.id')->fetchAll() as $t){if(workspace_can('table',(string)$t['id'],'view',(int)$t['id']))$out[]=['id'=>(int)$t['id'],'slug'=>$t['slug'],'title'=>$t['title'],'isDemo'=>(bool)$t['is_demo'],'rowCount'=>(int)$t['rowCount']];}return $out;
+    $tables=wquery('SELECT t.id,t.slug,t.title,t.is_demo,COUNT(r.id) AS rowCount
+        FROM table_definitions t LEFT JOIN records r ON r.table_id=t.id AND r.archived=FALSE
+        WHERE t.is_demo=FALSE GROUP BY t.id ORDER BY t.id')->fetchAll();
+    $visible=[];
+    foreach ($tables as $table) {
+        $id=(int)$table['id'];
+        if (!workspace_can('table',(string)$id,'view',$id)) continue;
+        $visible[]=['id'=>$id,'slug'=>$table['slug'],'title'=>workspace_table_display_title($table['slug'],$table['title']),
+            'isDemo'=>(bool)$table['is_demo'],'rowCount'=>(int)$table['rowCount']];
+    }
+    return $visible;
 }
 function workspace_api(string $path): never {
     $method=$_SERVER['REQUEST_METHOD'];if(!in_array($method,['GET','POST'],true))throw new ApiError('method','Метод не поддерживается.',405);

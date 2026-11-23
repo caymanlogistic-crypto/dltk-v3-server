@@ -187,6 +187,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
       <?php require __DIR__.'/vitrine-directory-toolbar.php'; ?>
     <?php else: ?>
     <section class="vitrine-catalog-toolbar" aria-label="Управление таблицей">
+      <h1><strong><?= $escape($currentTable['title']) ?></strong></h1>
       <div class="vitrine-grid-tools">
         <?php require __DIR__.'/vitrine-archive-filter.php'; ?>
         <?php require __DIR__.'/vitrine-export-button.php'; ?>
