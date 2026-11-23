@@ -417,7 +417,11 @@
     if (draftType === 'email') field.inputMode = 'email';
     if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
     field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : isSingleLine && catalog ? 160 : 20000;
-    if (cell.dataset.kind === 'fleet-document') field.maxLength = ({J:500,K:80,L:10,M:10})[cell.dataset.column];
+    if (cell.dataset.kind === 'fleet-document') {
+      const limit = {J:50,N:400,K:80}[cell.dataset.column];
+      field.maxLength = limit || 10;
+      if (!limit) field.placeholder = 'ДД.ММ.ГГГГ';
+    }
     field.value = mask && firstCharacter !== null ? mask.format(firstCharacter) : firstCharacter ?? initialValue;
     if (isContainer) {
       const prefix = /^(?:[A-Z]{0,3}|[A-Z]{3}U[0-9]{0,7})$/;

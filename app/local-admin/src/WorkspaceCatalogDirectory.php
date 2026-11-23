@@ -67,8 +67,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             ORDER BY name,id",[$id,(int)!$archive])->fetchAll(),
     };
     if ($showDocuments) {
-        $documentRows=array_column(wquery('SELECT driver_id,passport,license_number,license_issued,license_expires,revision
-            FROM fleet_driver_documents')->fetchAll(),null,'driver_id');
+        $documentRows=workspace_fleet_documents();
     }
     if (!$archive) $entries=workspace_directory_order_entries($entries,$id);
     $palette = array_column(workspace_palette(),'name','fill');

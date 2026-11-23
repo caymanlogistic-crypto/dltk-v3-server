@@ -48,11 +48,17 @@ function workspace_fleet_retired_kind(string $kind): bool {
 }
 
 function workspace_fleet_document_labels(): array {
-    return ['J'=>'Паспортные данные','K'=>'Серия и номер ВУ','L'=>'Дата выдачи ВУ','M'=>'ВУ действует до'];
+    return ['J'=>'Серия и номер паспорта','N'=>'Кем выдан паспорт','O'=>'Дата выдачи паспорта','P'=>'Дата рождения',
+        'K'=>'Серия и номер ВУ','L'=>'Дата выдачи ВУ','M'=>'ВУ действует до'];
 }
 
 function workspace_fleet_document_fields(): array {
-    return ['J'=>'passport','K'=>'license_number','L'=>'license_issued','M'=>'license_expires'];
+    return ['J'=>'passport_number','N'=>'passport_issuer','O'=>'passport_issued','P'=>'birth_date',
+        'K'=>'license_number','L'=>'license_issued','M'=>'license_expires'];
+}
+
+function workspace_fleet_document_text_limits(): array {
+    return ['passport_number'=>50,'passport_issuer'=>400,'license_number'=>80];
 }
 
 function workspace_fleet_document_target(int $vehicle): array {
@@ -65,32 +71,36 @@ function workspace_fleet_document_target(int $vehicle): array {
     return $target;
 }
 
-function workspace_fleet_documents(int $driver): array {
-    return wquery('SELECT passport,license_number,license_issued,license_expires,revision
-        FROM fleet_driver_documents WHERE driver_id=?',[$driver])->fetch()
-        ?: ['passport'=>'','license_number'=>'','license_issued'=>null,'license_expires'=>null,'revision'=>0];
+function workspace_fleet_documents(?int $driver=null): array {
+    $fields=workspace_fleet_document_fields();
+    $sql='SELECT driver_id,revision,'.implode(',',$fields).' FROM fleet_driver_documents';
+    if ($driver===null) return array_column(wquery($sql)->fetchAll(),null,'driver_id');
+    return wquery($sql.' WHERE driver_id=?',[$driver])->fetch()
+        ?: ['revision'=>0]+array_fill_keys(array_keys(workspace_fleet_document_text_limits()),'')+array_fill_keys($fields,null);
 }
 
 function workspace_fleet_document_state(int $vehicle,int $driver,bool $editable,?array $data=null): array {
     $data??=$driver ? workspace_fleet_documents($driver) : [];
     $values=[];
+    $textLimits=workspace_fleet_document_text_limits();
     foreach (workspace_fleet_document_fields() as $column=>$field) {
         $value=(string)($data[$field]??'');
-        $values[$column]=in_array($column,['L','M'],true) && $value!=='' ? implode('.',array_reverse(explode('-',$value))) : $value;
+        $values[$column]=!isset($textLimits[$field]) && $value!=='' ? implode('.',array_reverse(explode('-',$value))) : $value;
     }
     return ['values'=>$values,'revision'=>(int)($data['revision']??0),'baseHash'=>hash('sha256',"fleet-documents:$vehicle:$driver"),
         'readOnly'=>$editable && $driver ? '' : ($driver ? 'Запись доступна только для просмотра.' : 'Сначала укажите водителя.')];
 }
 
-function workspace_fleet_document_date(string $value): ?string {
+function workspace_fleet_document_date(string $value,bool $fullYear=false): ?string {
     if ($value==='') return null;
     if (preg_match('/^(\d{2})\.(\d{2})\.(\d{2}|\d{4})$/D',$value,$parts)) {
+        if ($fullYear && strlen($parts[3])===2) throw new ApiError('invalid_document_date','Укажите год рождения четырьмя цифрами.');
         $year=strlen($parts[3])===2 ? '20'.$parts[3] : $parts[3];
         $value=$year.'-'.$parts[2].'-'.$parts[1];
     }
     if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D',$value,$parts)
         || !checkdate((int)$parts[2],(int)$parts[3],(int)$parts[1]) || (int)$parts[1]<1900) {
-        throw new ApiError('invalid_document_date','Проверьте даты водительского удостоверения.');
+        throw new ApiError('invalid_document_date','Проверьте дату. Формат ДД.ММ.ГГГГ.');
     }
     return $value;
 }
@@ -112,9 +122,13 @@ function workspace_fleet_document_cell(array $body,bool $pasteCheck): never {
         }
         $next=$previous;
         $value=trim($body['value']);
-        if (in_array($column,['L','M'],true)) $next[$field]=workspace_fleet_document_date($value);
-        else {
-            $limit=$column==='J' ? 500 : 80;
+        $limit=workspace_fleet_document_text_limits()[$field]??null;
+        if ($limit===null) {
+            $next[$field]=workspace_fleet_document_date($value,$field==='birth_date');
+            if (in_array($field,['passport_issued','birth_date'],true) && $next[$field]!==null && $next[$field]>date('Y-m-d')) {
+                throw new ApiError('invalid_document_date','Дата не может быть позже сегодняшнего дня.');
+            }
+        } else {
             if (mb_strlen($value)>$limit || preg_match('/[\x00-\x1F]/u',$value)) {
                 throw new ApiError('invalid_documents','Проверьте длину и формат данных документов.');
             }
@@ -129,10 +143,12 @@ function workspace_fleet_document_cell(array $body,bool $pasteCheck): never {
         }
         if ($previous!==$next) {
             $next['revision']=$state['revision']+1;
-            wquery('INSERT INTO fleet_driver_documents(driver_id,passport,license_number,license_issued,license_expires,revision)
-                VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE passport=VALUES(passport),license_number=VALUES(license_number),
-                    license_issued=VALUES(license_issued),license_expires=VALUES(license_expires),revision=VALUES(revision)',
-                [$driver,$next['passport'],$next['license_number'],$next['license_issued'],$next['license_expires'],$next['revision']]);
+            $columns=['revision',...array_values(workspace_fleet_document_fields())];
+            $placeholders=implode(',',array_fill(0,count($columns)+1,'?'));
+            $updates=implode(',',array_map(static fn(string $name): string=>$name.'=VALUES('.$name.')',$columns));
+            wquery('INSERT INTO fleet_driver_documents(driver_id,'.implode(',',$columns).")
+                VALUES($placeholders) ON DUPLICATE KEY UPDATE $updates",
+                [$driver,...array_map(static fn(string $name): mixed=>$next[$name],$columns)]);
             workspace_audit(['category'=>'catalog','label'=>'Документы водителя','action'=>'edit',
                 'after'=>['driverId'=>$driver,'revision'=>$next['revision']]]);
         }
