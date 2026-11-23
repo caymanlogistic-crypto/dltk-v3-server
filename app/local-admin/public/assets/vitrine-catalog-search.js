@@ -2,13 +2,13 @@
 (() => {
   const form = document.querySelector('.vitrine-catalog-search');
   const grid = window.VitrineRows;
-  if (!form || !grid) return;
-  const field = form.elements.q;
+  const field = form?.elements.q;
   let timer;
-  const visibility = form.querySelector('[data-directory-visibility]');
+  const visibility = document.querySelector('[data-directory-visibility]');
   if (visibility) {
-    const modes = new Map([[visibility.dataset.allLabel,'all'],['Активные',''],['Архив','1']]);
-    const initial = [...modes].find(([,mode])=>mode===visibility.dataset.directoryVisibility)[0];
+    const modes = new Map([['Активные',''],['Архив','1']]);
+    if (visibility.dataset.allLabel) modes.set(visibility.dataset.allLabel,'all');
+    const initial = [...modes].find(([,mode])=>mode===visibility.dataset.directoryVisibility)?.[0] ?? 'Активные';
     const selector = window.VitrineSelect.create([...modes.keys()].map(label=>({value:label,label})),initial);
     selector.field.setAttribute('aria-label',visibility.dataset.filterLabel);
     visibility.append(selector.element);
@@ -24,11 +24,14 @@
       const url = new URL(location.href);
       const mode = modes.get(current);
       if (mode) url.searchParams.set('archive',mode); else url.searchParams.delete('archive');
-      const query = field.value.trim();
-      if (query) url.searchParams.set('q',query); else url.searchParams.delete('q');
+      if (field) {
+        const query = field.value.trim();
+        if (query) url.searchParams.set('q',query); else url.searchParams.delete('q');
+      }
       location.assign(url);
     });
   }
+  if (!field || !grid) return;
   async function update() {
     clearTimeout(timer);
     try {

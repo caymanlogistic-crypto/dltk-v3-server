@@ -38,6 +38,34 @@
     while(loaded.size>3){const page=loaded.keys().next().value;loaded.delete(page);for(const id of ids.slice(page*pageSize,(page+1)*pageSize)){const row=cache.get(id);if(row&&!row.isConnected)cache.delete(id);}}
     for(const [id,row] of cache)if(!row.isConnected&&!loaded.has(Math.floor(positions.get(String(id))/pageSize)))cache.delete(id);
   }
+  async function fetchRows(wanted, search){
+    const url=window.VitrineGridScope.url('/api/vitrine/rows',{rowFilters:true,ids:wanted,search});
+    const response=await fetch(url,{credentials:'same-origin'});
+    const result=await response.json();
+    if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось загрузить строки.');
+    if(!Array.isArray(result.rowIds)||typeof result.html!=='string')throw new Error('Не удалось прочитать строки таблицы.');
+    const template=document.createElement('template');
+    template.innerHTML='<table><tbody>'+result.html+'</tbody></table>';
+    return {rowIds:result.rowIds, rows:template.content.querySelectorAll('[data-vitrine-row]')};
+  }
+  async function exportRows(columns){
+    const selectedIds=[...ids], search=appliedSearch, values=new Map(), missing=[];
+    function capture(row){
+      const cells=new Map(Array.from(row.querySelectorAll('td[data-column]'),cell=>[cell.dataset.column,cell.textContent]));
+      values.set(Number(row.dataset.rowNumber),[row.querySelector('th')?.firstChild?.textContent ?? '',...columns.map(column=>cells.get(column) ?? '')]);
+    }
+    for(const id of selectedIds){
+      const row=cache.get(id);
+      if(row)capture(row);
+      else missing.push(id);
+    }
+    for(let start=0;start<missing.length;start+=pageSize){
+      const result=await fetchRows(missing.slice(start,start+pageSize),search);
+      for(const row of result.rows)capture(row);
+    }
+    if(values.size!==selectedIds.length)throw new Error('Состав таблицы изменился. Скачайте Excel ещё раз.');
+    return selectedIds.map(id=>values.get(id));
+  }
   async function page(number){
     if(loaded.has(number)){loaded.delete(number);loaded.set(number,true);return;}
     if(pending.has(number))return pending.get(number);
@@ -45,10 +73,8 @@
       const version=manifestVersion;
       const wanted=ids.slice(number*pageSize,(number+1)*pageSize);
       if(!wanted.length)return;
-      const response=await fetch(window.VitrineGridScope.url('/api/vitrine/rows',{rowFilters:true,ids:wanted,search:appliedSearch}),{credentials:'same-origin'});
-      const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось загрузить строки.');
+      const result=await fetchRows(wanted,appliedSearch);
       if(version!==manifestVersion){queue();return;}
-      if(!Array.isArray(result.rowIds)||typeof result.html!=='string')throw new Error('Не удалось прочитать строки таблицы.');
       const missing=new Set(wanted.filter(id=>!result.rowIds.includes(id)));
       if(missing.size){
         ids=ids.filter(id=>!missing.has(id));positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
@@ -57,8 +83,7 @@
         setCounts();table.removeAttribute('aria-busy');
         queue();return;
       }
-      const template=document.createElement('template');template.innerHTML='<table><tbody>'+result.html+'</tbody></table>';
-      for(const row of template.content.querySelectorAll('[data-vitrine-row]')){const id=Number(row.dataset.rowNumber);const old=cache.get(id);if(!old?.isConnected){for(const patch of remotePatches.values())if(Number(patch.row)===id)applyPatch(row,patch);for(const patch of catalogPatches.values())applyCatalogPatch(row,patch);cache.set(id,row);}}
+      for(const row of result.rows){const id=Number(row.dataset.rowNumber);const old=cache.get(id);if(!old?.isConnected){for(const patch of remotePatches.values())if(Number(patch.row)===id)applyPatch(row,patch);for(const patch of catalogPatches.values())applyCatalogPatch(row,patch);cache.set(id,row);}}
       loaded.set(number,true);prune();
     })().finally(()=>{if(pending.get(number)===task)pending.delete(number);});
     pending.set(number,task);return task;
@@ -250,6 +275,7 @@
   window.addEventListener('vitrine-editor-closed',()=>{if(manifestDeferred){manifestDeferred=false;refreshManifest().catch(report);}});
   window.VitrineRows=Object.freeze({
     refreshManifest,
+    exportRows,
     filterDirectory(query){
       requestedSearch=query;
       if(query!==appliedSearch||refreshTask)return refreshManifest();

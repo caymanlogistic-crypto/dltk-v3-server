@@ -77,9 +77,8 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-presence.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php endif; ?>
   <link rel="stylesheet" href="<?= $escape($viewUrl('/assets/vitrine-catalog.css')) ?>">
-  <?php if ($directory): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-search.js')) ?>"></script>
-  <?php endif; ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-table-export.js')) ?>"></script>
   <?php if ($canManageRows || $rowRelatedLabel): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js')) ?>"></script>
   <?php endif; ?>
@@ -181,8 +180,17 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
     <?php if (!empty($error)): ?>
     <section class="vitrine-message" role="alert"><h2>Не удалось загрузить таблицу</h2><p><?= $escape($error) ?></p><p>Обновите страницу, чтобы повторить загрузку.</p></section>
     <?php else: ?>
-    <?php if ($directory) require __DIR__.'/vitrine-directory-toolbar.php';
-    if ($canManageRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
+    <?php if ($directory): ?>
+      <?php require __DIR__.'/vitrine-directory-toolbar.php'; ?>
+    <?php else: ?>
+    <section class="vitrine-catalog-toolbar" aria-label="Управление таблицей">
+      <div class="vitrine-grid-tools">
+        <?php require __DIR__.'/vitrine-archive-filter.php'; ?>
+        <?php require __DIR__.'/vitrine-export-button.php'; ?>
+      </div>
+    </section>
+    <?php endif; ?>
+    <?php if ($canManageRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
     if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php'; ?>
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">

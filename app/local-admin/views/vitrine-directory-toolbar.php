@@ -5,6 +5,7 @@ $employeeScope = $employeePage ? workspace_employee_editor_scope() : null;
 $archive = $catalogGrid['archive'];
 $staffDirectory = ($currentTable['catalogKind'] ?? '') === 'managers';
 $visibilityLabel = $staffDirectory ? 'Все сотрудники' : ($directory === 'clients' ? 'Все клиенты' : null);
+$visibilityAria = $staffDirectory ? 'Фильтр сотрудников' : ($directory === 'clients' ? 'Фильтр клиентов' : 'Фильтр записей');
 $searchPlaceholder = match ($directory) {
     'clients'=>'Клиент или менеджер',
     'employees'=>'ФИО, логин, email или роль',
@@ -27,12 +28,10 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
     <?php if ($archive): ?><input type="hidden" name="archive" value="1"><?php endif; ?>
     <?php if (!empty($catalogGrid['showAll'])): ?><input type="hidden" name="archive" value="all"><?php endif; ?>
     <?php if (!empty($catalogGrid['clientFilter'])): ?><input type="hidden" name="client" value="<?= (int)$catalogGrid['clientFilter']['id'] ?>"><?php endif; ?>
-    <?php if ($visibilityLabel): ?>
-    <div class="vitrine-directory-visibility" data-directory-visibility="<?= $archive ? '1' : ($catalogGrid['showAll'] ? 'all' : '') ?>"
-         data-all-label="<?= $escape($visibilityLabel) ?>" data-filter-label="<?= $staffDirectory ? 'Фильтр сотрудников' : 'Фильтр клиентов' ?>"></div>
-    <?php endif; ?>
+    <?php require __DIR__.'/vitrine-archive-filter.php'; ?>
     <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape($catalogGrid['search']) ?>"
            aria-label="<?= $escape($searchLabel) ?>" placeholder="<?= $escape($searchPlaceholder) ?>">
+    <?php require __DIR__.'/vitrine-export-button.php'; ?>
   </form>
   <?php if ($catalogGrid['canEdit'] && !$archive && !empty($catalogGrid['syncLabel'])): ?>
   <button class="btn" type="button" id="client-catalog-sync"><?= $escape($catalogGrid['syncLabel']) ?></button>
