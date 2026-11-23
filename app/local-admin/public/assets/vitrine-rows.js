@@ -25,8 +25,35 @@
   const positions=new Map(ids.map((id,index)=>[String(id),index]));
   const remotePatches=new Map(),catalogPatches=new Map();
   const pageSize=100,cache=new Map(),loaded=new Map(),pending=new Map();
+  const showVehicleDriver=document.body.dataset.workspaceTable==='vyvoz' && !document.body.hasAttribute('data-vitrine-catalog');
+  function updateVehicleDriver(row) {
+    if (!showVehicleDriver) return;
+    const vehicle=row.querySelector('td[data-column="O"]:not([data-catalog-id="0"])');
+    if (!vehicle) return;
+    const driver=row.querySelector('td[data-column="P"]')?.textContent.trim() ?? '';
+    const parts=driver.replaceAll('.',' ').trim().split(/\s+/u);
+    const validName=parts.length<=3 && parts.every(part=>/^\p{L}+(?:[-’']\p{L}+)*$/u.test(part));
+    const previousSuffix=vehicle.dataset.fleetDriverSuffix ?? '';
+    if (previousSuffix && vehicle.title.endsWith(previousSuffix)) {
+      vehicle.title=vehicle.title.slice(0,-previousSuffix.length);
+    }
+    if (!vehicle.textContent.trim() || !validName) {
+      delete vehicle.dataset.fleetDriverSuffix;
+      vehicle.removeAttribute('aria-label');
+      return;
+    }
+    const [surname,...names]=parts;
+    const initials=names.map(name=>Array.from(name)[0].toUpperCase()).join('.');
+    const suffix=' '+[surname,initials].filter(Boolean).join(' ');
+    vehicle.dataset.fleetDriverSuffix=suffix;
+    vehicle.setAttribute('aria-label',vehicle.textContent+suffix);
+    if (vehicle.title) vehicle.title+=suffix;
+  }
   const initial=Array.from(body.querySelectorAll('[data-vitrine-row]'));
-  for(const row of initial)cache.set(Number(row.dataset.rowNumber),row);
+  for (const row of initial) {
+    updateVehicleDriver(row);
+    cache.set(Number(row.dataset.rowNumber),row);
+  }
   loaded.set(0,true);
   let height=initial[0]?.getBoundingClientRect().height||32,headHeight=table.querySelector('thead').getBoundingClientRect().height,generation=0,frame=0,first=-1,last=-1,navigation=null,navigationGeneration=0,mounts=0,lastScrollTop=scroll.scrollTop,manifestVersion=0;
   const top=document.createElement('tr'),bottom=document.createElement('tr');
@@ -46,12 +73,14 @@
     if(!Array.isArray(result.rowIds)||typeof result.html!=='string')throw new Error('Не удалось прочитать строки таблицы.');
     const template=document.createElement('template');
     template.innerHTML='<table><tbody>'+result.html+'</tbody></table>';
-    return {rowIds:result.rowIds, rows:template.content.querySelectorAll('[data-vitrine-row]')};
+    const rows=template.content.querySelectorAll('[data-vitrine-row]');
+    for (const row of rows) updateVehicleDriver(row);
+    return {rowIds:result.rowIds, rows};
   }
   async function exportRows(columns){
     const selectedIds=[...ids], search=appliedSearch, values=new Map(), missing=[];
     function capture(row){
-      const cells=new Map(Array.from(row.querySelectorAll('td[data-column]'),cell=>[cell.dataset.column,cell.textContent]));
+      const cells=new Map(Array.from(row.querySelectorAll('td[data-column]'),cell=>[cell.dataset.column,cell.textContent+(cell.dataset.fleetDriverSuffix ?? '')]));
       values.set(Number(row.dataset.rowNumber),[row.querySelector('th')?.firstChild?.textContent ?? '',...columns.map(column=>cells.get(column) ?? '')]);
     }
     for(const id of selectedIds){
@@ -331,6 +360,7 @@
       for(const item of catalogPatches.values())applyCatalogPatch(row,item);
     },
     activate:(cell,action)=>activate(cell,action).catch(report),
+    updateVehicleDriver,
     resolveCell:cell=>cache.get(Number(cell.dataset.row))?.querySelector('td[data-column="'+cell.dataset.column+'"]')||cell,
     move(cell,dr,dc,wrap){const columns=visibleColumns();let r=(navigation?.r??rowIndex(cell))+dr,c=(navigation?.c??columns.indexOf(cell.dataset.column))+dc;if(wrap&&c<0){r--;c=columns.length-1;}if(wrap&&c>=columns.length){r++;c=0;}return go(cell,r,c);},
     edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?ids.length+drafts.length-1:0):rowIndex(cell),end?columns.length-1:0);},

@@ -184,6 +184,7 @@
     cell.classList.toggle('local-edited', Boolean(result.edited));
     cell.classList.toggle('conflict', Boolean(result.conflict));
     window.VitrineDisplay?.paintCell(cell);
+    if (cell.dataset.column==='P') window.VitrineRows?.updateVehicleDriver(cell.parentElement);
     if (cell.dataset.derivedSource) {
       cell.title = cell.dataset.derivedSource + '. ' + (result.value || cell.dataset.emptyLabel + '.');
       if (result.value) cell.removeAttribute('aria-label');
@@ -193,6 +194,7 @@
     cell.title = (result.edited ? 'Изменено в БД. ' : '') + 'Щелчок — изменить. ' + result.value;
     if (cell.dataset.orderStatus) cell.title += ' · ' + (orderStatuses[cell.dataset.orderStatus]?.label || '');
     if (cell.dataset.kind === 'time' && !cell.dataset.compactInput) cell.title = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' + result.value;
+    if (cell.dataset.column==='O') window.VitrineRows?.updateVehicleDriver(cell.parentElement);
   }
   function fleetBirthRevision(cell) {
     return Number(cell.parentElement.querySelector('td[data-column="J"]')?.dataset.revision || 0);
