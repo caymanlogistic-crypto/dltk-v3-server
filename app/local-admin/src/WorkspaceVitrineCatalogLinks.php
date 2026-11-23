@@ -32,11 +32,18 @@ function vitrine_bound_catalog_menu(array $tables): array {
         if($table['slug']!=='vyvoz')continue;
         $links=vitrine_catalog_links($table);
         $items=[];
-        foreach(['E','I','K','M'] as $field){
+        foreach(['E','I','K','M','S'] as $field){
             $link=$links[$field]??null;
             if(!$link||!workspace_can('catalog',(string)$link['id'],'view',$table['id']))continue;
             $title=wquery('SELECT title FROM catalogs WHERE id=?',[$link['id']])->fetchColumn();
             $items[]=['id'=>$link['id'],'title'=>$title];
+        }
+        $additional=wquery("SELECT c.id,c.title FROM catalogs c JOIN catalog_bindings b ON c.id=b.catalog_id
+            WHERE b.table_id=? AND b.field_key='' AND c.kind IN ('transport','drivers-detailed','drivers-legacy',
+                'terminals-detailed','application-contacts','application-checks','etrn-carriers') ORDER BY c.title,c.id",
+            [$table['id']])->fetchAll();
+        foreach($additional as $catalog){
+            if(workspace_can('catalog',(string)$catalog['id'],'view',$table['id'])) $items[]=$catalog;
         }
         return $items;
     }
