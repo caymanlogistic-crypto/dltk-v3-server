@@ -187,8 +187,12 @@ function workspace_fleet_driver_id(int $vehicle): int {
 
 function workspace_fleet_assigned_driver(int $vehicle): ?array {
     if (!$vehicle) return null;
-    return wquery('SELECT d.id,d.name FROM fleet_vehicle_profiles v JOIN catalog_entries d ON d.id=v.driver_id
-        WHERE v.entry_id=? AND d.active=TRUE',[$vehicle])->fetch() ?: null;
+    $driver=wquery('SELECT d.id,d.name,p.phone,p.additional_phone FROM fleet_vehicle_profiles v
+        JOIN catalog_entries d ON d.id=v.driver_id JOIN fleet_driver_profiles p ON p.entry_id=d.id
+        WHERE v.entry_id=? AND d.active=TRUE',[$vehicle])->fetch();
+    if (!$driver) return null;
+    $phones=workspace_fleet_phone_pair($driver['phone'],$driver['additional_phone']);
+    return ['id'=>$driver['id'],'name'=>$driver['name'],'phones'=>implode(', ',array_unique(array_filter($phones,'strlen')))];
 }
 
 function workspace_fleet_assert_unused(string $kind,array $entry): void {

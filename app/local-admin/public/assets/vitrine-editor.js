@@ -213,6 +213,7 @@
     if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось сохранить ячейку.');
     if (typeof result.value !== 'string' || !Number.isInteger(result.revision) || typeof result.baseHash !== 'string') throw new Error('Неполный ответ сервера. Обновите страницу.');
     if (result.dependentCell) window.VitrineRows?.patch(result.dependentCell);
+    for (const patch of result.dependentCells ?? []) window.VitrineRows?.patch(patch);
     for (const patch of result.unloadCells ?? []) window.VitrineRows?.patch(patch);
     if (result.reauthenticate) location.assign(window.DltkPaths?.path('/login') ?? '/login');
     return result;

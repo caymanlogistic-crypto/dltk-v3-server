@@ -17,7 +17,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         static fn(array $column): bool=>mb_strtolower(trim($column['label']))==='релиз'),'letter'),true);
     $links=vitrine_catalog_links($t);
     $orderStatusEnabled=isset($links['B']) && workspace_client_order_status_can_view($t);
-    $derivedByColumn=array_column($links,null,'target');
+    $derivedByColumn=vitrine_derived_catalog_columns($links);
     foreach($columns as &$column){
         if(isset($derivedByColumn[$column['letter']])){
             $link=$derivedByColumn[$column['letter']];
@@ -71,7 +71,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         foreach($values as &$v)$v=workspace_string($v);unset($v);foreach($baseline as &$v)$v=workspace_string($v);unset($v);
         $rowEdits=[];foreach($edits[(int)$r['id']]??[] as $key=>$e){$values[$key]=$e['active']?$e['value']:($baseline[$key]??'');$rowEdits[$key]=['revision'=>(int)$e['revision'],'conflict'=>false,'value'=>$values[$key],'active'=>(bool)$e['active']];}
         foreach($refs[(int)$r['id']]??[] as $key=>$ref) {
-            if (isset($links['O']) && in_array($key,['O','P'],true)) continue;
+            if (isset($links['O']) && in_array($key,['O','P',$links['O']['phoneTarget']],true)) continue;
             $values[$key]=$ref['name'];
         }
         foreach (array_keys($slots) as $key) {
@@ -202,17 +202,21 @@ function vitrine_store(array $body): array {
                 if ($patch && workspace_can('field',$column,'view',$t['id'])) $unloadResult['unloadCells'][]=$patch;
             }
         }
-        $dependentPatch=null;
+        $dependentPatch=$phonePatch=null;
         if(isset($link['target'])&&($reference||$value!==$before||(in_array($key,['K','O'],true)&&$body['reset']))){
             if ($key==='K') {
                 $previous=workspace_string($values['L']??'');
-                $next=$resetUnload && $sameClient ? vitrine_unload_original_contact($r) : ($entry?workspace_unload_primary($entry):'');
+                $next=$resetUnload && $sameClient ? vitrine_catalog_original_value($r,'L') : ($entry?workspace_unload_primary($entry):'');
             } elseif ($key==='O') {
                 $previous=workspace_string($values['P']??'');
                 $assigned=$reference ? workspace_fleet_assigned_driver($reference) : null;
                 $next=$body['reset'] ? workspace_string(json_decode($r['baseline_json'],true)['P']??'') : ($assigned['name']??'');
                 wquery("DELETE FROM record_references WHERE record_id=? AND field_key='P'",[$r['id']]);
                 if ($assigned && !$body['reset']) wquery('INSERT INTO record_references VALUES(?,?,?)',[$r['id'],'P',$assigned['id']]);
+                $phoneColumn=$link['phoneTarget'];
+                $phones=$body['reset'] ? vitrine_catalog_original_value($r,$phoneColumn) : ($assigned['phones']??'');
+                $phonePatch=vitrine_update_catalog_value($t,$r,$values,$phoneColumn,$phones,
+                    workspace_string($values[$phoneColumn]??''),$u,$action,$request,$operation,false);
             } else {
                 $entries=vitrine_catalog_values($link);
                 $previousEntry=vitrine_find_catalog_entry($binding,$before,$link['kind']==='clients');
@@ -227,6 +231,7 @@ function vitrine_store(array $body): array {
             $catalogStyle=['catalogFill'=>$entry['color']??null];
         }
         $derived=$dependentPatch&&workspace_can('field',$link['target'],'view',$t['id'])?['dependentCell'=>$dependentPatch]:[];
+        if ($phonePatch && workspace_can('field',$phonePatch['column'],'view',$t['id'])) $derived['dependentCells']=[$phonePatch];
         if($before===$value && !$orderChanged && !$dropoffChanged){
             $result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request]+$derived+$orderResult+$catalogStyle+$unloadResult+$dropoffResult;
             if($link&&$reference){
@@ -237,7 +242,7 @@ function vitrine_store(array $body): array {
                 wquery('DELETE FROM record_references WHERE record_id=? AND field_key=?',[$r['id'],$key]);
                 $result+=['referenceId'=>0,'catalogId'=>(int)$binding];
             }
-            if($dependentPatch)wquery('UPDATE records SET values_json=?,updated_at=UTC_TIMESTAMP(6) WHERE id=?',[wjson($values),$r['id']]);
+            if($dependentPatch || $phonePatch)wquery('UPDATE records SET values_json=?,updated_at=UTC_TIMESTAMP(6) WHERE id=?',[wjson($values),$r['id']]);
             wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);workspace_db()->commit();return $result;
         }
         $revision++;if($before!==$value)$values[$key]=$value;$statusId=$key==='A'?($body['statusId']??null):null;

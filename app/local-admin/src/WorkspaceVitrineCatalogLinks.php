@@ -14,7 +14,8 @@ function vitrine_catalog_links(array $table): array {
         'I'=>['kind'=>'container-types','invalid'=>'Выберите тип контейнера из справочника.'],
         'K'=>['kind'=>'unload-points','target'=>'L','source'=>'Контакт из справочника точек выгрузки','empty'=>'У точки не указан контакт','invalid'=>'Выберите адрес выгрузки выбранного клиента.'],
         'M'=>['kind'=>'dropoff-points','invalid'=>'Выберите точку сдачи из справочника.'],
-        'O'=>['kind'=>'fleet-vehicles','target'=>'P','source'=>'Из справочника автотранспорта','empty'=>'За машиной не закреплён водитель','invalid'=>'Выберите машину из справочника автотранспорта.'],
+        'O'=>['kind'=>'fleet-vehicles','target'=>'P','source'=>'Из справочника автотранспорта','empty'=>'За машиной не закреплён водитель',
+            'phoneTarget'=>'Q','phoneEmpty'=>'У водителя не указан телефон','invalid'=>'Выберите машину из справочника автотранспорта.'],
         'S'=>['kind'=>'carriers','target'=>'AM','meta'=>'catalog_logists_','source'=>'Из справочника перевозчиков','empty'=>'У перевозчика не указан логист','invalid'=>'Выберите перевозчика из справочника.'],
     ];
     $links=[];
@@ -84,14 +85,25 @@ function vitrine_find_unload_point(array $table,array $record,array $values,int 
     return null;
 }
 
-function vitrine_unload_original_contact(array $record): string {
+function vitrine_catalog_original_value(array $record,string $column): string {
     $baseline=json_decode($record['baseline_json'],true);
     $metadata=$record['metadata_zlib']?blob_json($record['metadata_zlib']):[];
-    return workspace_string(display_cell($metadata[column_number('L')]??[])??($baseline['L']??''));
+    return workspace_string(display_cell($metadata[column_number($column)]??[])??($baseline[$column]??''));
+}
+
+function vitrine_derived_catalog_columns(array $links): array {
+    $columns=array_column($links,null,'target');
+    unset($columns[0],$columns[1],$columns[2],$columns[3]);
+    foreach ($links as $link) {
+        if (isset($link['phoneTarget'])) {
+            $columns[$link['phoneTarget']]=['source'=>$link['source'],'empty'=>$link['phoneEmpty']];
+        }
+    }
+    return $columns;
 }
 
 function vitrine_require_manual_field(array $table,string $column): void {
-    if(in_array($column,array_column(vitrine_catalog_links($table),'target'),true)){
+    if (isset(vitrine_derived_catalog_columns(vitrine_catalog_links($table))[$column])) {
         throw new ApiError('derived_field','Данные берутся из справочника. Эту ячейку нельзя редактировать.',403);
     }
 }
