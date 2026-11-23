@@ -38,6 +38,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     };
     $unload = $kind==='unload-points';
     $managers=$kind==='managers';
+    $showAll=$managers && ($_GET['archive'] ?? '')==='all';
     $managerRoles=$managers ? array_keys(workspace_manager_roles()) : [];
     $clientCatalog=$unload ? workspace_client_grid_catalog() : null;
     $clientFilter=$unload && isset($_GET['client'])
@@ -52,7 +53,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $rows = $rowIds = [];
     $requested = $requestedRows === null ? null : array_fill_keys($requestedRows,true);
     foreach ($entries as $entry) {
-        if ((bool)$entry['active']===$archive) continue;
+        if (!$showAll && (bool)$entry['active']===$archive) continue;
         if ($unload && !$archive && $entry['review_required']) continue;
         if ($clientFilter && (int)$entry['client_id']!==(int)$clientFilter['id']) continue;
         $entryId = (int)$entry['id'];
@@ -76,6 +77,9 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $row['requiredChoices']['B']=true;
         }
         if ($managers) {
+            $row['archived']=!(bool)$entry['active'];
+            $row['actionLabel']=implode(' ',array_filter([$values['A'],$values['B'],$values['C']],
+                static fn(string $part): bool=>$part!=='' && $part!=='Неизвестно'));
             $row['choices']['D']=$managerRoles;
             $row['requiredChoices']['D']=true;
         }
@@ -92,7 +96,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $details = wquery("SELECT COALESCE(JSON_LENGTH(JSON_EXTRACT(value,'$.unkeyed')),0) AS unkeyedCount
         FROM workspace_meta WHERE `key`=?",['catalog_details_'.$id])->fetch();
     return ['table'=>$model,'columns'=>$model['columns'],'rows'=>$rows,'rowIds'=>$rowIds,'palette'=>workspace_palette(),
-        'catalogGrid'=>['id'=>$id,'archive'=>$archive,'archiveRows'=>in_array($kind,['clients','managers'],true),'search'=>$search,'canEdit'=>$canEdit,
+        'catalogGrid'=>['id'=>$id,'archive'=>$archive,'showAll'=>$showAll,'archiveRows'=>in_array($kind,['clients','managers'],true),'search'=>$search,'canEdit'=>$canEdit,
             'syncLabel'=>$canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($id) : null,
             'hasDetails'=>(bool)$details,'unkeyedCount'=>(int)($details['unkeyedCount'] ?? 0),
             'unloadPoints'=>$unload,

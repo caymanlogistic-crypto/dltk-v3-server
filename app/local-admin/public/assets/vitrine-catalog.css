@@ -9,7 +9,7 @@
 }
 .vitrine .vitrine-catalog-search { margin-inline-start:auto; }
 .vitrine .vitrine-catalog-search { max-inline-size:100%; }
-.vitrine .vitrine-client-visibility { inline-size:140px; max-inline-size:100%; }
+.vitrine .vitrine-directory-visibility { inline-size:150px; max-inline-size:100%; }
 .vitrine .vitrine-catalog-search input[type="search"] { inline-size:245px; max-inline-size:100%; }
 .vitrine.vitrine-catalog-page .vitrine-table {
   --vitrine-default-width-A:360px;

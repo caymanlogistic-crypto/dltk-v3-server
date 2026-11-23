@@ -3,6 +3,8 @@ declare(strict_types=1);
 $employeePage = $directory === 'employees';
 $employeeScope = $employeePage ? workspace_employee_editor_scope() : null;
 $archive = $catalogGrid['archive'];
+$staffDirectory = ($currentTable['catalogKind'] ?? '') === 'managers';
+$visibilityLabel = $staffDirectory ? 'Все сотрудники' : ($directory === 'clients' ? 'Все клиенты' : null);
 $searchPlaceholder = match ($directory) {
     'clients'=>'Клиент или менеджер',
     'employees'=>'ФИО, логин, email или роль',
@@ -13,7 +15,7 @@ $searchPlaceholder = match ($directory) {
 $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или менеджеру' : 'Поиск в справочнике';
 ?>
 <section class="vitrine-catalog-toolbar" aria-label="Управление справочником"<?= isset($catalogGrid['id']) ? ' data-catalog-id="'.(int)$catalogGrid['id'].'"' : '' ?>>
-  <h1>Справочник: <strong><?= $escape($currentTable['title']) ?></strong><?php if ($directory === 'clients'): ?> (<span data-directory-row-count><?= count($data['rowIds'] ?? []) ?></span>)<?php endif; ?></h1>
+  <h1>Справочник: <strong><?= $escape($currentTable['title']) ?></strong><?php if ($visibilityLabel): ?> (<span data-directory-row-count><?= count($data['rowIds'] ?? []) ?></span>)<?php endif; ?></h1>
   <?php if (!empty($catalogGrid['clientFilter'])): ?>
   <span>Клиент: <strong><?= $escape($catalogGrid['clientFilter']['name']) ?></strong></span>
   <a href="<?= $escape($viewUrl($directoryUrl.($archive ? '&archive=1' : (!empty($catalogGrid['showAll']) ? '&archive=all' : '')))) ?>"><?= $directory==='clients' ? 'Сбросить выбор клиента' : 'Все точки выгрузки' ?></a>
@@ -25,8 +27,9 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
     <?php if ($archive): ?><input type="hidden" name="archive" value="1"><?php endif; ?>
     <?php if (!empty($catalogGrid['showAll'])): ?><input type="hidden" name="archive" value="all"><?php endif; ?>
     <?php if (!empty($catalogGrid['clientFilter'])): ?><input type="hidden" name="client" value="<?= (int)$catalogGrid['clientFilter']['id'] ?>"><?php endif; ?>
-    <?php if ($directory === 'clients'): ?>
-    <div class="vitrine-client-visibility" data-client-visibility="<?= $archive ? 'Архив' : ($catalogGrid['showAll'] ? 'Все клиенты' : 'Активные') ?>"></div>
+    <?php if ($visibilityLabel): ?>
+    <div class="vitrine-directory-visibility" data-directory-visibility="<?= $archive ? '1' : ($catalogGrid['showAll'] ? 'all' : '') ?>"
+         data-all-label="<?= $escape($visibilityLabel) ?>" data-filter-label="<?= $staffDirectory ? 'Фильтр сотрудников' : 'Фильтр клиентов' ?>"></div>
     <?php endif; ?>
     <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape($catalogGrid['search']) ?>"
            aria-label="<?= $escape($searchLabel) ?>" placeholder="<?= $escape($searchPlaceholder) ?>">

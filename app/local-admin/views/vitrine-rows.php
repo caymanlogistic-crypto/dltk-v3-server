@@ -1,5 +1,10 @@
           <?php foreach ($rows as $row): ?>
-            <tr data-vitrine-row<?= !empty($row['archived']) ? ' data-directory-archived' : '' ?><?php if (!empty($row['relatedUrl'])): ?> data-related-url="<?= $escape(function_exists('app_url_path') ? app_url_path($row['relatedUrl']) : $row['relatedUrl']) ?>"<?php endif; ?><?php if (!empty($row['draftSlot'])): ?> data-draft-slot<?php endif; ?> data-row-number="<?= (int)$row['rowIndex'] ?>"><th scope="row" class="vitrine-row-number cell-mono"><?= $escape($row['rowLabel'] ?? $row['rowIndex']) ?><?php if (!empty($row['rowActions'])): ?><button type="button" class="vitrine-row-menu-trigger" data-directory-row-menu aria-label="Действия со строкой <?= $escape($row['rowLabel']) ?>" aria-haspopup="menu" aria-expanded="false" aria-controls="directory-row-menu" tabindex="-1">⋯</button><?php endif; ?></th>
+            <tr data-vitrine-row
+                <?= !empty($row['archived']) ? 'data-directory-archived' : '' ?>
+                <?php if (isset($row['actionLabel'])): ?>data-directory-action-label="<?= $escape($row['actionLabel']) ?>"<?php endif; ?>
+                <?php if (!empty($row['relatedUrl'])): ?>data-related-url="<?= $escape(function_exists('app_url_path') ? app_url_path($row['relatedUrl']) : $row['relatedUrl']) ?>"<?php endif; ?>
+                <?= !empty($row['draftSlot']) ? 'data-draft-slot' : '' ?>
+                data-row-number="<?= (int)$row['rowIndex'] ?>"><th scope="row" class="vitrine-row-number cell-mono"><?= $escape($row['rowLabel'] ?? $row['rowIndex']) ?><?php if (!empty($row['rowActions'])): ?><button type="button" class="vitrine-row-menu-trigger" data-directory-row-menu aria-label="Действия со строкой <?= $escape($row['rowLabel']) ?>" aria-haspopup="menu" aria-expanded="false" aria-controls="directory-row-menu" tabindex="-1">⋯</button><?php endif; ?></th>
             <?php foreach ($columns as $column): ?>
             <?php
               $letter = $column['letter'];
@@ -22,7 +27,7 @@
               $conflict = !empty($edit['conflict']);
               $hint = ($conflict ? 'Проверьте актуальное значение. ' : ($edited ? 'Изменено в БД. ' : '')) . 'Щелчок — изменить. ' . (string)$value;
               if (empty($row['compactInputs'][$letter]) && ($row['kinds'][$letter] ?? '') === 'time') $hint = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' . (string)$value;
-              $readOnlyMessage = $row['readOnly'][$letter] ?? (!empty($row['archived']) ? 'Клиент в архиве.' : ($catalogReadOnly ? 'Запись доступна только для просмотра.' : ''));
+              $readOnlyMessage = $row['readOnly'][$letter] ?? (!empty($row['archived']) ? 'Запись в архиве.' : ($catalogReadOnly ? 'Запись доступна только для просмотра.' : ''));
               $requiredChoice = !empty($row['requiredChoices'][$letter]);
               if ($readOnlyMessage !== '') $hint = $readOnlyMessage . ' ' . $value;
               if ($orderStatus && $letter==='B') $hint .= ' · '.workspace_client_order_status($orderStatus)['label'];

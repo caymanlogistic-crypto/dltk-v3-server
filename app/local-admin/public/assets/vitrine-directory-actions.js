@@ -245,7 +245,7 @@
     const tr = cell.closest('tr');
     const action = actionFor(tr);
     const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base};
-    const label = tr.querySelector('[data-column="A"]').textContent ||
+    const label = tr.dataset.directoryActionLabel || tr.querySelector('[data-column="A"]').textContent ||
       tr.querySelector('[data-column="B"]')?.textContent || '';
     closeMenu(true);
     pending = true;
@@ -253,6 +253,10 @@
       const result = action === 'delete' ? await request('check_delete',row) : {name:label};
       if (window.VitrineGrid.editing()) return;
       target = {action,row};
+      const heading = {restore:'Восстановить запись',archive:'Архивировать запись',delete:'Удалить запись'}[action];
+      deleteDialog.querySelector('#directory-delete-title').textContent = heading;
+      deleteDialog.querySelector('[type="submit"]').textContent =
+        {restore:'Восстановить',archive:'В архив',delete:'Удалить'}[action];
       deleteDialog.querySelector('[data-directory-delete-text]').textContent =
         {restore:'Восстановить',archive:'Перенести в архив',delete:'Удалить'}[action]+' «'+result.name+'»?';
       deleteDialog.showModal();

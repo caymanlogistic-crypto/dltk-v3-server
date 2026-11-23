@@ -5,12 +5,12 @@
   if (!form || !grid) return;
   const field = form.elements.q;
   let timer;
-  const visibility = form.querySelector('[data-client-visibility]');
+  const visibility = form.querySelector('[data-directory-visibility]');
   if (visibility) {
-    const modes = new Map([['Все клиенты','all'],['Активные',''],['Архив','1']]);
-    const initial = visibility.dataset.clientVisibility;
+    const modes = new Map([[visibility.dataset.allLabel,'all'],['Активные',''],['Архив','1']]);
+    const initial = [...modes].find(([,mode])=>mode===visibility.dataset.directoryVisibility)[0];
     const selector = window.VitrineSelect.create([...modes.keys()].map(label=>({value:label,label})),initial);
-    selector.field.setAttribute('aria-label','Фильтр клиентов');
+    selector.field.setAttribute('aria-label',visibility.dataset.filterLabel);
     visibility.append(selector.element);
     selector.field.addEventListener('change',()=>{
       const current = selector.resolveValue();
