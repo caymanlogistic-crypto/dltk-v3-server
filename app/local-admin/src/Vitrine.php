@@ -202,6 +202,14 @@ function render_vitrine(): void {
     $error = null;
     $data = ['columns'=>[], 'rows'=>[], 'lastSuccess'=>null, 'sheetTitle'=>'ВЫВОЗ'];
     $directory = vitrine_directory_requested();
+    if ($directory==='entries' && is_scalar($_GET['id']??null)) {
+        $kind=wquery('SELECT kind FROM catalogs WHERE id=?',[(int)$_GET['id']])->fetchColumn();
+        if (is_string($kind) && workspace_fleet_retired_kind($kind)) {
+            $url='/vitrine?catalog=entries&id='.workspace_fleet_catalog('fleet-vehicles');
+            header('Location: '.(function_exists('app_url_path') ? app_url_path($url) : $url),true,302);
+            return;
+        }
+    }
     try { $data = $directory ? workspace_directory_grid_data($directory) : vitrine_data(archive:($_GET['archive']??null)==='1'); }
     catch (Throwable $e) {
         http_response_code($directory && $e instanceof ApiError ? $e->httpStatus : 503);

@@ -112,18 +112,19 @@ function vitrine_catalog_options(array $t,array $links): array {
     }
     if (isset($links['O'],$boundChoices['O'])) {
         $vehicles=workspace_fleet_entries('fleet-vehicles',$links['O']['id']);
-        $drivers=[];
         $driverCatalog=workspace_fleet_catalog('fleet-drivers');
-        if ($driverCatalog && workspace_can('catalog',(string)$driverCatalog,'view',$t['id'])) {
-            foreach ($vehicles as $vehicle) {
-                $drivers[$vehicle['name']]=trim(implode(' ',[$vehicle['surname']??'',$vehicle['given_name']??'',$vehicle['patronymic']??'']));
-            }
+        $canViewDriver=$driverCatalog && workspace_can('catalog',(string)$driverCatalog,'view',$t['id']);
+        $available=array_fill_keys($boundChoices['O'],true);
+        $boundChoices['O']=[];
+        foreach ($vehicles as $vehicle) {
+            $plate=$vehicle['name'];
+            if (!isset($available[$plate]) || workspace_fleet_trailer_key($plate)) continue;
+            $trailer=$vehicle['trailer_plate']??'';
+            $value=workspace_fleet_trip_vehicle_label($plate,$trailer);
+            $name=$canViewDriver ? trim(implode(' ',[$vehicle['surname']??'',$vehicle['given_name']??'',$vehicle['patronymic']??''])) : '';
+            $boundChoices['O'][]=['value'=>$value,'label'=>$name!=='' ? $value.' · '.$name : $value,
+                'search'=>workspace_fleet_plate_key($plate).' '.workspace_fleet_plate_key($trailer)];
         }
-        $boundChoices['O']=array_filter($boundChoices['O'],static fn(string $plate): bool=>!workspace_fleet_trailer_key($plate));
-        $boundChoices['O']=array_map(static fn(string $plate): array=>[
-            'value'=>$plate,'label'=>($drivers[$plate]??'')!=='' ? $plate.' · '.$drivers[$plate] : $plate,
-            'search'=>workspace_fleet_plate_key($plate),
-        ],array_values($boundChoices['O']));
     }
     foreach(['B','E'] as $key){
         if(isset($links[$key]))$entriesByName[$key]=($entriesByName[$key]??[])+workspace_client_catalog_aliases($links[$key]['id']);

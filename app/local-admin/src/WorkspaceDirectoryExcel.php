@@ -30,7 +30,7 @@ function workspace_directory_excel_schema(string $directory): array {
     if ($kind==='fleet-vehicles') workspace_require('catalog',(string)workspace_fleet_catalog('fleet-drivers'),'view');
     $labels=array_column($model['columns'],'label','letter');
     if ($kind==='clients') unset($labels['C']);
-    if ($kind==='fleet-vehicles') unset($labels['J']);
+    if ($kind==='fleet-vehicles') $labels=array_diff_key($labels,workspace_fleet_document_fields());
     if ($kind==='unload-points') $labels['C']='Основной контакт';
     return ['id'=>$id,'kind'=>$kind,'labels'=>$labels,'orderKey'=>$id ?: $directory];
 }

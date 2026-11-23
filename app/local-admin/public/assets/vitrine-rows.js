@@ -202,7 +202,7 @@
       if(String(cell.dataset.catalogId)!==String(patch.catalogId)||cell===active)continue;
       const bindings=patch.bindings||[];
       if(bindings.length&&!bindings.some(binding=>binding.tableSlug===(document.body.dataset.workspaceTable||'vyvoz')&&binding.fieldKey===cell.dataset.column))continue;
-      if(cell.dataset.column==='A'||(cell.dataset.column==='K'&&document.body.dataset.workspaceTable==='vyvoz'))continue;
+      if(cell.dataset.column==='A'||((cell.dataset.column==='K'||cell.dataset.column==='O')&&document.body.dataset.workspaceTable==='vyvoz'))continue;
       let choices=[];try{choices=JSON.parse(cell.dataset.choices||'[]');}catch{}
       choices=choices.filter(value=>!(patch.aliases||[patch.beforeName,patch.name]).includes(value));
       if(patch.active!==false&&patch.active!==0)choices.push(patch.name);

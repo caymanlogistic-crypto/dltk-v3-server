@@ -70,7 +70,10 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         }
         foreach($values as &$v)$v=workspace_string($v);unset($v);foreach($baseline as &$v)$v=workspace_string($v);unset($v);
         $rowEdits=[];foreach($edits[(int)$r['id']]??[] as $key=>$e){$values[$key]=$e['active']?$e['value']:($baseline[$key]??'');$rowEdits[$key]=['revision'=>(int)$e['revision'],'conflict'=>false,'value'=>$values[$key],'active'=>(bool)$e['active']];}
-        foreach($refs[(int)$r['id']]??[] as $key=>$ref)$values[$key]=$ref['name'];
+        foreach($refs[(int)$r['id']]??[] as $key=>$ref) {
+            if (isset($links['O']) && in_array($key,['O','P'],true)) continue;
+            $values[$key]=$ref['name'];
+        }
         foreach (array_keys($slots) as $key) {
             if (isset($values[$key])) $values[$key] = vitrine_slot_input($values[$key]) ?? $values[$key];
         }
@@ -149,9 +152,15 @@ function vitrine_store(array $body): array {
             if($value!==''){
                 $unload=$link['kind']==='unload-points';
                 $entry=$unload ? ($body['reset']?null:vitrine_find_unload_point($t,$r,$values,$binding,$value))
-                    : vitrine_find_catalog_entry($binding,$value,normalized:$key==='O'?workspace_fleet_plate_key($value):null);
+                    : vitrine_find_catalog_entry($binding,$value,normalized:$key==='O'?workspace_fleet_trip_vehicle_key($value):null);
+                if ($key==='O' && $entry && workspace_fleet_trailer_key($entry['name'])) $entry=false;
                 if($entry){
-                    $reference=(int)$entry['id'];$value=$unload?$entry['address']:$entry['name'];
+                    $reference=(int)$entry['id'];
+                    if ($key==='O') {
+                        $trailer=wquery('SELECT p.plate FROM fleet_vehicle_trailers l JOIN fleet_trailer_profiles p ON p.plate_key=l.trailer_key
+                            WHERE l.vehicle_id=?',[$reference])->fetchColumn();
+                        if (!$body['reset']) $value=workspace_fleet_trip_vehicle_label($entry['name'],$trailer ?: null);
+                    } else $value=$unload?$entry['address']:$entry['name'];
                 }elseif(!$body['reset']&&($unload||$value!==$before)){
                     throw new ApiError('invalid_reference',$link['invalid']);
                 }

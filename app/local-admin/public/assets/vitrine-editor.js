@@ -137,21 +137,22 @@
     if (result.values) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
       if (Object.hasOwn(result.values,sibling.dataset.column)) sibling.textContent = result.values[sibling.dataset.column];
     }
-    if (Object.hasOwn(result,'fleetDocumentAccess')) {
-      const docs = cell.parentElement.querySelector('td[data-column="J"]');
-      if (docs) {
-        docs.textContent = result.fleetDocumentAccess ? 'Открыть' : '';
-        docs.dataset.kind = result.fleetDocumentAccess ? 'fleet-documents' : 'text';
-        docs.toggleAttribute('data-readonly-cell',!result.fleetDocumentAccess);
-        docs.toggleAttribute('aria-readonly',!result.fleetDocumentAccess);
-        if (result.fleetDocumentAccess) docs.setAttribute('aria-haspopup','dialog');
-        else {
-          docs.removeAttribute('aria-haspopup');
-          docs.dataset.readonlyCell = 'Сначала укажите водителя в строке машины.';
-        }
+    if (result.fleetDocuments) {
+      const docs = result.fleetDocuments;
+      for (const sibling of cell.parentElement.querySelectorAll('td[data-kind="fleet-document"]')) {
+        sibling.textContent = docs.values[sibling.dataset.column];
+        sibling.dataset.original = sibling.textContent;
+        sibling.dataset.base = docs.baseHash;
+        sibling.dataset.revision = String(docs.revision);
+        sibling.title = docs.readOnly || 'Щелчок — изменить.';
+        sibling.toggleAttribute('data-readonly-cell',Boolean(docs.readOnly));
+        if (docs.readOnly) {
+          sibling.dataset.readonlyCell = docs.readOnly;
+          sibling.setAttribute('aria-readonly','true');
+        } else sibling.removeAttribute('aria-readonly');
       }
     }
-    if (catalog) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
+    if (catalog && !result.fleetDocumentEdit) for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]:not([data-kind="fleet-document"])')) {
       sibling.dataset.revision = String(result.revision);
       if (catalog === 'employees') sibling.dataset.base = result.baseHash;
     }
@@ -329,7 +330,7 @@
   }
   function open(cell, firstCharacter = null) {
     const card = {'unload-contacts':window.VitrineUnloadContacts,'client-unload-points':window.VitrineClientUnloadPoints,
-      'client-managers':window.VitrineClientManagers,'fleet-documents':window.VitrineFleetDocuments}[cell.dataset.kind];
+      'client-managers':window.VitrineClientManagers}[cell.dataset.kind];
     if (cell.hasAttribute('data-readonly-cell') && !card) {
       report(cell.dataset.readonlyCell, 'info');
       return;
@@ -416,6 +417,7 @@
     if (draftType === 'email') field.inputMode = 'email';
     if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
     field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : isSingleLine && catalog ? 160 : 20000;
+    if (cell.dataset.kind === 'fleet-document') field.maxLength = ({J:500,K:80,L:10,M:10})[cell.dataset.column];
     field.value = mask && firstCharacter !== null ? mask.format(firstCharacter) : firstCharacter ?? initialValue;
     if (isContainer) {
       const prefix = /^(?:[A-Z]{0,3}|[A-Z]{3}U[0-9]{0,7})$/;
