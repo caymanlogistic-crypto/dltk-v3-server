@@ -27,6 +27,7 @@ function workspace_directory_excel_schema(string $directory): array {
         workspace_require('catalog',(string)$id,'edit');
     }
     if (!$id && !in_array($kind,['order-statuses','roles','employees'],true)) throw new ApiError('not_found','Справочник не найден.',404);
+    if ($kind==='fleet-vehicles') workspace_require('catalog',(string)workspace_fleet_catalog('fleet-drivers'),'view');
     $labels=array_column($model['columns'],'label','letter');
     if ($kind==='clients') unset($labels['C']);
     if ($kind==='unload-points') $labels['C']='Основной контакт';

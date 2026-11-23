@@ -15,8 +15,8 @@
   observer.observe(document.documentElement, {childList:true,subtree:true});
 
   window.VitrineSelect = Object.freeze({
-    create(sourceOptions, initialValue = '', {searchable = false} = {}) {
-      const options = sourceOptions.map(option => ({value:String(option.value ?? ''),label:String(option.label ?? option.value ?? ''),color:option.color}));
+    create(sourceOptions, initialValue = '', {searchable = false, searchKey = value => value} = {}) {
+      const options = sourceOptions.map(option => ({value:String(option.value ?? ''),label:String(option.label ?? option.value ?? ''),color:option.color,search:String(option.search ?? '')}));
       const id = 'vitrine-select-' + (++sequence);
       const element = document.createElement('div');
       element.className = 'custom-select vitrine-select';
@@ -77,9 +77,10 @@
       }
       function filter(query) {
         const term = normalize(query);
+        const key = normalize(searchKey(query));
         visible = [];
         for (const [index,option] of options.entries()) {
-          const match = !term || (option.value !== '' && normalize(option.label).includes(term));
+          const match = !term || (option.value !== '' && (normalize(option.label).includes(term) || (key && normalize(option.search).includes(key))));
           nodes[index].hidden = !match;
           if (match) visible.push(index);
         }
