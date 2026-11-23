@@ -53,3 +53,4 @@
   background-color:var(--preset-cell-fill);
   color:var(--preset-cell-text);
 }
+.vitrine .vitrine-dropoff-profile { white-space:pre-wrap; overflow-wrap:anywhere; max-height:min(20vh,130px); overflow:auto; }

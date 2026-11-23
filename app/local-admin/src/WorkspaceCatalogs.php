@@ -6,6 +6,7 @@ require_once __DIR__.'/WorkspaceUnloadPoints.php';
 require_once __DIR__.'/WorkspaceClientUnloadPoints.php';
 require_once __DIR__.'/WorkspaceClientTransfer.php';
 require_once __DIR__.'/WorkspacePickupTransfer.php';
+require_once __DIR__.'/WorkspaceDropoffPoints.php';
 
 function vitrine_catalog_key(string $name): string {
     return mb_strtolower(trim(preg_replace('/\s+/u',' ',$name)));
@@ -39,6 +40,11 @@ function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
     $manager=$hasManager?workspace_client_validate_manager($b['manager']):'';
     $hasLogist=$catalog['kind']==='carriers'&&array_key_exists('logist',$b);
     $logist=$hasLogist?workspace_client_validate_manager($b['logist']):'';
+    $dropoffProfile=null;
+    if ($catalog['kind']==='dropoff-points' && array_key_exists('dropoffProfile',$b)) {
+        if (!is_array($b['dropoffProfile'])) throw new ApiError('invalid_dropoff','Проверьте данные точки сдачи.');
+        $dropoffProfile=workspace_dropoff_profile($b['dropoffProfile']);
+    }
     workspace_begin();try{
         $old=isset($b['id'])?wquery('SELECT * FROM catalog_entries WHERE id=? AND catalog_id=? FOR UPDATE',[(int)$b['id'],$cid])->fetch():null;
         if(isset($b['id'])&&!$old)throw new ApiError('not_found','Запись не найдена.',404);
@@ -71,7 +77,9 @@ function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
         $logistChanged=$hasLogist&&$beforeLogist!==$logist;
         $beforeManager=$old&&$hasManager?(workspace_client_manager_values($cid)[$old['id']]??''):'';
         $managerChanged=$hasManager&&$beforeManager!==$manager;
-        if($deleteReason===null&&$old&&$old['name']===$name&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged){workspace_db()->commit();return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
+        $beforeDropoff=$dropoffProfile!==null && $old ? workspace_dropoff_profiles($cid)[(int)$old['id']]??[] : [];
+        $dropoffChanged=$dropoffProfile!==null && $beforeDropoff!==$dropoffProfile;
+        if($deleteReason===null&&$old&&$old['name']===$name&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged&&!$dropoffChanged){workspace_db()->commit();return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
         if($old){wquery('UPDATE catalog_entries SET name=?,normalized=?,color=?,active=?,revision=? WHERE id=?',[$name,$norm,$color,(int)$active,$revision,$old['id']]);$id=(int)$old['id'];}
         else{wquery('INSERT INTO catalog_entries(catalog_id,name,normalized,color,active) VALUES(?,?,?,?,?)',[$cid,$name,$norm,$color,(int)$active]);$id=(int)workspace_db()->lastInsertId();}
         if($managerChanged)workspace_client_set_manager($cid,$id,$manager);
@@ -82,6 +90,12 @@ function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
         if($old&&$catalog['kind']!=='status'&&$old['normalized']!==$norm)workspace_client_remember_alias($cid,$id,$old['normalized']);
         $before=$old?['id'=>$id,'name'=>$old['name'],'color'=>$old['color'],'active'=>(bool)$old['active']]:null;
         $after=['id'=>$id,'name'=>$name,'color'=>$color,'active'=>$active];
+        if ($dropoffChanged) {
+            wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+                ['dropoff_point_'.$id,wjson($dropoffProfile)]);
+            if ($before!==null) $before['profile']=$beforeDropoff;
+            $after['profile']=$dropoffProfile;
+        }
         if($hasManager){
             if($before!==null)$before['manager']=$beforeManager;
             $after['manager']=$manager;

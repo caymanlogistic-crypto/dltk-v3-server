@@ -54,6 +54,9 @@ function vitrine_require_weight_range(string $weight): void {
 
 function vitrine_validate_paste(array $body, array $data, array $target): void {
     vitrine_require_manual_field($data['table'],$body['column']);
+    if ($body['column']==='M' && !empty($target['catalogBindings']['M'])) {
+        throw new ApiError('invalid_dropoff','Откройте поле «Сдача» и выберите точку из справочника.');
+    }
     $paste = $body['paste'] ?? null;
     if (!is_array($paste) || !array_key_exists('source',$paste)) throw new ApiError('invalid_clipboard','Не удалось определить содержимое буфера обмена.');
     vitrine_validate_single_line($body['value'],$target,$body['column']);
@@ -168,6 +171,15 @@ function vitrine_save_cell(): never {
         $orderEdit=['orderStatus'=>$code];
     }
     $comparison = [];
+    if ($body['column']==='M' && !empty($current['catalogBindings']['M']) && !array_key_exists('dropoffDetails',$body)) {
+        throw new ApiError('invalid_dropoff','Откройте поле «Сдача» и выберите точку из справочника.');
+    }
+    if (array_key_exists('dropoffDetails',$body)) {
+        if ($body['column']!=='M' || $body['reset'] || empty($current['catalogBindings']['M']) || $body['value']==='') {
+            throw new ApiError('invalid_dropoff','Выберите точку сдачи.');
+        }
+        $comparison['dropoffDetails']=workspace_dropoff_flight_details($body['dropoffDetails']);
+    }
     if ($compactKind==='weight') $comparison['comparisonOriginal']=$body['reset']
         ? $original : (vitrine_compact_input($original,'weight')??$original);
     $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'']+$orderEdit+$comparison);

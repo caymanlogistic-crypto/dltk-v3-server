@@ -68,6 +68,7 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         if ($kind==='managers') return workspace_manager_save($catalogId,$values);
         $name = workspace_catalog_validate_name($values['A'] ?? '');
         $payload = ['catalogId'=>$catalogId,'name'=>$name];
+        if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
         if (workspace_catalog_has_palette($kind)) $payload['color'] = workspace_directory_color($values['B'] ?? '');
         if ($kind === 'clients' && isset($values['B'])) $payload['manager'] = $values['B'];
         if ($kind === 'carriers' && isset($values['B'])) $payload['logist'] = $values['B'];

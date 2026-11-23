@@ -134,6 +134,8 @@ function workspace_directory_draft_fields(string $directory, array $roles = [], 
         'clients'=>['A'=>$name,'B'=>$optionalAssignment],
         'entries'=>match (true) {
             workspace_catalog_has_palette($catalogKind)=>['A'=>$name,'B'=>$color],
+            $catalogKind==='dropoff-points'=>['A'=>$name,'B'=>['type'=>'text','singleLine'=>false,'maxLength'=>1500],
+                'C'=>['type'=>'text','singleLine'=>false,'maxLength'=>1500],'D'=>['type'=>'text','singleLine'=>false,'maxLength'=>6000]],
             in_array($catalogKind,['clients','carriers'],true)=>['A'=>$name,'B'=>$optionalAssignment],
             default=>['A'=>$name],
         },

@@ -13,6 +13,7 @@ function workspace_catalog_directory_model(): array {
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
         'container-types'=>['A'=>'Тип контейнера'],
         'unload-points'=>['A'=>'Клиент','B'=>'Адрес','C'=>'Контакты'],
+        'dropoff-points'=>['A'=>'Точка сдачи','B'=>'Адрес','C'=>'Контакты','D'=>'Постоянная инструкция'],
         'managers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Роль','E'=>'Телефон','F'=>'Email'],
         default=>['A'=>'Название'],
     };
@@ -38,6 +39,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     };
     $unload = $kind==='unload-points';
     $managers=$kind==='managers';
+    $dropoffProfiles=$kind==='dropoff-points' ? workspace_dropoff_profiles($id) : [];
     $showAll=$managers && ($_GET['archive'] ?? '')==='all';
     $managerRoles=$managers ? array_keys(workspace_manager_roles()) : [];
     $clientCatalog=$unload ? workspace_client_grid_catalog() : null;
@@ -65,6 +67,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             default=>['A'=>$entry['name']],
         };
         if ($unload) $values['C']=workspace_unload_contact_summary(workspace_unload_primary($entry),(int)$entry['contact_count']);
+        if ($kind==='dropoff-points') $values+=($dropoffProfiles[$entryId]??workspace_dropoff_profile([]));
         if (workspace_catalog_has_palette($kind)) $values['B'] = $palette[$entry['color']] ?? '';
         if (in_array($kind,['clients','carriers'],true)) $values['B'] = $valuesB[$entryId] ?? '';
         if ($search !== '' && mb_stripos(implode(' ',$values),$search) === false) continue;
@@ -85,6 +88,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $row['choices']['D']=$managerRoles;
             $row['requiredChoices']['D']=true;
         }
+        if ($kind==='dropoff-points') $row['singleLine']=['A'=>true];
         if ($unload) {
             $row['singleLine']=['A'=>true];
             $row['readOnly']['A']='Клиент сохранённой точки закреплён.';
@@ -141,6 +145,19 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
         $result=workspace_manager_save($id,$values,$body['row'],$body['revision']);
         $value=$result['values'][$column];
+        json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);
+    }
+    if ($kind==='dropoff-points') {
+        $values=['A'=>$entry['name']]+(workspace_dropoff_profiles($id)[$body['row']]??workspace_dropoff_profile([]));
+        $values[$column]=$body['value'];
+        $name=workspace_catalog_validate_name($values['A']);
+        $profile=workspace_dropoff_profile($values);
+        if ($pasteCheck) json_response(['accepted'=>true]);
+        $baseHash=workspace_catalog_directory_hash($id,$body['row']);
+        if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
+        $result=workspace_catalog_save(['catalogId'=>$id,'id'=>$body['row'],'revision'=>$body['revision'],
+            'name'=>$name,'dropoffProfile'=>$profile]);
+        $value=($profile+['A'=>$name])[$column];
         json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);
     }
     if ($kind==='unload-points') {
