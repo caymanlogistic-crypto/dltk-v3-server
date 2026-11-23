@@ -215,8 +215,8 @@
     if (result.dependentCell) window.VitrineRows?.patch(result.dependentCell);
     for (const patch of result.dependentCells ?? []) window.VitrineRows?.patch(patch);
     for (const patch of result.unloadCells ?? []) window.VitrineRows?.patch(patch);
-    if (result.fleetDocumentsChanged) {
-      await window.VitrineRows?.refreshFleetDocuments(cell.dataset.row).catch(error=>report(error.message,'danger'));
+    if (typeof result.fleetDocumentValue==='string') {
+      window.VitrineRows?.applyFleetDocuments(cell.dataset.row,result.fleetDocumentValue);
     }
     if (result.reauthenticate) location.assign(window.DltkPaths?.path('/login') ?? '/login');
     return result;

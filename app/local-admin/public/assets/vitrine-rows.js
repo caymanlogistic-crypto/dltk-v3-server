@@ -274,31 +274,42 @@
   }
   window.addEventListener('vitrine-editor-closed',()=>{if(manifestDeferred){manifestDeferred=false;refreshManifest().catch(report);}});
   const fleetDocumentRequests=new WeakMap();
+  function fleetDocumentCell(rowNumber) {
+    return cache.get(Number(rowNumber))?.querySelector('td[data-fleet-documents-visible]');
+  }
+
+  function applyFleetDocuments(rowNumber,value) {
+    const cell=fleetDocumentCell(rowNumber);
+    if (!cell) return;
+    fleetDocumentRequests.delete(cell);
+    if (cell.textContent===value) return;
+    cell.textContent=value;
+    cell.title=cell.dataset.derivedSource+'. '+(value || cell.dataset.emptyLabel+'.');
+    if (value) cell.removeAttribute('aria-label');
+    else cell.setAttribute('aria-label',cell.dataset.emptyLabel);
+    cell.classList.remove('just-saved');
+    void cell.offsetWidth;
+    cell.classList.add('just-saved');
+  }
+
   async function refreshFleetDocuments(rowNumber) {
-    const row=cache.get(Number(rowNumber));
-    const cell=row?.querySelector('td[data-fleet-documents-visible]');
+    const cell=fleetDocumentCell(rowNumber);
     if (!cell) return;
     const request=Symbol();
     fleetDocumentRequests.set(cell,request);
-    const response=await fetch(window.VitrineGridScope.url('/api/vitrine/rows',{ids:[Number(rowNumber)]}),{credentials:'same-origin',cache:'no-store'});
+    const url=window.VitrineGridScope.url('/api/vitrine/rows',{ids:[Number(rowNumber)],rowFilters:true,fleetDocuments:true});
+    const response=await fetch(url,{credentials:'same-origin',cache:'no-store'});
     const data=await response.json();
-    if (!response.ok || typeof data.html!=='string') throw new Error(data.error?.message || 'Не удалось обновить ПД.');
-    const template=document.createElement('template');
-    template.innerHTML='<table><tbody>'+data.html+'</tbody></table>';
-    const fresh=template.content.querySelector('td[data-fleet-documents-visible]');
-    if (!fresh || cache.get(Number(rowNumber))!==row || fleetDocumentRequests.get(cell)!==request) return;
-    if (cell.textContent!==fresh.textContent) {
-      cell.textContent=fresh.textContent;
-      cell.title=fresh.title;
-      cell.classList.remove('just-saved');
-      void cell.offsetWidth;
-      cell.classList.add('just-saved');
+    if (!response.ok || typeof data.value!=='string') throw new Error(data.error?.message || 'Не удалось обновить ПД.');
+    if (fleetDocumentCell(rowNumber)===cell && fleetDocumentRequests.get(cell)===request) {
+      applyFleetDocuments(rowNumber,data.value);
     }
   }
 
   window.VitrineRows=Object.freeze({
     refreshManifest,
     refreshFleetDocuments,
+    applyFleetDocuments,
     exportRows,
     filterDirectory(query){
       requestedSearch=query;

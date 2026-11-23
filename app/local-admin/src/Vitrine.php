@@ -32,6 +32,17 @@ function vitrine_rows_endpoint(): never {
     if (!is_string($value) || !preg_match('/^\d+(?:,\d+){0,99}$/D',$value)) throw new ApiError('invalid_rows','Запрашивайте от 1 до 100 строк.');
     $ids = array_map('intval',explode(',',$value));
     $directory = vitrine_directory_requested();
+    if (($_GET['fleetDocuments']??'')==='1') {
+        if ($directory!==null || count($ids)!==1) throw new ApiError('invalid_rows','Выберите один рейс.');
+        $table=workspace_table();
+        if (!isset(vitrine_catalog_links($table)['O']['documentsTarget']) || !workspace_fleet_trip_documents_can_view($table['id'])) {
+            throw new ApiError('forbidden','Нет доступа к ПД рейса.',403);
+        }
+        header('Cache-Control: no-store');
+        $value=workspace_fleet_trip_documents_for_row($table['id'],$ids[0],($_GET['archive']??null)==='1');
+        if ($value===null) throw new ApiError('not_found','Рейс не найден.',404);
+        json_response(['value'=>$value]);
+    }
     $data = $directory ? workspace_directory_grid_data($directory,$ids) : vitrine_data($ids,($_GET['archive']??null)==='1');
     $catalogGrid = $data['catalogGrid'] ?? null;
     $columns=$data['columns']; $rows=$data['rows'];
@@ -187,6 +198,11 @@ function vitrine_save_cell(): never {
     if ($compactKind==='weight') $result['value']=vitrine_compact_input($result['value'],'weight')??$result['value'];
     if (($current['kinds'][$body['column']] ?? '') === 'slot') {
         $result['value'] = vitrine_slot_input($result['value']) ?? $result['value'];
+    }
+    if (!empty($result['fleetDocumentsChanged']) && workspace_fleet_trip_documents_can_view($data['table']['id'])) {
+        header('Cache-Control: no-store');
+        $documents=workspace_fleet_trip_documents_values([$current['recordId']]);
+        $result['fleetDocumentValue']=$documents[$current['recordId']]??($current['originalValues']['R']??'');
     }
     $statusColor = null; $resultStatusId = null;
     if ($body['column']==='A') foreach ($data['statuses'] as $status) if (vitrine_status_key($status['name'])===vitrine_status_key($result['value'])) { $statusColor=$status['color']; $resultStatusId=$status['id']; }

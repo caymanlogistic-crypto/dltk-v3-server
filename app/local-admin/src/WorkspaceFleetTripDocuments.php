@@ -30,6 +30,15 @@ function workspace_fleet_trip_documents_values(array $recordIds): array {
         ->fetchAll(PDO::FETCH_KEY_PAIR);
 }
 
+function workspace_fleet_trip_documents_for_row(int $table,int $row,bool $archive): ?string {
+    $record=wquery('SELECT d.document_text,IF(d.record_id IS NULL,r.baseline_json,NULL) AS baseline_json,
+        IF(d.record_id IS NULL,r.metadata_zlib,NULL) AS metadata_zlib FROM records r
+        LEFT JOIN fleet_trip_documents d ON d.record_id=r.id
+        WHERE r.table_id=? AND r.row_num=? AND r.archived=?',[$table,$row,(int)$archive])->fetch();
+    if (!$record) return null;
+    return $record['document_text']??vitrine_catalog_original_value($record,'R');
+}
+
 function workspace_fleet_trip_documents_save(array $table,array $record,int $driver,bool $reset,
     string $action,string $request,string $operation): bool {
     $id=(int)$record['id'];
