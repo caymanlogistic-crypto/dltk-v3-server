@@ -132,8 +132,13 @@ function vitrine_save_cell(): never {
     $current = null;
     foreach ($data['rows'] as $row) if ($row['rowIndex'] === $body['row']) $current = $row;
     if ($current === null) throw new ApiError('row_not_visible','Строка больше не входит в текущую выборку. Обновите страницу.',409);
+    $clear=($body['editAction']??null)==='clear';
+    if ($clear && ($body['value']!=='' || $body['reset'] || isset($body['paste']) ||
+        array_key_exists('dropoffDetails',$body) || array_key_exists('orderStatus',$body))) {
+        throw new ApiError('invalid_edit','Проверьте запрос на очистку ячейки.');
+    }
     $compactKind = $current['compactInputs'][$body['column']] ?? null;
-    if (!$body['reset'] && $compactKind !== null) {
+    if (!$clear && !$body['reset'] && $compactKind !== null) {
         $normalized = vitrine_compact_input($body['value'],$compactKind);
         if ($normalized === null && (in_array($compactKind,['container','weight'],true)
             || $body['value'] !== ($current['values'][$body['column']] ?? ''))) {
@@ -149,7 +154,7 @@ function vitrine_save_cell(): never {
             if ($compactKind === 'weight') vitrine_require_weight_range($normalized);
             $body['value'] = $normalized;
         }
-    } elseif (!$body['reset'] && ($current['kinds'][$body['column']] ?? '') === 'time') {
+    } elseif (!$clear && !$body['reset'] && ($current['kinds'][$body['column']] ?? '') === 'time') {
         $normalized = vitrine_time_input($body['value']);
         if ($normalized === null && $body['value'] !== ($current['values'][$body['column']] ?? '')) throw new ApiError('invalid_time','Введите время: 800 или 0800 → 08:00. Часы 00–23, минуты 00–59.');
         if ($normalized !== null) $body['value'] = $normalized;
@@ -183,7 +188,7 @@ function vitrine_save_cell(): never {
         $orderEdit=['orderStatus'=>$code];
     }
     $comparison = [];
-    if ($body['column']==='M' && !empty($current['catalogBindings']['M']) && !array_key_exists('dropoffDetails',$body)) {
+    if (!$clear && $body['column']==='M' && !empty($current['catalogBindings']['M']) && !array_key_exists('dropoffDetails',$body)) {
         throw new ApiError('invalid_dropoff','Откройте поле «Сдача» и выберите точку из справочника.');
     }
     if (array_key_exists('dropoffDetails',$body)) {

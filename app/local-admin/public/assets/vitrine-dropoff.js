@@ -58,7 +58,7 @@
   }
   function update(cell,result) {
     if (!result.dropoffDetails) return;
-    const previous=details(cell);
+    const previous=Object.keys(result.dropoffDetails).length ? details(cell) : {};
     cell.parentElement.dataset.dropoffDetails=JSON.stringify({...previous,...result.dropoffDetails});
   }
   window.VitrineDropoff=Object.freeze({supports,attach,update});

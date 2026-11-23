@@ -35,7 +35,7 @@
         if(!old||Number(old.revision)<Number(patch.revision))delayed.set(key,patch);
       }else window.VitrineRows?.patch(patch);
     }
-    if(envelope.event==='fleet.trip_documents.changed'&&patch.tableSlug===slug)window.VitrineRows?.refreshFleetDocuments(patch.row).catch(e=>error(e.message));
+    if(envelope.event==='fleet.trip_documents.changed'&&patch.tableSlug===slug)window.VitrineRows?.refreshFleetDocuments(patch.row,patch.action==='clear').catch(e=>error(e.message));
     if(envelope.event==='row.changed'&&patch.tableSlug===slug)window.VitrineRows?.refreshManifest().catch(e=>error(e.message));
     if(envelope.event==='catalog.changed'){
       window.VitrineRows?.catalogPatch(patch);

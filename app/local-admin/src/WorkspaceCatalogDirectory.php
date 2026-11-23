@@ -197,6 +197,9 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         if (!$profile) throw new ApiError('not_found','Запись не найдена.',404);
         $oldValues=workspace_fleet_values($kind,$profile);
         $changes=$isFleet ? workspace_fleet_edit_values($body) : [$column=>$body['value']];
+        if ($isFleet && !$pasteCheck && ($body['editAction']??null)==='clear' && $body['value']==='' && in_array($column,['D','E'],true)) {
+            $changes=array_fill_keys(array_keys(workspace_fleet_driver_columns()),'');
+        }
         $birth=null;
         if ($isFleet && array_key_exists('P',$changes)) {
             if (!workspace_fleet_can_documents()) throw new ApiError('forbidden','Дата рождения доступна суперадмину.',403);
@@ -271,7 +274,16 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     }
     if ($kind==='unload-points') {
         if ($column==='A') throw new ApiError('fixed_unload_client','У сохранённой точки нельзя изменить клиента.',409);
-        if ($column==='C') throw new ApiError('contact_editor','Откройте редактор контактов из ячейки «Контакты».');
+        if ($column==='C') {
+            if ($pasteCheck || ($body['editAction']??null)!=='clear' || $body['value']!=='') {
+                throw new ApiError('contact_editor','Откройте редактор контактов из ячейки «Контакты».');
+            }
+            $baseHash=workspace_catalog_directory_hash($id,$body['row']);
+            if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
+            $saved=workspace_unload_contacts($id,$body['row'],['revision'=>$body['revision'],'contacts'=>[]]);
+            json_response(['value'=>$saved['summary'],'original'=>$saved['summary'],'revision'=>$saved['revision'],
+                'baseHash'=>$baseHash,'edited'=>false]);
+        }
         $point=workspace_unload_points($id)[$body['row']]??null;
         if (!$point) throw new ApiError('not_found','Точка выгрузки не найдена.',404);
         $values=['B'=>$body['value']];

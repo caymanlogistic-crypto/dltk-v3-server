@@ -40,6 +40,12 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $records=$wanted?wquery('SELECT * FROM records WHERE table_id=? AND archived=? AND row_num IN ('.implode(',',array_fill(0,count($wanted),'?')).') ORDER BY row_num DESC',[$t['id'],(int)$archive,...$wanted])->fetchAll():[];
     $documentSnapshots=$canViewDocuments ? workspace_fleet_trip_documents_values(array_column($records,'id')) : [];
     $canManageRows=workspace_can('table',(string)$t['id'],'edit',$t['id']);
+    $readOnly=[];
+    foreach ($columns as $column) {
+        if (!$canManageRows || !workspace_can('field',$column['letter'],'edit',$t['id'])) {
+            $readOnly[$column['letter']]='Эта ячейка доступна только для просмотра.';
+        }
+    }
     $catalog=workspace_status_catalog($t);$byId=[];$byName=[];foreach($catalog['statuses'] as &$status){$status['id']=(int)$status['id'];$status['revision']=(int)$status['revision'];$byId[$status['id']]=$status;$byName[vitrine_status_key($status['name'])]=$status;}unset($status);
     [$boundChoices,$boundCatalogs,$entriesByName]=vitrine_catalog_options($t,$links);
     $dropoffCatalog=in_array('M',array_column($columns,'letter'),true) ? ($boundCatalogs['M']??null) : null;
@@ -116,7 +122,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         $pickupId=$refs[(int)$r['id']]['E']['id']??($entriesByName['E'][vitrine_catalog_key($values['E']??'')]??0);
         $rows[]=['catalogFills'=>['E'=>$pickupColors[$pickupId]??null],'references'=>$refs[(int)$r['id']]??[],'catalogBindings'=>$boundCatalogs,'recordId'=>(int)$r['id'],'rowIndex'=>(int)$r['row_num'],'values'=>$values,'originalValues'=>$baseline,'baseHash'=>hash('sha256',$r['baseline_json']),'choices'=>$choices,'kinds'=>$kinds,'compactInputs'=>$compactInputs,'singleLine'=>$singleLine,'edits'=>$rowEdits,'statusId'=>$status['id']??null,'statusColor'=>$status['color']??null,'orderStatus'=>$orderStatus];
         $rows[array_key_last($rows)]+=['rowActions'=>true,'rowToken'=>$canManageRows ? workspace_table_row_token($r) : null,
-            'archived'=>$archive,'relatedUrl'=>'/workspace?section=history&table='.rawurlencode($t['slug']).'&row='.(int)$r['row_num']];
+            'archived'=>$archive,'readOnly'=>$archive ? [] : $readOnly,'relatedUrl'=>'/workspace?section=history&table='.rawurlencode($t['slug']).'&row='.(int)$r['row_num']];
         if ($dropoffDetails!==null) $rows[array_key_last($rows)]['dropoffDetails']=$dropoffDetails;
         if (isset($boundCatalogs['O'])) $rows[array_key_last($rows)]['sharedChoices']['O']='vehicles';
     }
@@ -141,6 +147,7 @@ function vitrine_store(array $body): array {
         $values=json_decode($r['values_json'],true);$key=$body['column'];$before=$body['currentValue']??($old?$old['value']:workspace_string($values[$key]??''));
         if($key==='A'&&!empty($old['status_id'])){$latestName=wquery('SELECT name FROM catalog_entries WHERE id=?',[$old['status_id']])->fetchColumn();if($latestName!==false)$before=$latestName;}
         $value=$body['reset']?$body['original']:$body['value'];
+        $clear=($body['editAction']??null)==='clear';
         $reference=null;$binding=null;$entry=null;$links=vitrine_catalog_links($t);$link=$links[$key]??null;
         $dropoffResult=[];$dropoffChanged=false;
         if ($key==='M' && ($link['kind']??null)==='dropoff-points') {
@@ -148,7 +155,13 @@ function vitrine_store(array $body): array {
             if (isset($body['dropoffDetails']) && !vitrine_find_catalog_entry($link['id'],$value) && (!$priorPoint || $value!==$before)) {
                 throw new ApiError('invalid_reference',$link['invalid']);
             }
-            if (isset($body['dropoffDetails'])) {
+            if ($clear) {
+                $previousDropoff=$values['dropoffDetails']??[];
+                $nextDropoff=[];
+                unset($values['dropoffDetails']);
+                $dropoffResult=['dropoffDetails'=>$nextDropoff];
+                $dropoffChanged=$previousDropoff!==$nextDropoff;
+            } elseif (isset($body['dropoffDetails'])) {
                 [$previousDropoff,$nextDropoff]=workspace_dropoff_update_flight($values,$body,$before,(bool)$priorPoint);
                 $dropoffResult=['dropoffDetails'=>$nextDropoff];
                 $dropoffChanged=$previousDropoff!==$nextDropoff;
@@ -185,10 +198,10 @@ function vitrine_store(array $body): array {
         }
         $orderResult=[];
         $orderChanged=false;
-        if ($key==='B' && $link && workspace_client_order_status_can_view($t)) {
+        if ($key==='B' && $link && ($clear || workspace_client_order_status_can_view($t))) {
             $oldOrderStatus=(string)($values['clientOrderStatus']??'');
-            $nextOrderStatus=$body['orderStatus']??$oldOrderStatus;
-            $orderResult=['orderStatus'=>$nextOrderStatus];
+            $nextOrderStatus=$clear ? '' : ($body['orderStatus']??$oldOrderStatus);
+            if (workspace_client_order_status_can_view($t)) $orderResult=['orderStatus'=>$nextOrderStatus];
             $orderChanged=$nextOrderStatus!==$oldOrderStatus;
             if ($orderChanged && $nextOrderStatus!=='' && !isset(workspace_active_client_order_statuses(true)[$nextOrderStatus])) {
                 throw new ApiError('invalid_order_status','Выберите действующий статус из справочника.');
@@ -207,18 +220,20 @@ function vitrine_store(array $body): array {
                 workspace_unload_options_by_client($points),$reference,$value);
         }
         $active=$value!==($body['comparisonOriginal']??$body['original']);
-        $action=$body['editAction']??($body['reset']?'reset':'edit');if(!in_array($action,['edit','paste','undo','reset'],true))$action='edit';
+        $action=$body['editAction']??($body['reset']?'reset':'edit');if(!in_array($action,['edit','paste','undo','reset','clear'],true))$action='edit';
         $operation=bin2hex(random_bytes(16));
-        if ($key==='B' && $unloadId && vitrine_catalog_key($before)!==vitrine_catalog_key($value)) {
+        $unloadChanged=false;
+        if ($key==='B' && $unloadId && ($clear || vitrine_catalog_key($before)!==vitrine_catalog_key($value))) {
             wquery("DELETE FROM record_references WHERE record_id=? AND field_key='K'",[$r['id']]);
             foreach (['K','L'] as $column) {
                 $patch=vitrine_update_catalog_value($t,$r,$values,$column,'',workspace_string($values[$column]??''),$u,$action,$request,$operation,false);
+                $unloadChanged=$unloadChanged || $patch!==null;
                 if ($patch && workspace_can('field',$column,'view',$t['id'])) $unloadResult['unloadCells'][]=$patch;
             }
         }
         $dependentPatch=$phonePatch=null;
         $documentsChanged=false;
-        if(isset($link['target'])&&($reference||$value!==$before||(in_array($key,['K','O'],true)&&$body['reset']))){
+        if(isset($link['target'])&&($clear||$reference||$value!==$before||(in_array($key,['K','O'],true)&&$body['reset']))){
             if ($key==='K') {
                 $previous=workspace_string($values['L']??'');
                 $next=$resetUnload && $sameClient ? vitrine_catalog_original_value($r,'L') : ($entry?workspace_unload_primary($entry):'');
@@ -240,7 +255,7 @@ function vitrine_store(array $body): array {
                 $previous=$entries[$previousEntry['id']??0]??'';
                 $next=$entries[$reference]??'';
             }
-            $dependentPatch=vitrine_update_catalog_value($t,$r,$values,$link['target'],$next,$previous,$u,$action,$request,$operation,!in_array($key,['K','O'],true));
+            $dependentPatch=vitrine_update_catalog_value($t,$r,$values,$link['target'],$next,$previous,$u,$action,$request,$operation,!$clear&&!in_array($key,['K','O'],true));
         }
         $catalogStyle=[];
         if(($link['kind']??null)==='terminals-main'){
@@ -256,11 +271,11 @@ function vitrine_store(array $body): array {
                 wquery('INSERT INTO record_references VALUES(?,?,?) ON DUPLICATE KEY UPDATE entry_id=VALUES(entry_id)',[$r['id'],$key,$reference]);
                 $result+=['referenceId'=>$reference,'catalogId'=>(int)$binding];
             }
-            if(in_array($key,['K','O'],true)&&$body['reset']){
+            if($link && ($clear||(in_array($key,['K','O'],true)&&$body['reset']))){
                 wquery('DELETE FROM record_references WHERE record_id=? AND field_key=?',[$r['id'],$key]);
                 $result+=['referenceId'=>0,'catalogId'=>(int)$binding];
             }
-            if($dependentPatch || $phonePatch)wquery('UPDATE records SET values_json=?,updated_at=UTC_TIMESTAMP(6) WHERE id=?',[wjson($values),$r['id']]);
+            if($dependentPatch || $phonePatch || $unloadChanged)wquery('UPDATE records SET values_json=?,updated_at=UTC_TIMESTAMP(6) WHERE id=?',[wjson($values),$r['id']]);
             wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);workspace_db()->commit();return $result;
         }
         $revision++;if($before!==$value)$values[$key]=$value;$statusId=$key==='A'?($body['statusId']??null):null;
@@ -274,7 +289,7 @@ function vitrine_store(array $body): array {
         if ($dropoffChanged) workspace_audit(['tableId'=>$t['id'],'recordId'=>(int)$r['id'],'row'=>$body['row'],'column'=>'M',
             'label'=>'Данные сдачи по рейсу','before'=>array_diff_key($previousDropoff,['legacy'=>true]),
             'after'=>array_diff_key($nextDropoff,['legacy'=>true]),'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
-        if ($key==='M' && $value===$before && !$reference && !empty($priorPoint)) $reference=$priorPoint;
+        if ($key==='M' && !$clear && $value===$before && !$reference && !empty($priorPoint)) $reference=$priorPoint;
         $status=$statusId?wquery('SELECT color FROM catalog_entries WHERE id=?',[$statusId])->fetch():null;$result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request,'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0)]+$derived+$orderResult+$catalogStyle+$unloadResult+$dropoffResult;
         $dropoffEvent=$dropoffChanged ? ['dropoffDetails'=>array_diff_key($nextDropoff,['legacy'=>true])] : [];
         workspace_event('cell.changed',['tableSlug'=>$t['slug'],'row'=>$body['row'],'column'=>$key,'value'=>$value,'revision'=>$revision,'edited'=>$active,'statusId'=>$statusId,'statusColor'=>$status['color']??null,'original'=>$body['original'],'baseHash'=>hash('sha256',$r['baseline_json']),'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0),'actorId'=>$u['id'],'actorName'=>$u['name'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation]+$orderResult+$catalogStyle+$dropoffEvent);

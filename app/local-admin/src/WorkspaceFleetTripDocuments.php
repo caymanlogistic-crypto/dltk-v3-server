@@ -57,6 +57,6 @@ function workspace_fleet_trip_documents_save(array $table,array $record,int $dri
     workspace_audit(['tableId'=>$table['id'],'recordId'=>$id,'row'=>(int)$record['row_num'],'column'=>'R',
         'label'=>next_label($table['columns'],'R'),'before'=>['hasDocuments'=>$before!==''],
         'after'=>['hasDocuments'=>$after!==''],'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
-    workspace_event('fleet.trip_documents.changed',['tableSlug'=>$table['slug'],'row'=>(int)$record['row_num']]);
+    workspace_event('fleet.trip_documents.changed',['tableSlug'=>$table['slug'],'row'=>(int)$record['row_num'],'action'=>$action]);
     return true;
 }

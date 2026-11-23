@@ -311,7 +311,7 @@
     return cache.get(Number(rowNumber))?.querySelector('td[data-fleet-documents-visible]');
   }
 
-  function applyFleetDocuments(rowNumber,value) {
+  function applyFleetDocuments(rowNumber,value,cleared=false) {
     const cell=fleetDocumentCell(rowNumber);
     if (!cell) return;
     fleetDocumentRequests.delete(cell);
@@ -320,12 +320,12 @@
     cell.title=cell.dataset.derivedSource+'. '+(value || cell.dataset.emptyLabel+'.');
     if (value) cell.removeAttribute('aria-label');
     else cell.setAttribute('aria-label',cell.dataset.emptyLabel);
-    cell.classList.remove('just-saved');
+    cell.classList.remove('just-saved','just-remote','just-cleared');
     void cell.offsetWidth;
-    cell.classList.add('just-saved');
+    cell.classList.add(cleared ? 'just-cleared' : 'just-saved');
   }
 
-  async function refreshFleetDocuments(rowNumber) {
+  async function refreshFleetDocuments(rowNumber,cleared=false) {
     const cell=fleetDocumentCell(rowNumber);
     if (!cell) return;
     const request=Symbol();
@@ -335,7 +335,7 @@
     const data=await response.json();
     if (!response.ok || typeof data.value!=='string') throw new Error(data.error?.message || 'Не удалось обновить ПД.');
     if (fleetDocumentCell(rowNumber)===cell && fleetDocumentRequests.get(cell)===request) {
-      applyFleetDocuments(rowNumber,data.value);
+      applyFleetDocuments(rowNumber,data.value,cleared);
     }
   }
 

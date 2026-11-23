@@ -201,7 +201,8 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
     </section>
     <?php endif; ?>
     <?php if ($canManageRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
-    if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php'; ?>
+    if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php';
+    require __DIR__.'/vitrine-clear-cell-dialog.php'; ?>
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
       <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">

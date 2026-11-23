@@ -1,6 +1,8 @@
 'use strict';
 (() => {
   let active = null;
+  let clearTarget = null;
+  const clearDialog = document.querySelector('[data-clear-cell-dialog]');
   const catalog = document.body.dataset.vitrineCatalog;
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
@@ -228,20 +230,24 @@
     for (const patch of result.dependentCells ?? []) window.VitrineRows?.patch(patch);
     for (const patch of result.unloadCells ?? []) window.VitrineRows?.patch(patch);
     if (typeof result.fleetDocumentValue==='string') {
-      window.VitrineRows?.applyFleetDocuments(cell.dataset.row,result.fleetDocumentValue);
+      window.VitrineRows?.applyFleetDocuments(cell.dataset.row,result.fleetDocumentValue,editAction==='clear');
     }
     if (result.reauthenticate) location.assign(window.DltkPaths?.path('/login') ?? '/login');
     return result;
   }
-  function flash(cell, remote = false) {
-    cell.classList.remove('just-saved','just-remote'); void cell.offsetWidth;
-    cell.classList.add(remote ? 'just-remote' : 'just-saved');
+  function flash(cell, remote = false, cleared = false) {
+    cell.classList.remove('just-saved','just-remote','just-cleared'); void cell.offsetWidth;
+    cell.classList.add(cleared ? 'just-cleared' : remote ? 'just-remote' : 'just-saved');
   }
   function applyRemote(cell, result) {
     const changed = Number(result.revision) > Number(cell.dataset.revision || 0);
     const valueChanged = cell.textContent !== result.value;
     applyResult(cell,result);
     if (!changed || !cell.isConnected) return;
+    if (result.action==='clear' && !result.value) {
+      if (valueChanged) flash(cell,false,true);
+      return;
+    }
     if (cell.dataset.derivedSource) {
       if (valueChanged) flash(cell);
       return;
@@ -710,6 +716,61 @@
     if (!next) return false;
     select(next); next.focus({preventScroll:true}); reveal(next); return true;
   }
+  function askClear(cell) {
+    if (cell.dataset.derivedSource || cell.dataset.kind==='client-unload-points') {
+      notifyDerivedCell();
+      return;
+    }
+    if (cell.hasAttribute('data-readonly-cell')) {
+      report(cell.dataset.readonlyCell,'info');
+      return;
+    }
+    if (!clearDialog || clearDialog.open || pendingCells.has(cell)) return;
+    if (cell.closest('[data-draft-slot]') && !cell.textContent) return;
+    clearTarget=cell;
+    clearDialog.querySelector('[data-clear-cell-label]').textContent=cell.dataset.label;
+    clearDialog.showModal();
+  }
+
+  clearDialog?.querySelector('[data-clear-cell-cancel]').addEventListener('click',()=>clearDialog.close());
+  clearDialog?.addEventListener('cancel',event=>{
+    if (pendingCells.has(clearTarget)) event.preventDefault();
+  });
+  clearDialog?.addEventListener('close',()=>{
+    const cell=clearTarget;
+    clearTarget=null;
+    if (cell?.isConnected) cell.focus({preventScroll:true});
+    window.dispatchEvent(new CustomEvent('vitrine-editor-closed'));
+  });
+  clearDialog?.querySelector('form').addEventListener('submit',async event=>{
+    event.preventDefault();
+    const cell=clearTarget;
+    if (!cell || pendingCells.has(cell)) return;
+    const previous=new Map(Array.from(cell.parentElement.querySelectorAll('td[data-edit-cell]'),
+      peer=>[peer,peer.textContent]));
+    const buttons=Array.from(clearDialog.querySelectorAll('button'));
+    buttons.forEach(button=>button.disabled=true);
+    pendingCells.add(cell);
+    cell.setAttribute('aria-busy','true');
+    let succeeded=false;
+    try {
+      if (cell.closest('[data-draft-slot]')) window.VitrineDirectoryDrafts.clear(cell);
+      else applyResult(cell,await writeCell(cell,'',false,null,'clear'));
+      for (const [peer,before] of previous) {
+        if (before && peer.textContent==='' && !peer.classList.contains('just-cleared')) flash(peer,false,true);
+      }
+      succeeded=true;
+    } catch (error) {
+      report(error.message || 'Не удалось очистить ячейку.','danger');
+    } finally {
+      pendingCells.delete(cell);
+      cell.removeAttribute('aria-busy');
+      buttons.forEach(button=>button.disabled=false);
+      if (succeeded) clearDialog.close();
+      else buttons.at(-1)?.focus();
+    }
+  });
+
   document.addEventListener('keydown', event => {
     if (event.key === 'F6' && !document.querySelector('dialog[open]')) {
       event.preventDefault();
@@ -724,6 +785,15 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
+    if (event.key==='Delete' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+      && !event.isComposing && !event.defaultPrevented && !event.target.closest('input,textarea,[contenteditable="true"]')
+      && !document.querySelector('dialog[open]')) {
+      event.preventDefault();
+      if (event.repeat) return;
+      if (window.VitrineRows && !cell.isConnected) window.VitrineRows.activate(cell,askClear);
+      else askClear(cell);
+      return;
+    }
     const typedText = cell.dataset.kind === 'text' && cell.hasAttribute('data-single-line') && /^\S$/u.test(event.key);
     const typedContainer = cell.dataset.kind === 'container' && /^[a-z]$/i.test(event.key);
     const typedType = isContainerTypeCell(cell) && /^[\p{L}0-9]$/u.test(event.key);
@@ -824,5 +894,5 @@
   });
   document.querySelector('.vitrine-table-scroll')?.addEventListener('scroll', position);
   window.addEventListener('resize', fitEditor);
-  window.VitrineGrid=Object.freeze({select,reveal,positionPanel,editing:()=>Boolean(active),editingCell:()=>active?.cell||null,applyRemote});
+  window.VitrineGrid=Object.freeze({select,reveal,positionPanel,editing:()=>Boolean(active || clearTarget),editingCell:()=>active?.cell||clearTarget,applyRemote});
 })();

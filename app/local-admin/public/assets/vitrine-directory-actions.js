@@ -215,6 +215,16 @@
     secret(cell) {
       return drafts.get(cell.closest('[data-draft-slot]')).values[cell.dataset.column];
     },
+    clear(cell) {
+      const row=cell.closest('[data-draft-slot]');
+      const draft=drafts.get(row);
+      if (draft.saving) throw new Error('Дождитесь сохранения строки.');
+      const column=cell.dataset.column;
+      draft.values[column]='';
+      draft.confirmed.delete(column);
+      storeDrafts();
+      showDraft(row);
+    },
     async write(cell,value,group) {
       const row = cell.closest('[data-draft-slot]');
       const draft = drafts.get(row);
