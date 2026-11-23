@@ -165,6 +165,9 @@ function vitrine_store(array $body): array {
         if($key==='A'&&!empty($old['status_id'])){$latestName=wquery('SELECT name FROM catalog_entries WHERE id=?',[$old['status_id']])->fetchColumn();if($latestName!==false)$before=$latestName;}
         $value=$body['reset']?$body['original']:$body['value'];
         $clear=($body['editAction']??null)==='clear';
+        if ($key==='Y' && $value!=='' && $value!==$before && workspace_trip_margin_enabled($t)) {
+            workspace_margin_rule_check_expense($t['id'],$values,$value);
+        }
         $reference=null;$binding=null;$entry=null;$links=vitrine_catalog_links($t);$link=$links[$key]??null;
         $dropoffResult=[];$dropoffChanged=false;
         if ($key==='M' && ($link['kind']??null)==='dropoff-points') {

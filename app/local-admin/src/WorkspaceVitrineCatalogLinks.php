@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__.'/Workspace.php';
 require_once __DIR__.'/WorkspaceTripMargin.php';
+require_once __DIR__.'/WorkspaceMarginRules.php';
 
 function workspace_string(mixed $v): string {if(is_bool($v))return $v?'TRUE':'FALSE';return (string)(visible_value($v)??'');}
 
@@ -46,7 +47,7 @@ function vitrine_bound_catalog_menu(array $tables): array {
         }
         $additional=wquery("SELECT c.id,c.title,c.kind FROM catalogs c JOIN catalog_bindings b ON c.id=b.catalog_id
             WHERE b.table_id=? AND b.field_key='' AND c.kind IN ('transport','drivers-detailed','drivers-legacy',
-                'terminals-detailed','application-contacts','application-checks','etrn-carriers','edo-operators') ORDER BY c.title,c.id",
+                'terminals-detailed','application-contacts','application-checks','etrn-carriers','edo-operators','margin-rules') ORDER BY c.title,c.id",
             [$table['id']])->fetchAll();
         $fleetEnabled=isset($links['O']);
         foreach($additional as $catalog){

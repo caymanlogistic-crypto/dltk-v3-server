@@ -58,6 +58,7 @@ function workspace_directory_excel_entries(array $schema): array {
     $secondary=match($kind) {
         'clients'=>workspace_client_manager_values($id),
         'carriers'=>workspace_carrier_directory_values($id),
+        'margin-rules'=>workspace_margin_rule_profiles($id),
         'dropoff-points'=>workspace_dropoff_profiles($id),
         'managers'=>array_column(workspace_manager_entries($id),null,'id'),
         'unload-points'=>workspace_unload_points($id),
@@ -76,6 +77,7 @@ function workspace_directory_excel_entries(array $schema): array {
             'clients'=>$base+['B'=>$detail??''],
             'carriers'=>$base+($detail??workspace_carrier_values([])),
             'edo-operators'=>workspace_edo_operator_values($entry),
+            'margin-rules'=>workspace_margin_rule_values($entry['name'],$detail??[]),
             'status','terminals-main','order-statuses'=>$base+['B'=>$palette[$entry['color']]??''],
             'dropoff-points'=>$base+($detail??workspace_dropoff_profile([])),
             'managers'=>workspace_manager_values($detail),
@@ -110,6 +112,11 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
     $payload=['catalogId'=>$id];
     if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) return [workspace_fleet_values_validated($kind,$values)['key'],$payload];
     if (in_array($kind,['roles','employees'],true)) return workspace_access_excel_payload($kind,$values,$old);
+    if ($kind==='margin-rules') {
+        $date=workspace_margin_rule_date($values['A']);
+        workspace_margin_rule_profile($values);
+        return [$date,$payload+['name'=>$date,'marginRule'=>$values]];
+    }
     if ($kind==='edo-operators') {
         $code=workspace_edo_operator_code($values['A']);
         return [strtolower($code),$payload+['operatorCode'=>$code,'name'=>workspace_catalog_validate_name($values['B'])]];
@@ -161,6 +168,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             foreach ($schema['labels'] as $letter=>$label) $values[$letter]=trim($cells[$positions[$label]??0]??'');
             if ($kind==='carriers') $values['D']=workspace_carrier_edo_operator(workspace_carrier_edo_id($values['C']));
             if ($kind==='edo-operators') $values['A']=workspace_edo_operator_code($values['A']);
+            if ($kind==='margin-rules') $values=workspace_margin_rule_values(workspace_margin_rule_date($values['A']),workspace_margin_rule_profile($values));
             if ($kind==='employees') {
                 if (!in_array($values['C'],['','Скрыт'],true)) directory_xlsx_error('Пароли сотрудников задаются только в карточке.');
                 $values['C']='Скрыт';
@@ -177,7 +185,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             }
             if (!$id) {
                 $lookup=$kind==='employees' ? $values['B'] : $values['A'];
-                if (in_array($kind,['managers','unload-points',...WORKSPACE_FLEET_KINDS],true)) {
+                if (in_array($kind,['managers','unload-points','margin-rules',...WORKSPACE_FLEET_KINDS],true)) {
                     [$lookup]=workspace_directory_excel_payload($schema,$values,null);
                 } else {
                     $lookup=vitrine_status_key($lookup);

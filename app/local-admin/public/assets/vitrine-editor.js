@@ -226,7 +226,9 @@
         revision:Number(cell.dataset.revision || 0),baseHash:cell.dataset.base,reset,requestId:crypto.randomUUID(),editAction:editAction||(reset?'reset':paste?'paste':'edit'),...(paste ? {paste} : {}),orderStatus,dropoffDetails,fleetGroup,birthRevision})
     });
     const result = await response.json();
-    if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось сохранить ячейку.');
+    if (!response.ok || result.error) {
+      throw Object.assign(new Error(result.error?.message || 'Не удалось сохранить ячейку.'),{code:result.error?.code});
+    }
     if (typeof result.value !== 'string' || !Number.isInteger(result.revision) || typeof result.baseHash !== 'string') throw new Error('Неполный ответ сервера. Обновите страницу.');
     if (result.dependentCell) window.VitrineRows?.patch(result.dependentCell);
     for (const patch of result.dependentCells ?? []) window.VitrineRows?.patch(patch);
@@ -328,7 +330,6 @@
         return;
       }
       if (!result.draft) flash(cell);
-      if (!result.draft && (reset || !editor.paste)) report(reset ? 'Исходное значение восстановлено' : 'Локальная правка сохранена', 'success');
     } catch (error) {
       editor.saving = false;
       editor.buttons.forEach(button => { button.disabled = false; });
@@ -340,7 +341,8 @@
       editor.saveButton.textContent = 'Сохранить';
       editor.panel.removeAttribute('aria-busy');
       editor.error.textContent = error instanceof TypeError ? 'Нет связи с сервером. Текст сохранён в поле — повторите попытку.' : error.message;
-      report(editor.error.textContent, 'danger');
+      if (error.code?.startsWith('margin_rule_')) editor.error.hidden = false;
+      else report(editor.error.textContent, 'danger');
       position();
       editor.field.focus();
     }
@@ -557,7 +559,9 @@
       panel.append(element('p', 'vitrine-editor-help', useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить · Esc — отменить'));
     }
     const error = element('p', 'vitrine-editor-error');
-    error.setAttribute('role', 'alert'); error.hidden = true; panel.append(error);
+    error.setAttribute('role', 'alert'); error.hidden = true;
+    if (!catalog && cell.dataset.column==='Y') panel.prepend(error);
+    else panel.append(error);
     const actions = element('div', 'vitrine-editor-actions');
     const saveButton = element('button', 'btn btn-primary', 'Сохранить');
     const cancelButton = element('button', 'btn btn-secondary', 'Отмена');

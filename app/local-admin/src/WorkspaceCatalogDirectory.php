@@ -10,6 +10,7 @@ function workspace_catalog_directory_model(): array {
         'clients'=>['A'=>'Клиент','B'=>'Менеджер'],
         'carriers'=>['A'=>'Перевозчик','B'=>'ИНН','C'=>'Идентификатор ЭДО','D'=>'Оператор ЭДО','E'=>'Логист'],
         'edo-operators'=>['A'=>'Код','B'=>'Оператор ЭДО'],
+        'margin-rules'=>['A'=>'Дата начала','B'=>'Минимум, %','C'=>'Минимум, ₽'],
         'status'=>['A'=>'Статус','B'=>'Цвет'],
         'assignment-statuses','etrn-statuses'=>['A'=>'Статус'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
@@ -59,6 +60,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $showDocuments=$driverCatalog && workspace_fleet_can_documents() && workspace_can('catalog',(string)$driverCatalog,'view');
     $canEditDocuments=$showDocuments && $canEdit && workspace_can('catalog',(string)$driverCatalog,'edit');
     $canViewDrivers=$driverCatalog && workspace_can('catalog',(string)$driverCatalog,'view');
+    $marginRules=$kind==='margin-rules' ? workspace_margin_rule_profiles($id) : [];
     $dropoffProfiles=$kind==='dropoff-points' ? workspace_dropoff_profiles($id) : [];
     $showAll=$managers && ($_GET['archive'] ?? '')==='all';
     $managerRoles=$managers ? array_keys(workspace_manager_roles()) : [];
@@ -92,6 +94,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             $managers=>workspace_manager_values($entry),
             $fleet=>workspace_fleet_values($kind,$entry),
             $kind==='edo-operators'=>workspace_edo_operator_values($entry),
+            $kind==='margin-rules'=>workspace_margin_rule_values($entry['name'],$marginRules[$entryId]??[]),
             default=>['A'=>$entry['name']],
         };
         if ($unload) $values['C']=workspace_unload_contact_summary(workspace_unload_primary($entry),(int)$entry['contact_count']);
@@ -305,7 +308,14 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     $updatedValues=[];
     $value = $body['value'];
     $fill = null;
-    if ($kind==='edo-operators') {
+    if ($kind==='margin-rules') {
+        $stored=workspace_client_catalog_metadata('margin_rule_'.$entry['id']);
+        $values=workspace_margin_rule_values($entry['name'],$stored);
+        $values[$column]=$value;
+        $payload['name']=workspace_margin_rule_date($values['A']);
+        $payload['marginRule']=$values;
+        $value=workspace_margin_rule_values($payload['name'],workspace_margin_rule_profile($values))[$column];
+    } elseif ($kind==='edo-operators') {
         if ($column==='A') $payload['operatorCode']=$value=workspace_edo_operator_code($value);
         else $payload['name']=$value=workspace_catalog_validate_name($value);
     } elseif ($column === 'A') $payload['name'] = $value = workspace_catalog_validate_name($value);

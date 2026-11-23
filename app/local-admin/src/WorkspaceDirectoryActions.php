@@ -69,6 +69,11 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) return workspace_fleet_save($kind,$catalogId,$values);
         $name = workspace_catalog_validate_name($values[$kind==='edo-operators' ? 'B' : 'A'] ?? '');
         $payload = ['catalogId'=>$catalogId,'name'=>$name];
+        if ($kind==='margin-rules') {
+            $payload['name']=workspace_margin_rule_date($values['A']??'');
+            $payload['marginRule']=$values;
+            $name=$payload['name'];
+        }
         if ($kind==='edo-operators') $payload['operatorCode']=workspace_edo_operator_code($values['A']??'');
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
         if (workspace_catalog_has_palette($kind)) $payload['color'] = workspace_directory_color($values['B'] ?? '');

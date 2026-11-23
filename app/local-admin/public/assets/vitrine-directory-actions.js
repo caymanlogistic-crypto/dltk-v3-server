@@ -250,7 +250,6 @@
     },
     async finish(cell) {
       showDraft(cell.closest('[data-draft-slot]'));
-      notice('Запись добавлена.','success');
       try {
         await window.VitrineRows.refreshManifest();
         if (cell.classList.contains('is-current-cell') && !window.VitrineGrid.editing()) window.VitrineGrid.reveal(cell);

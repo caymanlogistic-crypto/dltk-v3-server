@@ -41,6 +41,7 @@
 .vitrine .vitrine-editor-field { display:block; box-sizing:border-box; width:100%; max-width:100%; padding:8px; min-height:34px; font:500 12px/1.45 var(--font); }
 .vitrine textarea.vitrine-editor-field { min-height:94px; max-height:220px; resize:vertical; white-space:pre-wrap; }
 .vitrine .vitrine-editor-help { margin:7px 0 0; color:var(--text-muted); font-size:10px; }
+.vitrine .vitrine-editor-error:first-child { margin:0 0 9px; }
 .vitrine .vitrine-editor-error { margin:9px 0 0; font-size:12px; color:var(--p-error); white-space:normal; overflow-wrap:anywhere; }
 .vitrine .vitrine-editor .checkbox-item input:focus-visible + .checkbox-mark { outline:2px solid var(--accent) !important; outline-offset:2px; }
 .vitrine .vitrine-table tbody tr > td[data-slot-request] {
