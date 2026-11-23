@@ -50,17 +50,6 @@
       wrap.append(heading,field);
       panel.append(wrap);
     }
-    const legacy=initial.legacy || (!Number(cell.dataset.referenceId) ? cell.textContent : '');
-    if (legacy) {
-      const previous=document.createElement('details');
-      previous.className='vitrine-dropoff-profile';
-      const summary=document.createElement('summary');
-      summary.textContent='Исходная запись';
-      const value=document.createElement('div');
-      value.textContent=legacy;
-      previous.append(summary,value);
-      panel.append(previous);
-    }
     return {
       fields:Object.values(fields),
       values:()=>Object.fromEntries(Object.entries(fields).map(([name,field])=>[name,field.value])),
@@ -70,7 +59,6 @@
   function update(cell,result) {
     if (!result.dropoffDetails) return;
     const previous=details(cell);
-    if (!previous.legacy && !Number(cell.dataset.referenceId) && cell.textContent) previous.legacy=cell.textContent;
     cell.parentElement.dataset.dropoffDetails=JSON.stringify({...previous,...result.dropoffDetails});
   }
   window.VitrineDropoff=Object.freeze({supports,attach,update});
