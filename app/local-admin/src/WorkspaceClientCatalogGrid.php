@@ -57,6 +57,7 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
         ($showAll ? '' : ' AND active=?').' ORDER BY name,id',
         $showAll ? [$catalogId] : [$catalogId, (int)!$archive],
     )->fetchAll();
+    if (!$archive) $entries=workspace_directory_order_entries($entries,$catalogId);
     $rows = [];
     $rowIds = [];
     $requested = $requestedRows === null ? null : array_fill_keys($requestedRows, true);

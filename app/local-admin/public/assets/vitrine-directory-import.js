@@ -17,7 +17,7 @@
 
   function setBusy(value) {
     busy = value;
-    for (const control of [pick,close,fileField,form.elements.replace]) control.disabled = value;
+    for (const control of [pick,close,fileField]) control.disabled = value;
     submit.disabled = value || !fileField.files.length;
     dialog.setAttribute('aria-busy',String(value));
   }
@@ -54,7 +54,12 @@
   });
   close.addEventListener('click',()=>dialog.close());
   dialog.addEventListener('cancel',event=>{ if (busy) event.preventDefault(); });
-  dialog.addEventListener('close',()=>{ if (saved) location.reload(); });
+  dialog.addEventListener('close',()=>{
+    if (!saved) return;
+    const page = new URL(location.href);
+    for (const filter of ['q','client','archive']) page.searchParams.delete(filter);
+    location.replace(page);
+  });
   pick.addEventListener('click',()=>fileField.click());
   fileField.addEventListener('change',updateFilename);
   form.addEventListener('change',resetReview);
@@ -67,22 +72,22 @@
       return;
     }
     const data = new FormData(form);
-    if (form.elements.replace.checked) data.set('replace','1');
     if (token) data.set('token',token);
     setBusy(true);
     try {
       const result = await request({method:'POST',headers:{'X-CSRF-Token':csrf},body:data});
       const counts = result.counts;
       output.textContent = 'Новых — ' + counts.added + ', изменённых — ' + counts.updated
-        + ', в архив — ' + counts.archived + ', без изменений — ' + counts.unchanged + '.';
+        + ', из архива — ' + counts.restored + ', в архив — ' + counts.archived
+        + ', без изменений — ' + counts.unchanged + '.';
       output.hidden = false;
       if (token) {
         saved = true;
-        output.textContent = 'Справочник обновлён. ' + output.textContent;
+        output.textContent = 'Справочник заменён. ' + output.textContent;
         close.textContent = 'Готово';
       } else {
         token = result.token;
-        submit.textContent = 'Применить изменения';
+        submit.textContent = 'Заменить справочник';
       }
     } catch (error) {
       resetReview();
@@ -92,7 +97,6 @@
       if (saved) {
         submit.hidden = true;
         fileField.disabled = true;
-        form.elements.replace.disabled = true;
         pick.disabled = true;
         close.focus();
       }

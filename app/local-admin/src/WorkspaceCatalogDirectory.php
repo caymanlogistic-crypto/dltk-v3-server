@@ -53,6 +53,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('catalog_deleted_client_',e.id))
             ORDER BY name,id",[$id,(int)!$archive])->fetchAll(),
     };
+    if (!$archive) $entries=workspace_directory_order_entries($entries,$id);
     $palette = array_column(workspace_palette(),'name','fill');
     $rows = $rowIds = [];
     $requested = $requestedRows === null ? null : array_fill_keys($requestedRows,true);

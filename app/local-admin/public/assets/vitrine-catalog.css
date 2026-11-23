@@ -15,7 +15,7 @@
 .vitrine .vitrine-import-file [data-import-filename] {
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted);
 }
-.vitrine .vitrine-import-archive input:focus-visible + .checkbox-mark { box-shadow:0 0 0 2px var(--accent); }
+.vitrine .vitrine-import-warning { padding:8px 10px; border-inline-start:2px solid var(--warning-border); background:var(--warning-field); }
 .vitrine .vitrine-catalog-search { max-inline-size:100%; }
 .vitrine .vitrine-directory-visibility { inline-size:150px; max-inline-size:100%; }
 .vitrine .vitrine-catalog-search input[type="search"] { box-sizing:border-box; block-size:var(--control-h); inline-size:245px; max-inline-size:100%; }

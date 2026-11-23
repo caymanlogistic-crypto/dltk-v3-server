@@ -9,6 +9,23 @@ function vitrine_directory_requested(): ?string {
     return $_GET['catalog'];
 }
 
+function workspace_directory_row_order_key(int $catalogId): string {
+    return 'directory_excel_order_'.($catalogId ?: 'client_order_statuses');
+}
+
+function workspace_directory_row_order(int $catalogId): array {
+    return workspace_client_catalog_metadata(workspace_directory_row_order_key($catalogId));
+}
+
+function workspace_directory_order_entries(array $entries,int $catalogId): array {
+    $order=workspace_directory_row_order($catalogId);
+    if (!$order) return $entries;
+    $position=array_flip($order);
+    uasort($entries,static fn(array $left,array $right): int =>
+        ($position[$left['id']]??PHP_INT_MAX)<=>($position[$right['id']]??PHP_INT_MAX));
+    return $entries;
+}
+
 function workspace_directory_grid_model(string $directory): array {
     if ($directory === 'entries') return workspace_catalog_directory_model();
     if ($directory === 'clients') return workspace_client_grid_model();
@@ -70,6 +87,9 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
                     'revision'=>$status['revision'],'baseHash'=>hash('sha256','client-order-status:'.$code)];
             }
         }
+    }
+    if ($orderStatuses && !$archive) {
+        $entries=workspace_directory_order_entries($entries,$flightStatuses ? (int)$catalog['id'] : 0);
     }
     $scope = $employees ? workspace_employee_editor_scope() : null;
     $roleChoices = $scope === null ? [] : array_column(workspace_employee_role_options($scope),'name');

@@ -116,16 +116,15 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
     return [$key,$payload];
 }
 
-function workspace_directory_excel_plan(array $schema,array $entries,array $sheet,bool $replace): array {
+function workspace_directory_excel_plan(array $schema,array $entries,array $sheet): array {
     [$positions,$header,$exportedContacts]=workspace_directory_excel_header($schema['labels'],$sheet);
     unset($sheet[1]);
-    if (!$sheet) directory_xlsx_error('Добавьте в Excel хотя бы одну строку справочника.');
     $kind=$schema['kind'];
     $keys=[];
     foreach ($entries as $id=>$entry) $keys[$entry['normalized']][]=(int)$id;
     $aliases=in_array($kind,['clients','terminals-main'],true) ? workspace_client_catalog_aliases($schema['id']) : [];
     $seen=$names=$operations=[];
-    $counts=['added'=>0,'updated'=>0,'archived'=>0,'unchanged'=>0];
+    $counts=['added'=>0,'updated'=>0,'archived'=>0,'restored'=>0,'unchanged'=>0];
     foreach ($sheet as $line=>$cells) {
         try {
             foreach (array_diff_key($cells,$header) as $value) {
@@ -140,8 +139,8 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             }
             $id=(int)$idText;
             $old=$entries[$id]??null;
-            if ($id && (!$old || !$old['active'] || (string)$old['revision']!==$version)) {
-                throw new ApiError('revision_conflict','Версия записи устарела или запись находится в архиве.',409);
+            if ($id && (!$old || (string)$old['revision']!==$version)) {
+                throw new ApiError('revision_conflict','Запись не найдена или её версия устарела.',409);
             }
             if (!$id) {
                 $lookup=$values['A'];
@@ -154,16 +153,16 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
                 if (count($matches)>1) directory_xlsx_error('Найдено несколько записей с таким названием. Укажите ID записи и её версию.');
                 $id=$matches[0]??0;
                 $old=$entries[$id]??null;
-                if ($old && !$old['active']) directory_xlsx_error('Запись в архиве. Восстановите её перед загрузкой.');
             }
             if ($exportedContacts) {
                 $primary=$old['values']['C']??'';
                 $count=(int)($old['detail']['contact_count']??0);
                 if ($values['C']===workspace_unload_contact_summary($primary,$count)) $values['C']=$primary;
             }
-            if ($old && $values===$old['values']) {
+            if ($old && $old['active'] && $values===$old['values']) {
                 if (isset($seen[$id])) directory_xlsx_error('Повтор записи.');
                 $seen[$id]=true;
+                $operations[]=['id'=>$id,'unchanged'=>true];
                 $counts['unchanged']++;
                 continue;
             }
@@ -177,18 +176,16 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             $names[$key]=true;
             if ($old) $payload+=['id'=>$id,'revision'=>(int)$old['revision']];
             $operations[]=['line'=>$line,'id'=>$id,'values'=>$values,'payload'=>$payload];
-            $counts[$old?'updated':'added']++;
+            $counts[!$old?'added':($old['active']?'updated':'restored')]++;
         } catch (ApiError $error) {
             throw new ApiError($error->publicCode,'Строка '.$line.'. '.$error->publicMessage,$error->httpStatus);
         }
     }
-    if ($replace) {
-        foreach ($entries as $id=>$entry) {
-            if (!$entry['active'] || isset($seen[$id])) continue;
-            workspace_directory_excel_check_archive($schema,$entry);
-            $operations[]=['id'=>$id,'archive'=>true];
-            $counts['archived']++;
-        }
+    foreach ($entries as $id=>$entry) {
+        if (!$entry['active'] || isset($seen[$id])) continue;
+        workspace_directory_excel_check_archive($schema,$entry);
+        $operations[]=['id'=>$id,'archive'=>true];
+        $counts['archived']++;
     }
     return [$operations,$counts];
 }
@@ -205,41 +202,55 @@ function workspace_directory_excel_check_archive(array $schema,array $entry): vo
     workspace_assert_catalog_entry_unused($kind,$schema['id'],$entry);
 }
 
-function workspace_directory_excel_apply(array $schema,array $entries,array $operations): void {
+function workspace_directory_excel_apply(array $schema,array $entries,array $operations): array {
     ['id'=>$id,'kind'=>$kind]=$schema;
-    if ($kind==='order-statuses') {
-        workspace_directory_excel_order_statuses($entries,$operations);
-        return;
-    }
+    if ($kind==='order-statuses') return workspace_directory_excel_order_statuses($entries,$operations);
+    $order=[];
     foreach ($operations as $operation) {
         $entry=$entries[$operation['id']]??null;
         $entryId=$entry ? (int)$entry['id'] : null;
         $revision=$entry ? (int)$entry['revision'] : null;
         try {
+            if (!empty($operation['unchanged'])) {
+                $order[]=$entryId;
+                continue;
+            }
             if (!empty($operation['archive'])) {
                 workspace_catalog_write(['catalogId'=>$id,'id'=>$entryId,'revision'=>$revision,'name'=>$entry['name'],
                     'color'=>$entry['color'],'active'=>false,'archive'=>true]);
-            } elseif ($kind==='managers') {
-                workspace_manager_write($id,$operation['values'],$entryId,$revision);
-            } elseif ($kind==='unload-points') {
-                workspace_unload_write_point($id,$operation['values'],$entryId,$revision,
-                    primaryContact:$operation['values']['C']);
-            } else {
-                workspace_catalog_write($operation['payload']);
+                continue;
             }
+            if ($entry && !$entry['active'] && in_array($kind,['managers','unload-points'],true)) {
+                $restored=workspace_catalog_write(['catalogId'=>$id,'id'=>$entryId,'revision'=>$revision,
+                    'name'=>$entry['name'],'active'=>true]);
+                $revision=$restored['revision'];
+            }
+            $result=match($kind) {
+                'managers'=>workspace_manager_write($id,$operation['values'],$entryId,$revision),
+                'unload-points'=>workspace_unload_write_point($id,$operation['values'],$entryId,$revision,
+                    primaryContact:$operation['values']['C']),
+                default=>workspace_catalog_write($operation['payload']),
+            };
+            $order[]=$result['id'];
         } catch (ApiError $error) {
             $line=isset($operation['line']) ? 'Строка '.$operation['line'].'. ' : '';
             throw new ApiError($error->publicCode,$line.$error->publicMessage,$error->httpStatus);
         }
     }
     workspace_event('catalog.changed',['catalogId'=>$id,'bulk'=>true]);
+    return $order;
 }
 
-function workspace_directory_excel_order_statuses(array $entries,array $operations): void {
+function workspace_directory_excel_order_statuses(array $entries,array $operations): array {
     $statuses=workspace_client_order_statuses(true);
     $max=max(array_column($statuses,'id'));
+    $order=[];
     foreach ($operations as $operation) {
         $entry=$entries[$operation['id']]??null;
+        if (!empty($operation['unchanged'])) {
+            $order[]=(int)$entry['id'];
+            continue;
+        }
         $code=$entry['code']??'custom-'.(++$max);
         $before=$statuses[$code]??null;
         if (!empty($operation['archive'])) {
@@ -249,12 +260,14 @@ function workspace_directory_excel_order_statuses(array $entries,array $operatio
             $payload=$operation['payload'];
             $after=['id'=>$before['id']??$max,'label'=>$payload['name'],'color'=>$payload['color'],
                 'revision'=>($before['revision']??0)+1,'active'=>true];
-            $action=$before?'edit':'create';
+            $action=$before?($before['active']?'edit':'restore'):'create';
+            $order[]=(int)$after['id'];
         }
         $statuses[$code]=$after;
         workspace_audit(['category'=>'catalog','label'=>'Статусы клиентов','before'=>$before,'after'=>$after,'action'=>$action]);
     }
     workspace_write_order_statuses($statuses);
+    return $order;
 }
 
 function workspace_directory_excel_endpoint(): never {
@@ -263,19 +276,23 @@ function workspace_directory_excel_endpoint(): never {
     if (($_SERVER['REQUEST_METHOD'] ?? '')!=='POST') throw new ApiError('method','Метод не поддерживается.',405);
     $schema=workspace_directory_excel_schema($directory);
     $sheet=directory_xlsx_read($_FILES['workbook']??[]);
-    $replace=($_POST['replace']??'')==='1';
     $commit=array_key_exists('token',$_POST);
     if ($commit && !is_string($_POST['token'])) directory_xlsx_error();
     if ($commit) workspace_begin();
     try {
         $entries=workspace_directory_excel_entries($schema);
-        [$operations,$counts]=workspace_directory_excel_plan($schema,$entries,$sheet,$replace);
-        $token=hash_hmac('sha256',wjson([$schema,$sheet,$replace,$entries]),csrf_token());
+        [$operations,$counts]=workspace_directory_excel_plan($schema,$entries,$sheet);
+        $previousOrder=workspace_directory_row_order($schema['id']);
+        $token=hash_hmac('sha256',wjson([$schema,$sheet,$entries,$previousOrder]),csrf_token());
         if ($commit) {
             if (!hash_equals($token,$_POST['token'])) {
                 throw new ApiError('revision_conflict','Справочник или файл изменился. Проверьте загрузку ещё раз.',409);
             }
-            if ($operations) workspace_directory_excel_apply($schema,$entries,$operations);
+            $order=workspace_directory_excel_apply($schema,$entries,$operations);
+            if ($order!==$previousOrder) {
+                wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+                    [workspace_directory_row_order_key($schema['id']),wjson($order)]);
+            }
             workspace_db()->commit();
         }
         json_response(['counts'=>$counts,'token'=>$token]);
