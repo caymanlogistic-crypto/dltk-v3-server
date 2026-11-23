@@ -3,6 +3,7 @@ declare(strict_types=1);
 $employeePage = $directory === 'employees';
 $employeeScope = $employeePage ? workspace_employee_editor_scope() : null;
 $archive = $catalogGrid['archive'];
+$canUploadExcel = $catalogGrid['canEdit'] && !$archive && workspace_directory_excel_supported($directory);
 $staffDirectory = ($currentTable['catalogKind'] ?? '') === 'managers';
 $visibilityLabel = $staffDirectory ? 'Все сотрудники' : ($directory === 'clients' ? 'Все клиенты' : null);
 $visibilityAria = $staffDirectory ? 'Фильтр сотрудников' : ($directory === 'clients' ? 'Фильтр клиентов' : 'Фильтр записей');
@@ -32,6 +33,14 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
     <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape($catalogGrid['search']) ?>"
            aria-label="<?= $escape($searchLabel) ?>" placeholder="<?= $escape($searchPlaceholder) ?>">
     <?php require __DIR__.'/vitrine-export-button.php'; ?>
+    <?php if ($canUploadExcel): ?>
+    <button class="btn btn-secondary btn-icon vitrine-excel-button" type="button" data-directory-import
+            aria-label="Загрузить Excel" title="Загрузить Excel (.xlsx)">
+      <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 15V3m-4 4 4-4 4 4M4 16v4h16v-4"/>
+      </svg>
+    </button>
+    <?php endif; ?>
   </form>
   <?php if ($catalogGrid['canEdit'] && !$archive && !empty($catalogGrid['syncLabel'])): ?>
   <button class="btn" type="button" id="client-catalog-sync"><?= $escape($catalogGrid['syncLabel']) ?></button>
@@ -48,6 +57,7 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
   </div>
   <?php endif; ?>
 </section>
+<?php if ($canUploadExcel) require __DIR__.'/vitrine-directory-import.php'; ?>
 <?php if ($employeeScope): ?>
 <dialog class="vitrine-catalog-dialog" id="employee-dialog" data-roles="<?= $escape(wjson(workspace_employee_role_options($employeeScope))) ?>" aria-labelledby="employee-dialog-title">
   <form>

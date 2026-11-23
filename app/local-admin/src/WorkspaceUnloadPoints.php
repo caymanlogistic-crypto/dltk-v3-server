@@ -104,8 +104,19 @@ function workspace_unload_validate_point(array $values,?array $old=null): array 
 }
 
 function workspace_unload_save_point(int $catalogId,array $values,?int $entryId=null,?int $revision=null,?int $clientId=null,?string $primaryContact=null): array {
-    workspace_require('catalog',(string)$catalogId,'edit');
     workspace_begin();
+    try {
+        $result=workspace_unload_write_point($catalogId,$values,$entryId,$revision,$clientId,$primaryContact);
+        workspace_db()->commit();
+        return $result;
+    } catch (Throwable $error) {
+        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
+        throw $error;
+    }
+}
+
+function workspace_unload_write_point(int $catalogId,array $values,?int $entryId=null,?int $revision=null,?int $clientId=null,?string $primaryContact=null): array {
+    workspace_require('catalog',(string)$catalogId,'edit');
     try {
         if ($entryId) wquery('SELECT id FROM catalog_entries WHERE catalog_id=? AND id=? FOR UPDATE',[$catalogId,$entryId]);
         $old=$entryId ? (workspace_unload_points($catalogId,$clientId)[$entryId]??null) : null;
@@ -152,10 +163,8 @@ function workspace_unload_save_point(int $catalogId,array $values,?int $entryId=
         }
         workspace_audit(['category'=>'catalog','label'=>'Точки выгрузки','before'=>$before,
             'after'=>$after,'action'=>$old?'edit':'create']);
-        workspace_db()->commit();
         return ['id'=>$entryId,'revision'=>$revision,'values'=>workspace_unload_point_values($point)];
     } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
         if ($error instanceof PDOException && $error->getCode()==='23000') {
             throw new ApiError('duplicate_catalog','Точка с таким адресом уже есть в справочнике.',409);
         }

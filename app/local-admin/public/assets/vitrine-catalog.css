@@ -8,10 +8,13 @@
   display:flex; align-items:center; flex-wrap:wrap; gap:6px;
 }
 .vitrine .vitrine-catalog-search, .vitrine .vitrine-grid-tools { margin-inline-start:auto; }
-.vitrine .vitrine-export-button { display:inline-grid; place-items:center; flex:none; }
+.vitrine .vitrine-excel-button.btn-icon { display:inline-grid; place-items:center; flex:none; box-sizing:border-box; inline-size:var(--control-h); block-size:var(--control-h); }
+.vitrine .vitrine-directory-import-form { margin:0; }
+.vitrine .vitrine-directory-import-form .modal-body { display:grid; gap:12px; }
+.vitrine .vitrine-directory-import-form p { margin:0; }
 .vitrine .vitrine-catalog-search { max-inline-size:100%; }
 .vitrine .vitrine-directory-visibility { inline-size:150px; max-inline-size:100%; }
-.vitrine .vitrine-catalog-search input[type="search"] { inline-size:245px; max-inline-size:100%; }
+.vitrine .vitrine-catalog-search input[type="search"] { box-sizing:border-box; block-size:var(--control-h); inline-size:245px; max-inline-size:100%; }
 .vitrine.vitrine-catalog-page .vitrine-table {
   --vitrine-default-width-A:360px;
   --vitrine-default-width-B:270px;

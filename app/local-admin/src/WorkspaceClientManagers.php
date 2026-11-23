@@ -28,26 +28,31 @@ function workspace_client_remember_alias(int $catalogId, int $entryId, string $n
 }
 
 function workspace_client_set_manager(int $catalogId, int $entryId, string $manager): void {
-    if ($managerCatalog=workspace_manager_catalog_id()) {
-        $byName=[];
-        foreach (workspace_manager_entries($managerCatalog) as $entry) {
-            if ($entry['active']) $byName[vitrine_catalog_key($entry['name'])][]=(int)$entry['id'];
-        }
-        $ids=[];
-        foreach (preg_split('~[/;,\n]+~u',$manager,-1,PREG_SPLIT_NO_EMPTY) as $name) {
-            $key=vitrine_catalog_key($name);
-            if ($key==='') continue;
-            $matches=$byName[$key]??[];
-            if (count($matches)!==1) throw new ApiError('invalid_manager','Выберите менеджеров из справочника.');
-            $ids[]=$matches[0];
-        }
-        workspace_client_replace_manager_links($entryId,array_values(array_unique($ids)));
+    if (workspace_manager_catalog_id()) {
+        workspace_client_replace_manager_links($entryId,workspace_client_manager_ids($manager));
         return;
     }
     $key = 'catalog_manager_overrides_'.$catalogId;
     $values = workspace_client_catalog_metadata($key);
     $values[$entryId] = $manager;
     wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [$key, wjson((object)$values)]);
+}
+
+function workspace_client_manager_ids(string $manager): array {
+    $managerCatalog=workspace_manager_catalog_id();
+    $byName=[];
+    foreach (workspace_manager_entries($managerCatalog) as $entry) {
+        if ($entry['active']) $byName[vitrine_catalog_key($entry['name'])][]=(int)$entry['id'];
+    }
+    $ids=[];
+    foreach (preg_split('~[/;,\n]+~u',$manager,-1,PREG_SPLIT_NO_EMPTY) as $name) {
+        $key=vitrine_catalog_key($name);
+        if ($key==='') continue;
+        $matches=$byName[$key]??[];
+        if (count($matches)!==1) throw new ApiError('invalid_manager','Выберите менеджеров из справочника.');
+        $ids[]=$matches[0];
+    }
+    return array_values(array_unique($ids));
 }
 
 function workspace_client_manager_links(int $catalogId,?int $entryId=null): array {

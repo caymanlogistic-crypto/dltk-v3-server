@@ -5,6 +5,7 @@ require_once __DIR__.'/Format.php';
 require_once __DIR__.'/VitrineClipboard.php';
 
 require_once __DIR__.'/WorkspaceVitrine.php';
+require_once __DIR__.'/WorkspaceDirectoryExcel.php';
 require_once __DIR__.'/WorkspaceClientCatalogGrid.php';
 
 function vitrine_status_key(string $name): string { return mb_strtolower(trim(preg_replace('/\s+/u',' ',$name))); }

@@ -79,6 +79,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <link rel="stylesheet" href="<?= $escape($viewUrl('/assets/vitrine-catalog.css')) ?>">
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-search.js')) ?>"></script>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-table-export.js')) ?>"></script>
+  <?php if ($canManageDirectory && workspace_directory_excel_supported($directory)): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-import.js')) ?>"></script>
+  <?php endif; ?>
   <?php if ($canManageRows || $rowRelatedLabel): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js')) ?>"></script>
   <?php endif; ?>

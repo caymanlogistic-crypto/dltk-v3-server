@@ -30,6 +30,18 @@ function workspace_catalog_validate_name(string $value): string {
 }
 
 function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
+    workspace_begin();
+    try {
+        $result=workspace_catalog_write($b,$deleteReason);
+        workspace_db()->commit();
+        return $result;
+    } catch (Throwable $error) {
+        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
+        throw $error;
+    }
+}
+
+function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
     $cid=(int)($b['catalogId']??0);$catalog=wquery('SELECT * FROM catalogs WHERE id=?',[$cid])->fetch();if(!$catalog)throw new ApiError('not_found','Справочник не найден.',404);
     workspace_require('catalog',(string)$cid,'edit');$name=workspace_catalog_validate_name((string)($b['name']??''));$color=$b['color']??null;
     if(!workspace_catalog_has_palette($catalog['kind']))$color=null;
@@ -45,7 +57,7 @@ function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
         if (!is_array($b['dropoffProfile'])) throw new ApiError('invalid_dropoff','Проверьте данные точки сдачи.');
         $dropoffProfile=workspace_dropoff_profile($b['dropoffProfile']);
     }
-    workspace_begin();try{
+    try{
         $old=isset($b['id'])?wquery('SELECT * FROM catalog_entries WHERE id=? AND catalog_id=? FOR UPDATE',[(int)$b['id'],$cid])->fetch():null;
         if(isset($b['id'])&&!$old)throw new ApiError('not_found','Запись не найдена.',404);
         if ($old && workspace_row_deleted('catalog_deleted_client_',(int)$old['id'])) {
@@ -79,7 +91,7 @@ function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
         $managerChanged=$hasManager&&$beforeManager!==$manager;
         $beforeDropoff=$dropoffProfile!==null && $old ? workspace_dropoff_profiles($cid)[(int)$old['id']]??[] : [];
         $dropoffChanged=$dropoffProfile!==null && $beforeDropoff!==$dropoffProfile;
-        if($deleteReason===null&&$old&&$old['name']===$name&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged&&!$dropoffChanged){workspace_db()->commit();return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
+        if($deleteReason===null&&$old&&$old['name']===$name&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged&&!$dropoffChanged){return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
         if($old){wquery('UPDATE catalog_entries SET name=?,normalized=?,color=?,active=?,revision=? WHERE id=?',[$name,$norm,$color,(int)$active,$revision,$old['id']]);$id=(int)$old['id'];}
         else{wquery('INSERT INTO catalog_entries(catalog_id,name,normalized,color,active) VALUES(?,?,?,?,?)',[$cid,$name,$norm,$color,(int)$active]);$id=(int)workspace_db()->lastInsertId();}
         if($managerChanged)workspace_client_set_manager($cid,$id,$manager);
@@ -114,8 +126,8 @@ function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
             if ($tableId) $audit['tableId']=(int)$tableId;
         }
         workspace_audit($audit+['before'=>$before,'after'=>$after,'action'=>$action]);
-        workspace_event('catalog.changed',['catalogId'=>$cid,'id'=>$id,'name'=>$name,'beforeName'=>$old['name']??null,'color'=>$color,'active'=>$active,'revision'=>$revision,'bindings'=>wquery('SELECT b.table_id AS tableId,t.slug AS tableSlug,b.field_key AS fieldKey FROM catalog_bindings b JOIN table_definitions t ON t.id=b.table_id WHERE b.catalog_id=?',[$cid])->fetchAll()]);workspace_db()->commit();return ['id'=>$id,'revision'=>$revision];
-    }catch(Throwable $e){if(workspace_db()->inTransaction())workspace_db()->rollBack();if($e instanceof PDOException&&$e->getCode()==='23000')throw new ApiError('duplicate_catalog','Такое название уже есть в справочнике.',409);throw $e;}
+        workspace_event('catalog.changed',['catalogId'=>$cid,'id'=>$id,'name'=>$name,'beforeName'=>$old['name']??null,'color'=>$color,'active'=>$active,'revision'=>$revision,'bindings'=>wquery('SELECT b.table_id AS tableId,t.slug AS tableSlug,b.field_key AS fieldKey FROM catalog_bindings b JOIN table_definitions t ON t.id=b.table_id WHERE b.catalog_id=?',[$cid])->fetchAll()]);return ['id'=>$id,'revision'=>$revision];
+    }catch(Throwable $e){if($e instanceof PDOException&&$e->getCode()==='23000')throw new ApiError('duplicate_catalog','Такое название уже есть в справочнике.',409);throw $e;}
 }
 
 function workspace_catalogs_endpoint(string $method): never {

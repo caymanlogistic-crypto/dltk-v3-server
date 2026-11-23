@@ -75,21 +75,26 @@
     return new Blob([...parts,...directory,end.buffer],{type:mime});
   }
 
+  function download(rows, name) {
+    const link = document.createElement('a');
+    const filename = name.replace(/[\\/:*?"<>|]/g,'-');
+    const url = URL.createObjectURL(workbook(rows));
+    link.href = url;
+    link.download = filename + '.xlsx';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+  window.VitrineExcel = Object.freeze({download});
+
   button.addEventListener('click', async () => {
     const columns = Array.from(table.querySelectorAll('thead th[data-column]:not([hidden])'));
     const heading = ['Строка', ...columns.map(column => column.querySelector('.vitrine-column-label').textContent)];
     button.disabled = true;
     try {
       const rows = await window.VitrineRows.exportRows(columns.map(column => column.dataset.column));
-      const link = document.createElement('a');
-      const filename = button.dataset.vitrineExport.replace(/[\\/:*?"<>|]/g,'-');
-      const url = URL.createObjectURL(workbook([heading,...rows]));
-      link.href = url;
-      link.download = filename + '.xlsx';
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      download([heading,...rows],button.dataset.vitrineExport);
     } catch (error) {
       window.PlanexNotifications.show({tone:'danger',message:error.message || 'Не удалось скачать Excel.'});
     } finally {
