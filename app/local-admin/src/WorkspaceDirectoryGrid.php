@@ -54,7 +54,8 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
             [$table,$catalog] = workspace_flight_status_grid();
             $canEditStatuses = $catalog['id'] && workspace_can('catalog',(string)$catalog['id'],'edit',$table['id']);
             $flightEntries = $archive && $catalog['id']
-                ? wquery('SELECT id,name,color,revision FROM catalog_entries WHERE catalog_id=? AND active=FALSE ORDER BY id',[$catalog['id']])->fetchAll()
+                ? wquery("SELECT id,name,color,revision FROM catalog_entries e WHERE catalog_id=? AND active=FALSE
+                    AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('catalog_deleted_client_',e.id)) ORDER BY id",[$catalog['id']])->fetchAll()
                 : ($archive ? [] : $catalog['statuses']);
             foreach ($flightEntries as $status) {
                 $status['id'] = (int)$status['id'];
@@ -64,7 +65,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         } else {
             $canEditStatuses = workspace_can('system','client-order-statuses','edit');
             foreach (workspace_client_order_statuses() as $code=>$status) {
-                if ($status['active'] === $archive) continue;
+                if (!empty($status['deleted']) || $status['active'] === $archive) continue;
                 $entries[] = ['id'=>$status['id'],'name'=>$status['label'],'color'=>$status['color'],
                     'revision'=>$status['revision'],'baseHash'=>hash('sha256','client-order-status:'.$code)];
             }

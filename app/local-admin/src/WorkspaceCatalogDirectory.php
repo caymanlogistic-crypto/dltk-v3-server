@@ -47,10 +47,9 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $entries = match (true) {
         $unload=>workspace_unload_points($id),
         $managers=>workspace_manager_entries($id),
-        $kind==='clients'=>wquery("SELECT id,name,color,revision,active FROM catalog_entries e WHERE catalog_id=? AND active=?
+        default=>wquery("SELECT id,name,color,revision,active FROM catalog_entries e WHERE catalog_id=? AND active=?
             AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('catalog_deleted_client_',e.id))
             ORDER BY name,id",[$id,(int)!$archive])->fetchAll(),
-        default=>wquery('SELECT id,name,color,revision,active FROM catalog_entries WHERE catalog_id=? AND active=? ORDER BY name,id',[$id,(int)!$archive])->fetchAll(),
     };
     $palette = array_column(workspace_palette(),'name','fill');
     $rows = $rowIds = [];
@@ -99,7 +98,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $details = wquery("SELECT COALESCE(JSON_LENGTH(JSON_EXTRACT(value,'$.unkeyed')),0) AS unkeyedCount
         FROM workspace_meta WHERE `key`=?",['catalog_details_'.$id])->fetch();
     return ['table'=>$model,'columns'=>$model['columns'],'rows'=>$rows,'rowIds'=>$rowIds,'palette'=>workspace_palette(),
-        'catalogGrid'=>['id'=>$id,'archive'=>$archive,'showAll'=>$showAll,'archiveRows'=>in_array($kind,['clients','managers'],true),'search'=>$search,'canEdit'=>$canEdit,
+        'catalogGrid'=>['id'=>$id,'archive'=>$archive,'showAll'=>$showAll,'search'=>$search,'canEdit'=>$canEdit,
             'syncLabel'=>$canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($id) : null,
             'hasDetails'=>(bool)$details,'unkeyedCount'=>(int)($details['unkeyedCount'] ?? 0),
             'unloadPoints'=>$unload,

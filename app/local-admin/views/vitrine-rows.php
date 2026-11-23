@@ -2,6 +2,7 @@
             <tr data-vitrine-row
                 <?= !empty($row['archived']) ? 'data-directory-archived' : '' ?>
                 <?php if (isset($row['actionLabel'])): ?>data-directory-action-label="<?= $escape($row['actionLabel']) ?>"<?php endif; ?>
+                <?php if (isset($row['rowToken'])): ?>data-row-token="<?= $escape($row['rowToken']) ?>"<?php endif; ?>
                 <?php if (!empty($row['relatedUrl'])): ?>data-related-url="<?= $escape(function_exists('app_url_path') ? app_url_path($row['relatedUrl']) : $row['relatedUrl']) ?>"<?php endif; ?>
                 <?= !empty($row['draftSlot']) ? 'data-draft-slot' : '' ?>
                 data-row-number="<?= (int)$row['rowIndex'] ?>"><th scope="row" class="vitrine-row-number cell-mono"><?= $escape($row['rowLabel'] ?? $row['rowIndex']) ?><?php if (!empty($row['rowActions'])): ?><button type="button" class="vitrine-row-menu-trigger" data-directory-row-menu aria-label="Действия со строкой <?= $escape($row['rowLabel']) ?>" aria-haspopup="menu" aria-expanded="false" aria-controls="directory-row-menu" tabindex="-1">⋯</button><?php endif; ?></th>
@@ -15,7 +16,7 @@
               $cellStyle = $orderFill ? '--order-status-fill: '.$orderFill : '';
               $catalogFill = $row['catalogFills'][$letter] ?? '';
               if (preg_match('/^#[0-9a-fA-F]{6}$/D', $catalogFill)) $cellStyle = '--catalog-fill: '.$catalogFill;
-              $catalogReadOnly = isset($catalogGrid) && ($catalogGrid['archive'] || !empty($row['archived']) || !$catalogGrid['canEdit']);
+              $catalogReadOnly = !empty($row['archived']) || (isset($catalogGrid) && ($catalogGrid['archive'] || !$catalogGrid['canEdit']));
               $value = $row['values'][$letter] ?? '';
               $derivedSource = $column['derivedSource'] ?? null;
               $emptyLabel = $column['derivedEmptyLabel'] ?? '';

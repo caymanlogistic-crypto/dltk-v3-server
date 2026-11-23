@@ -26,10 +26,11 @@ function workspace_role_row_action(array $body): array {
         } else {
             $id = $body['row'];
             $role = wquery('SELECT id,name,code FROM roles WHERE id=?',[$id])->fetch();
-            if (!$role) throw new ApiError('not_found','Роль не найдена.',404);
+            if (!$role || workspace_row_deleted('directory_deleted_role_',$id)) throw new ApiError('not_found','Роль не найдена.',404);
             $active = !isset($archived[$id]);
             $restore = $action === 'restore';
-            if ($active === $restore || $body['revision'] !== 0) workspace_directory_conflict();
+            if ((!in_array($action,['delete','check_delete'],true) && $active === $restore) ||
+                $body['revision'] !== 0) workspace_directory_conflict();
             $name = workspace_employee_role_names()[$role['code']] ?? $role['name'];
             if (!$restore) {
                 $members = (int)wquery('SELECT COUNT(*) FROM user_roles WHERE role_id=?',[$id])->fetchColumn();
@@ -56,9 +57,13 @@ function workspace_role_row_action(array $body): array {
                 ['directory_archived_roles',wjson((object)$archived)]);
             $before = ['id'=>$id,'name'=>$name,'active'=>$active];
             $after = ['id'=>$id,'name'=>$name,'active'=>$restore];
+            if ($action==='delete') {
+                workspace_mark_row_deleted('directory_deleted_role_',$id);
+                $after+=['deleted'=>true,'reason'=>$body['reason']];
+            }
         }
         workspace_audit(['category'=>'management','label'=>'Роли','before'=>$before,'after'=>$after,
-            'action'=>match($action) {'add'=>'create','restore'=>'restore',default=>'archive'}]);
+            'action'=>match($action) {'add'=>'create','restore'=>'restore','delete'=>'delete',default=>'archive'}]);
         workspace_event('roles.changed',['id'=>$id]);
         workspace_db()->commit();
         return ['id'=>$id,'revision'=>0];

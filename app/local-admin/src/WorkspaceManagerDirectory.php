@@ -14,7 +14,8 @@ function workspace_manager_roles(): array {
 function workspace_manager_entries(int $catalogId): array {
     return wquery('SELECT e.id,e.name,e.active,e.revision,p.surname,p.patronymic,p.role_id,p.phone,p.email,r.name AS role_name,r.code AS role_code
         FROM catalog_entries e JOIN manager_profiles p ON p.entry_id=e.id JOIN roles r ON r.id=p.role_id
-        WHERE e.catalog_id=? ORDER BY p.surname,e.name,p.patronymic,e.id',[$catalogId])->fetchAll();
+        WHERE e.catalog_id=? AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT(\'catalog_deleted_client_\',e.id))
+        ORDER BY p.surname,e.name,p.patronymic,e.id',[$catalogId])->fetchAll();
 }
 
 function workspace_manager_values(array $row): array {

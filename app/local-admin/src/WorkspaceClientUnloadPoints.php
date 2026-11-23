@@ -50,7 +50,7 @@ function workspace_client_unload_points(int $clientId,?array $body=null): array 
             workspace_unload_save_point($catalogId,['B'=>$body['address']??null],$entryId,$revision,$clientId,$contact);
         } elseif ($body['action']==='delete_client_unload_point' && $point) {
             workspace_catalog_save(['catalogId'=>$catalogId,'id'=>$entryId,'revision'=>$revision,
-                'name'=>$point['name'],'active'=>false]);
+                'name'=>$point['name'],'active'=>false],workspace_row_delete_reason($body['reason']??null));
         } else {
             throw new ApiError('invalid_action','Выберите точку выгрузки.');
         }

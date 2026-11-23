@@ -2,7 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__.'/WorkspaceVitrineCatalogLinks.php';
 
-function vitrine_data(?array $requestedRows=null): array {
+function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $t=workspace_table();$columns=array_values(array_filter($t['columns'],fn($f)=>workspace_can('field',$f['letter'],'view',$t['id'])));
     $compactInputs=[];
     if($t['slug']==='vyvoz'){
@@ -27,9 +27,12 @@ function vitrine_data(?array $requestedRows=null): array {
     }
     unset($column);
     // Own stable IDs, not Google coordinates. Manifest remains capped for the established grid.
-    $rowIds=workspace_manifest($t);
-    $wanted=$requestedRows===null?array_slice($rowIds,0,100):array_values(array_unique(array_filter($requestedRows,fn($x)=>is_int($x)&&$x>1)));
-    $records=$wanted?wquery('SELECT * FROM records WHERE table_id=? AND archived=FALSE AND row_num IN ('.implode(',',array_fill(0,count($wanted),'?')).') ORDER BY row_num DESC',[$t['id'],...$wanted])->fetchAll():[];
+    $rowIds=workspace_manifest($t,$archive);
+    $wanted=$requestedRows===null ? array_slice($rowIds,0,100)
+        : ($archive ? array_values(array_intersect($requestedRows,$rowIds))
+            : array_values(array_unique(array_filter($requestedRows,fn($x)=>is_int($x)&&$x>1))));
+    $records=$wanted?wquery('SELECT * FROM records WHERE table_id=? AND archived=? AND row_num IN ('.implode(',',array_fill(0,count($wanted),'?')).') ORDER BY row_num DESC',[$t['id'],(int)$archive,...$wanted])->fetchAll():[];
+    $canManageRows=workspace_can('table',(string)$t['id'],'edit',$t['id']);
     $catalog=workspace_status_catalog($t);$byId=[];$byName=[];foreach($catalog['statuses'] as &$status){$status['id']=(int)$status['id'];$status['revision']=(int)$status['revision'];$byId[$status['id']]=$status;$byName[vitrine_status_key($status['name'])]=$status;}unset($status);
     [$boundChoices,$boundCatalogs,$entriesByName]=vitrine_catalog_options($t,$links);
     $dependentLinks=array_filter($links,static fn(array $link): bool=>isset($link['target'])&&$link['kind']!=='unload-points');
@@ -86,6 +89,8 @@ function vitrine_data(?array $requestedRows=null): array {
         if($status)$values['A']=$status['name'];$choices['A']=array_column($catalog['statuses'],'name');
         $pickupId=$refs[(int)$r['id']]['E']['id']??($entriesByName['E'][vitrine_catalog_key($values['E']??'')]??0);
         $rows[]=['catalogFills'=>['E'=>$pickupColors[$pickupId]??null],'references'=>$refs[(int)$r['id']]??[],'catalogBindings'=>$boundCatalogs,'recordId'=>(int)$r['id'],'rowIndex'=>(int)$r['row_num'],'values'=>$values,'originalValues'=>$baseline,'baseHash'=>hash('sha256',$r['baseline_json']),'choices'=>$choices,'kinds'=>$kinds,'compactInputs'=>$compactInputs,'singleLine'=>$singleLine,'edits'=>$rowEdits,'statusId'=>$status['id']??null,'statusColor'=>$status['color']??null,'orderStatus'=>$orderStatus];
+        $rows[array_key_last($rows)]+=['rowActions'=>true,'rowToken'=>$canManageRows ? workspace_table_row_token($r) : null,
+            'archived'=>$archive,'relatedUrl'=>'/workspace?section=history&table='.rawurlencode($t['slug']).'&row='.(int)$r['row_num']];
     }
     return ['rowIds'=>$rowIds,'columns'=>$columns,'rows'=>$rows,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette']];
 }

@@ -6,8 +6,7 @@
   const archiveToggle = actions.querySelector('[data-directory-archive-toggle]');
   const related = actions.querySelector('[data-directory-related]');
   const archive = actions.hasAttribute('data-archive');
-  const archiveRows = actions.hasAttribute('data-archive-rows');
-  const actionFor = row => archive || row.hasAttribute('data-directory-archived') ? 'restore' : archiveRows ? 'archive' : 'delete';
+  const archiveActionFor = row => archive || row.hasAttribute('data-directory-archived') ? 'restore' : 'archive';
   const deleteDialog = document.querySelector('[data-directory-delete-dialog]');
   const reasonField = deleteDialog?.querySelector('[data-directory-reason-field]');
   const reason = reasonField?.querySelector('textarea');
@@ -39,10 +38,7 @@
     trigger = button;
     returnFocus = cell;
     if (archiveToggle) {
-      archiveToggle.textContent = actionFor(cell.parentElement)==='restore' ? 'Восстановить строку' : 'Переместить в архив';
-    } else if (remove) {
-      const action = actionFor(cell.parentElement);
-      remove.textContent = {restore:'Восстановить строку',archive:'В архив',delete:'Удалить строку'}[action];
+      archiveToggle.textContent = archiveActionFor(cell.parentElement)==='restore' ? 'Восстановить строку' : 'Переместить в архив';
     }
     if (related) {
       const href = cell.parentElement.dataset.relatedUrl;
@@ -249,9 +245,9 @@
     const cell = trigger?.closest('tr').querySelector('td[data-edit-cell]');
     if (!cell || pending) return;
     const tr = cell.closest('tr');
-    const action = forcedAction || actionFor(tr);
-    const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base};
-    const label = tr.dataset.directoryActionLabel || tr.querySelector('[data-column="A"]').textContent ||
+    const action = forcedAction || archiveActionFor(tr);
+    const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base,rowToken:tr.dataset.rowToken};
+    const label = tr.dataset.rowToken ? 'Строка '+row.row : tr.dataset.directoryActionLabel || tr.querySelector('[data-column="A"]').textContent ||
       tr.querySelector('[data-column="B"]')?.textContent || '';
     closeMenu(true);
     pending = true;
@@ -280,7 +276,7 @@
     }
   }
   archiveToggle?.addEventListener('click',()=>confirmRow());
-  remove?.addEventListener('click',()=>confirmRow(archiveToggle ? 'delete' : null));
+  remove?.addEventListener('click',()=>confirmRow('delete'));
   reason?.addEventListener('input',()=>{confirm.disabled=!reason.value.trim();});
   if (deleteDialog) bindForm(deleteDialog, async fields => {
     const payload=reason && !reason.disabled ? {...target.row,reason:fields.get('reason').trim()} : target.row;

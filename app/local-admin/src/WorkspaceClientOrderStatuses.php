@@ -47,8 +47,10 @@ function workspace_order_status_row_action(array $body): array {
             foreach ($statuses as $key=>$status) if ($status['id'] === $body['row']) $code = $key;
             if ($code === null) throw new ApiError('not_found','Статус не найден.',404);
             $before = $statuses[$code];
+            if (!empty($before['deleted'])) throw new ApiError('not_found','Статус удалён.',404);
             $restore = $action === 'restore';
-            if ($before['active'] === $restore || $before['revision'] !== $body['revision']) workspace_directory_conflict();
+            if ((!in_array($action,['delete','check_delete'],true) && $before['active'] === $restore) ||
+                $before['revision'] !== $body['revision']) workspace_directory_conflict();
             if (!$restore) {
                 $count = (int)wquery("SELECT COUNT(*) FROM records WHERE
                     JSON_UNQUOTE(JSON_EXTRACT(values_json,'$.clientOrderStatus'))=?
@@ -60,11 +62,13 @@ function workspace_order_status_row_action(array $body): array {
                 return ['name'=>$before['label']];
             }
             $after = array_replace($before,['active'=>$restore,'revision'=>$before['revision']+1]);
+            if ($action==='delete') $after['deleted']=true;
         }
         $statuses[$code] = $after;
         workspace_write_order_statuses($statuses);
-        workspace_audit(['category'=>'catalog','label'=>'Статусы клиентов','before'=>$before,'after'=>$after,
-            'action'=>match($action) {'add'=>'create','restore'=>'restore',default=>'archive'}]);
+        workspace_audit(['category'=>'catalog','label'=>'Статусы клиентов','before'=>$before,
+            'after'=>$after+($action==='delete' ? ['reason'=>$body['reason']] : []),
+            'action'=>match($action) {'add'=>'create','restore'=>'restore','delete'=>'delete',default=>'archive'}]);
         workspace_db()->commit();
         return ['id'=>$after['id'],'revision'=>$after['revision']];
     } catch (Throwable $error) {

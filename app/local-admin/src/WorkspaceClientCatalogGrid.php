@@ -35,7 +35,7 @@ function workspace_directory_client_filter(int $catalogId): ?array {
     if (!isset($_GET['client'])) return null;
     $id=filter_var($_GET['client'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
     $client=$id ? wquery('SELECT id,name FROM catalog_entries WHERE catalog_id=? AND id=?',[$catalogId,$id])->fetch() : null;
-    if (!$client || workspace_client_is_deleted((int)$client['id'])) throw new ApiError('not_found','Клиент не найден в справочнике.',404);
+    if (!$client || workspace_row_deleted('catalog_deleted_client_',(int)$client['id'])) throw new ApiError('not_found','Клиент не найден в справочнике.',404);
     return $client;
 }
 
@@ -72,11 +72,10 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
         if ($canViewUnload) $values['C']=workspace_client_unload_count_label($pointCounts[$entryId]??0);
         $kinds = ['A'=>'text','B'=>$table['managerCatalogId']?'client-managers':'text'];
         $version = ['revision'=>(int)$entry['revision']];
-        $relatedUrl=$canViewUnload ? '/vitrine?catalog=entries&id='.$unloadCatalog.'&client='.$entryId : null;
         $rows[] = [
             'rowIndex'=>$entryId, 'rowLabel'=>count($rowIds), 'values'=>$values,
             'originalValues'=>$values, 'baseHash'=>workspace_client_grid_hash($entryId),
-            'kinds'=>$kinds, 'rowActions'=>$canEdit || $relatedUrl, 'relatedUrl'=>$relatedUrl, 'archived'=>!(bool)$entry['active'],
+            'kinds'=>$kinds, 'rowActions'=>$canEdit, 'archived'=>!(bool)$entry['active'],
             'singleLine'=>['A'=>true,'B'=>true], 'edits'=>['A'=>$version, 'B'=>$version],
             'readOnly'=>workspace_manager_catalog_id() && !$table['managerCatalogId']
                 ? ['B'=>'Менеджеры назначаются из справочника.'] : [],
@@ -85,7 +84,7 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
     $syncLabel = $canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($catalogId) : null;
     return [
         'catalogGrid'=>['id'=>$catalogId, 'archive'=>$archive, 'showAll'=>$showAll, 'archiveRows'=>true,'search'=>$search, 'canEdit'=>$canEdit, 'syncLabel'=>$syncLabel,
-            'relatedLabel'=>$canViewUnload ? 'Точки выгрузки' : null,'clientFilter'=>$clientFilter,
+            'clientFilter'=>$clientFilter,
             'clientUnloadCatalog'=>$canViewUnload ? $unloadCatalog : null,
             'clientManagers'=>$table['managerCatalogId'],
             'draftFields'=>workspace_manager_catalog_id() ? ['A'=>['type'=>'text','required'=>true]] : workspace_directory_draft_fields('clients')],

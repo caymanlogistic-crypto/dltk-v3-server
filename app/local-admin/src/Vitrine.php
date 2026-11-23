@@ -31,7 +31,7 @@ function vitrine_rows_endpoint(): never {
     if (!is_string($value) || !preg_match('/^\d+(?:,\d+){0,99}$/D',$value)) throw new ApiError('invalid_rows','Запрашивайте от 1 до 100 строк.');
     $ids = array_map('intval',explode(',',$value));
     $directory = vitrine_directory_requested();
-    $data = $directory ? workspace_directory_grid_data($directory,$ids) : vitrine_data($ids);
+    $data = $directory ? workspace_directory_grid_data($directory,$ids) : vitrine_data($ids,($_GET['archive']??null)==='1');
     $catalogGrid = $data['catalogGrid'] ?? null;
     $columns=$data['columns']; $rows=$data['rows'];
     $escape=static fn(mixed $value): string => htmlspecialchars((string)$value,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
@@ -110,6 +110,7 @@ function vitrine_save_cell(): never {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method','Метод не поддерживается.',405);
     $raw = file_get_contents('php://input', false, null, 0, 100000);
     $body = json_decode((string)$raw, true);
+    if (is_array($body) && isset($body['action'])) json_response(workspace_table_row_action($body));
     if (!is_array($body) || !is_int($body['row'] ?? null) || !is_string($body['column'] ?? null) || !is_string($body['value'] ?? null) || mb_strlen($body['value'])>20000 || !is_int($body['revision'] ?? null) || $body['revision']<0 || !is_string($body['baseHash'] ?? null) || !is_bool($body['reset'] ?? null)) throw new ApiError('invalid_edit','Некорректные данные ячейки или текст длиннее 20 000 символов.');
     $data = vitrine_data(vitrine_edit_row_ids($body));
     if (!in_array($body['column'], array_column($data['columns'],'letter'),true)) throw new ApiError('invalid_column','Столбец не найден.',404);
@@ -188,7 +189,7 @@ function render_vitrine(): void {
     $error = null;
     $data = ['columns'=>[], 'rows'=>[], 'lastSuccess'=>null, 'sheetTitle'=>'ВЫВОЗ'];
     $directory = vitrine_directory_requested();
-    try { $data = $directory ? workspace_directory_grid_data($directory) : vitrine_data(); }
+    try { $data = $directory ? workspace_directory_grid_data($directory) : vitrine_data(archive:($_GET['archive']??null)==='1'); }
     catch (Throwable $e) {
         http_response_code($directory && $e instanceof ApiError ? $e->httpStatus : 503);
         $error = $e instanceof ApiError ? $e->publicMessage : 'Не удалось прочитать данные. Проверьте доступность локальной базы и обновите страницу.';

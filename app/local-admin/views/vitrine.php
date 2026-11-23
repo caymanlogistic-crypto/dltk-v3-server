@@ -6,6 +6,10 @@ $directory = $directory ?? null;
 $clientCatalog = $directory === 'clients';
 $catalogGrid = $data['catalogGrid'] ?? null;
 $canManageDirectory = $catalogGrid['canEdit'] ?? false;
+$canManageRows = $canManageDirectory || (!$directory && !empty($data['table']['id']) &&
+    workspace_can('table',(string)$data['table']['id'],'edit',$data['table']['id']));
+$rowArchive = $catalogGrid['archive'] ?? (($_GET['archive']??null)==='1');
+$rowRelatedLabel = $directory ? ($catalogGrid['relatedLabel']??null) : 'История строки';
 $showDraftRows = $canManageDirectory && !$catalogGrid['archive'];
 $viewUrl = static fn(string $path): string => function_exists('app_url_path') ? app_url_path($path) : $path;
 $currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>['clients'=>'Клиенты','employees'=>'Учётные записи','roles'=>'Роли','client-order-statuses'=>'Статусы клиентов','flight-statuses'=>'Статусы рейса','entries'=>'Справочник'][$directory]] : workspace_table());
@@ -68,11 +72,11 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if (!$directory): ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-presence.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php endif; ?>
-  <?php if ($directory): ?>
   <link rel="stylesheet" href="<?= $escape($viewUrl('/assets/vitrine-catalog.css')) ?>">
+  <?php if ($directory): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-search.js')) ?>"></script>
   <?php endif; ?>
-  <?php if ($canManageDirectory || !empty($catalogGrid['relatedLabel'])): ?>
+  <?php if ($canManageRows || $rowRelatedLabel): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['unloadPoints'])): ?>
@@ -114,7 +118,10 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <a class="nav-sub-item" href="<?= $escape($viewUrl($directoryUrl.($catalogGrid['archive'] ? '' : '&archive=1').(empty($catalogGrid['clientFilter']) ? '' : '&client='.(int)$catalogGrid['clientFilter']['id']))) ?>"><?= $catalogGrid['archive'] ? 'Вернуться к справочнику' : 'Архив справочника' ?></a>
           <?php endif; ?>
           <?php if (!$directory): ?>
+          <a class="nav-sub-item" href="<?= $escape($viewUrl('/vitrine?table='.$managementTable.($rowArchive ? '' : '&archive=1'))) ?>"><?= $rowArchive ? 'Вернуться к таблице' : 'Архив строк' ?></a>
+          <?php if (!$rowArchive && $canManageRows): ?>
           <button class="nav-sub-item" type="button" id="workspace-new-row">Добавить строку</button>
+          <?php endif; ?>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>" id="workspace-row-history">История строки</a>
           <?php endif; ?>
           <div class="nav-sub-item" title="<?= $escape(implode(', ',$currentUser['roles'])) ?>"><?= $escape($currentUser['login']) ?> <span data-workspace-live data-live-status aria-live="polite"></span></div>
@@ -171,8 +178,8 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
     <section class="vitrine-message" role="alert"><h2>Не удалось загрузить таблицу</h2><p><?= $escape($error) ?></p><p>Обновите страницу, чтобы повторить загрузку.</p></section>
     <?php else: ?>
     <?php if ($directory) require __DIR__.'/vitrine-directory-toolbar.php';
-    if ($canManageDirectory || !empty($catalogGrid['relatedLabel'])) require __DIR__.'/vitrine-directory-row-actions.php';
-    if ($canManageDirectory) require __DIR__.'/vitrine-directory-row-dialogs.php'; ?>
+    if ($canManageRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
+    if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php'; ?>
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
       <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">

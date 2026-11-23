@@ -28,10 +28,6 @@ function workspace_catalog_validate_name(string $value): string {
     return $name;
 }
 
-function workspace_client_is_deleted(int $id): bool {
-    return (bool)wquery('SELECT 1 FROM workspace_meta WHERE `key`=?',['catalog_deleted_client_'.$id])->fetchColumn();
-}
-
 function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
     $cid=(int)($b['catalogId']??0);$catalog=wquery('SELECT * FROM catalogs WHERE id=?',[$cid])->fetch();if(!$catalog)throw new ApiError('not_found','Справочник не найден.',404);
     workspace_require('catalog',(string)$cid,'edit');$name=workspace_catalog_validate_name((string)($b['name']??''));$color=$b['color']??null;
@@ -46,7 +42,7 @@ function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
     workspace_begin();try{
         $old=isset($b['id'])?wquery('SELECT * FROM catalog_entries WHERE id=? AND catalog_id=? FOR UPDATE',[(int)$b['id'],$cid])->fetch():null;
         if(isset($b['id'])&&!$old)throw new ApiError('not_found','Запись не найдена.',404);
-        if ($old && $catalog['kind']==='clients' && workspace_client_is_deleted((int)$old['id'])) {
+        if ($old && workspace_row_deleted('catalog_deleted_client_',(int)$old['id'])) {
             throw new ApiError('not_found','Запись удалена.',404);
         }
         if($old&&(int)$old['revision']!==(int)($b['revision']??0))throw new ApiError('revision_conflict','Запись уже изменена. Откройте её заново; ваш ввод сохранён.',409);
@@ -66,7 +62,8 @@ function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
             }
         }
         $archive=($b['archive']??null)===true && in_array($catalog['kind'],['clients','managers'],true);
-        if ($deleteReason!==null || ($old && $old['active'] && !$active && !$archive)) {
+        if ($deleteReason!==null || ($old && $old['active'] && !$active &&
+            (!$archive || !in_array($catalog['kind'],['clients','managers'],true)))) {
             workspace_assert_catalog_entry_unused($catalog['kind'],$cid,$old);
         }
         $logists=$hasLogist?workspace_client_catalog_metadata('catalog_logists_'.$cid):[];
@@ -96,10 +93,10 @@ function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
         $action=!$old?'create':(!$active?'archive':(!$old['active']?'restore':'edit'));
         $audit=['category'=>'catalog','label'=>$catalog['title']];
         if ($deleteReason!==null) {
-            wquery('INSERT INTO workspace_meta (`key`,value) VALUES(?,?)',['catalog_deleted_client_'.$id,'true']);
+            workspace_mark_row_deleted('catalog_deleted_client_',$id);
             $action='delete';
             $after+=['deleted'=>true,'reason'=>$deleteReason];
-            $tableId=wquery("SELECT table_id FROM catalog_bindings WHERE catalog_id=? AND field_key='B' ORDER BY table_id LIMIT 1",[$cid])->fetchColumn();
+            $tableId=wquery('SELECT table_id FROM catalog_bindings WHERE catalog_id=? ORDER BY table_id LIMIT 1',[$cid])->fetchColumn();
             if ($tableId) $audit['tableId']=(int)$tableId;
         }
         workspace_audit($audit+['before'=>$before,'after'=>$after,'action'=>$action]);
@@ -171,9 +168,8 @@ function workspace_catalogs_endpoint(string $method): never {
     $hasDetails=(bool)$detailsSummary;
     $sourceSyncLabel=$hasDetails&&function_exists('workspace_catalog_source_label')&&workspace_can('catalog',(string)$id,'edit')
         ?workspace_catalog_source_label($id):null;
-    $clientVisibility=$catalog['kind']==='clients'
-        ? " AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('catalog_deleted_client_',e.id))" : '';
-    $entries=wquery('SELECT id,name,color,revision,active FROM catalog_entries e WHERE catalog_id=?'.$clientVisibility.
-        ' ORDER BY active DESC,id',[$id])->fetchAll();foreach($entries as &$e){$e['id']=(int)$e['id'];$e['revision']=(int)$e['revision'];$e['active']=(bool)$e['active'];}unset($e);
+    $entries=wquery("SELECT id,name,color,revision,active FROM catalog_entries e WHERE catalog_id=?
+        AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('catalog_deleted_client_',e.id))
+        ORDER BY active DESC,id",[$id])->fetchAll();foreach($entries as &$e){$e['id']=(int)$e['id'];$e['revision']=(int)$e['revision'];$e['active']=(bool)$e['active'];}unset($e);
     json_response(['catalog'=>$catalog,'entries'=>$entries,'hasDetails'=>$hasDetails,'unkeyedCount'=>(int)($detailsSummary['unkeyedCount']??0),'sourceSyncLabel'=>$sourceSyncLabel,'palette'=>array_map(fn($p)=>$p+['key'=>$p['fill'],'hex'=>$p['fill']],workspace_palette())]);
 }

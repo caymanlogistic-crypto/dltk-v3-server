@@ -6,9 +6,8 @@ function workspace_directory_rows_endpoint(string $directory, array $body): neve
     if (!in_array($action,['add','check_delete','delete','archive','restore'],true)) {
         throw new ApiError('invalid_action','Действие со строкой не поддерживается.');
     }
-    if ($action==='archive' && !in_array($directory,['clients','entries'],true)) {
-        throw new ApiError('invalid_action','Архивирование доступно для клиентов и менеджеров.');
-    }
+    if ($action==='delete') $body['reason']=workspace_row_delete_reason($body['reason']??null);
+    else unset($body['reason']);
     if ($action === 'add') {
         $values = $body['values'] ?? null;
         if (!is_array($values) || array_filter($values,static fn($value)=>!is_string($value))) {
@@ -25,6 +24,22 @@ function workspace_directory_rows_endpoint(string $directory, array $body): neve
         default => workspace_catalog_row_action($directory,$body),
     };
     json_response($result);
+}
+
+function workspace_row_delete_reason(mixed $value): string {
+    $reason=is_string($value) ? trim($value) : '';
+    if (!preg_match('/\S/u',$reason) || mb_strlen($reason)>1000) {
+        throw new ApiError('invalid_delete_reason','Укажите причину удаления до 1000 символов.');
+    }
+    return $reason;
+}
+
+function workspace_row_deleted(string $prefix,int $id): bool {
+    return (bool)wquery('SELECT 1 FROM workspace_meta WHERE `key`=?',[$prefix.$id])->fetchColumn();
+}
+
+function workspace_mark_row_deleted(string $prefix,int $id): void {
+    wquery('INSERT INTO workspace_meta (`key`,value) VALUES(?,?)',[$prefix.$id,'true']);
 }
 
 function workspace_directory_color(string $name): string {
@@ -47,9 +62,6 @@ function workspace_catalog_row_action(string $directory, array $body): array {
     }
     if (!$catalogId) throw new ApiError('not_found','Справочник не найден.',404);
     $action = $body['action'];
-    if ($action==='archive' && !in_array($kind,['clients','managers'],true)) {
-        throw new ApiError('invalid_action','Архивирование доступно для клиентов и менеджеров.');
-    }
     if ($action === 'add') {
         $values = $body['values'];
         if ($kind==='unload-points') return workspace_unload_save_point($catalogId,$values);
@@ -65,9 +77,9 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         return workspace_catalog_save($payload);
     }
     $entry = wquery('SELECT * FROM catalog_entries WHERE catalog_id=? AND id=?',[$catalogId,$body['row']])->fetch();
-    $clientDeletion=$kind==='clients' && in_array($action,['delete','check_delete'],true);
-    if (!$entry || ($kind==='clients' && workspace_client_is_deleted((int)$entry['id'])) ||
-        (!$clientDeletion && (bool)$entry['active'] === ($action === 'restore'))) {
+    $deletion=in_array($action,['delete','check_delete'],true);
+    if (!$entry || workspace_row_deleted('catalog_deleted_client_',(int)$entry['id']) ||
+        (!$deletion && (bool)$entry['active'] === ($action === 'restore'))) {
         throw new ApiError('not_found','Запись справочника не найдена.',404);
     }
     if ((int)$entry['revision'] !== $body['revision']) workspace_directory_conflict();
@@ -75,15 +87,8 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         workspace_assert_catalog_entry_unused($kind,$catalogId,$entry);
         return ['name'=>$entry['name']];
     }
-    $reason=null;
-    if ($clientDeletion) {
-        $reason=is_string($body['reason']??null) ? trim($body['reason']) : '';
-        if ($reason==='' || !preg_match('/\S/u',$reason) || mb_strlen($reason)>1000) {
-            throw new ApiError('invalid_delete_reason','Укажите причину удаления до 1000 символов.');
-        }
-    }
     return workspace_catalog_save(['catalogId'=>$catalogId,'id'=>$body['row'],'revision'=>$body['revision'],
-        'name'=>$entry['name'],'color'=>$entry['color'],'active'=>$action === 'restore','archive'=>$action==='archive'],$reason);
+        'name'=>$entry['name'],'color'=>$entry['color'],'active'=>$action === 'restore','archive'=>$action==='archive'],$body['reason']??null);
 }
 
 function workspace_directory_conflict(): never {
@@ -141,13 +146,13 @@ function workspace_employee_row_action(array $body): array {
         workspace_directory_conflict();
     }
     $restore = $body['action'] === 'restore';
-    if ($employee['active'] === $restore) workspace_directory_conflict();
+    if (!in_array($body['action'],['delete','check_delete'],true) && $employee['active'] === $restore) workspace_directory_conflict();
     if ($body['action'] === 'check_delete') {
         workspace_assert_employee_unused($employee);
         return ['name'=>$employee['name']];
     }
     return workspace_employee_save(['id'=>$employee['id'],'revision'=>workspace_employee_revision($employee),
-        'name'=>$employee['name'],'login'=>$employee['login'],'active'=>$restore]);
+        'name'=>$employee['name'],'login'=>$employee['login'],'active'=>$restore],deleteReason:$body['reason']??null);
 }
 
 function workspace_assert_employee_unused(array $employee): void {

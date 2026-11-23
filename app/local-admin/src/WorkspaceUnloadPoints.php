@@ -21,7 +21,8 @@ function workspace_unload_points(int $catalogId,?int $clientId=null): array {
         FROM catalog_entries e JOIN unload_points p ON p.entry_id=e.id
         LEFT JOIN catalog_entries client ON client.id=p.client_id
         LEFT JOIN unload_point_contacts contact ON contact.entry_id=e.id AND contact.is_primary=TRUE
-        WHERE e.catalog_id=?".$filter." ORDER BY COALESCE(client.name,p.client_label),p.address,e.id",$args)->fetchAll();
+        WHERE e.catalog_id=? AND NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('catalog_deleted_client_',e.id))".
+        $filter." ORDER BY COALESCE(client.name,p.client_label),p.address,e.id",$args)->fetchAll();
     $review=workspace_unload_review_ids($catalogId);
     foreach ($rows as &$row) $row['review_required']=isset($review[$row['id']]);
     unset($row);

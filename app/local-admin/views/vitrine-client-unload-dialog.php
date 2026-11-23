@@ -23,6 +23,7 @@
   </form>
   <form data-client-unload-delete hidden>
     <p data-client-unload-confirm></p>
+    <label class="vitrine-editor-field-group"><span class="field-label">Причина удаления</span><textarea class="field-input vitrine-editor-field" name="reason" rows="3" maxlength="1000" required></textarea></label>
     <div class="vitrine-editor-actions">
       <button class="btn btn-primary" type="submit">Удалить</button>
       <button class="btn btn-secondary" type="button" data-client-unload-cancel>Отмена</button>

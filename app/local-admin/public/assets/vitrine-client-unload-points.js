@@ -11,6 +11,8 @@
   const contact=addressForm.elements.contact;
   const deleteForm=dialog.querySelector('[data-client-unload-delete]');
   const confirmLabel=deleteForm.querySelector('[data-client-unload-confirm]');
+  const deleteReason=deleteForm.elements.reason;
+  const confirmDelete=deleteForm.querySelector('[type="submit"]');
   const menu=dialog.querySelector('[data-client-unload-menu]');
   const csrf=document.querySelector('meta[name="csrf-token"]').content;
   let opener, clientId, data, selectedPoint, returnFocus, menuTrigger, menuPoint, menuReturnFocus;
@@ -79,8 +81,10 @@
     selectedPoint=point;
     returnFocus=button;
     confirmLabel.textContent='Удалить точку «'+point.address+'»?';
+    deleteReason.value='';
+    confirmDelete.disabled=true;
     showOnly(deleteForm);
-    deleteForm.querySelector('[data-client-unload-cancel]').focus();
+    deleteReason.focus();
   }
   function focusList(savedId) {
     if (savedId && keyboard.focusRow(savedId,returnFocus?.closest('td')?.cellIndex??1)) return;
@@ -177,9 +181,11 @@
     submit(addressForm,{action:'save_client_unload_point',address:address.value,
       contact:contact.value,entryId:selectedPoint?.id,revision:selectedPoint?.revision},selectedPoint ? 'Точка сохранена.' : 'Точка добавлена.');
   });
+  deleteReason.addEventListener('input',()=>{confirmDelete.disabled=!deleteReason.value.trim();});
   deleteForm.addEventListener('submit',event=>{
     event.preventDefault();
-    submit(deleteForm,{action:'delete_client_unload_point',entryId:selectedPoint.id,revision:selectedPoint.revision},
+    if (!deleteReason.value.trim()) return;
+    submit(deleteForm,{action:'delete_client_unload_point',entryId:selectedPoint.id,revision:selectedPoint.revision,reason:deleteReason.value},
       'Точка удалена.');
   });
   add.addEventListener('click',()=>edit(null,add));
@@ -214,8 +220,8 @@
       if (menuTrigger && !menu.contains(event.target) && !menuTrigger.contains(event.target)) closeMenu();
       return;
     }
-    const hasDraft=!addressForm.hidden && (address.value!==(selectedPoint?.address??'') ||
-      contact.value!==(selectedPoint?.contact??''));
+    const hasDraft=(!addressForm.hidden && (address.value!==(selectedPoint?.address??'') ||
+      contact.value!==(selectedPoint?.contact??''))) || (!deleteForm.hidden && Boolean(deleteReason.value.trim()));
     if (hasDraft || busy) {
       event.preventDefault();
       event.stopImmediatePropagation();
