@@ -13,7 +13,7 @@ $searchPlaceholder = match ($directory) {
 $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или менеджеру' : 'Поиск в справочнике';
 ?>
 <section class="vitrine-catalog-toolbar" aria-label="Управление справочником"<?= isset($catalogGrid['id']) ? ' data-catalog-id="'.(int)$catalogGrid['id'].'"' : '' ?>>
-  <h1>Справочник: <strong><?= $escape($currentTable['title']) ?></strong></h1>
+  <h1>Справочник: <strong><?= $escape($currentTable['title']) ?></strong><?php if ($directory === 'clients'): ?> (<span data-directory-row-count><?= count($data['rowIds'] ?? []) ?></span>)<?php endif; ?></h1>
   <?php if (!empty($catalogGrid['clientFilter'])): ?>
   <span>Клиент: <strong><?= $escape($catalogGrid['clientFilter']['name']) ?></strong></span>
   <a href="<?= $escape($viewUrl($directoryUrl.($archive ? '&archive=1' : (!empty($catalogGrid['showAll']) ? '&archive=all' : '')))) ?>"><?= $directory==='clients' ? 'Сбросить выбор клиента' : 'Все точки выгрузки' ?></a>

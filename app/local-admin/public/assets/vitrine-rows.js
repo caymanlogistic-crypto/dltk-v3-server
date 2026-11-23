@@ -5,12 +5,16 @@
   let ids=[];try{ids=JSON.parse(document.getElementById('vitrine-row-manifest').content);}catch{}
   const drafts=Array.from(document.querySelectorAll('[data-draft-slot]'));
   const empty=document.getElementById('vitrine-empty');
+  const directoryRowCount=document.querySelector('[data-directory-row-count]');
   const search=document.querySelector('.vitrine-catalog-search input[type="search"]');
   let appliedSearch=search?.value.trim() ?? '', requestedSearch=appliedSearch;
   const draftIndex=cell=>drafts.indexOf(cell.closest?.('[data-draft-slot]'));
   const rowIndex=cell=>positions.get(cell.dataset.row) ?? ids.length+draftIndex(cell);
   function setCounts() {
     table.dataset.totalRows=String(ids.length);
+    if (directoryRowCount && directoryRowCount.textContent!==table.dataset.totalRows) {
+      directoryRowCount.textContent=table.dataset.totalRows;
+    }
     table.setAttribute('aria-rowcount',String(ids.length+drafts.length+1));
     drafts.forEach((row,index)=>row.setAttribute('aria-rowindex',String(ids.length+index+2)));
     if (empty && search) {
