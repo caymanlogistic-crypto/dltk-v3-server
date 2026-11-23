@@ -44,6 +44,7 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
     $catalogId = $table['catalogId'];
     $canEdit = workspace_can('catalog', (string)$catalogId, 'edit');
     $archive = ($_GET['archive'] ?? null) === '1';
+    $showAll = ($_GET['archive'] ?? null) === 'all';
     $clientFilter=workspace_directory_client_filter($catalogId);
     $unloadCatalog=$table['unloadCatalogId'];
     $canViewUnload=$unloadCatalog!==null;
@@ -51,8 +52,9 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
     $search = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']), 0, 160) : '';
     $managers = workspace_client_manager_values($catalogId);
     $entries = wquery(
-        'SELECT id,name,revision FROM catalog_entries WHERE catalog_id=? AND active=? ORDER BY name,id',
-        [$catalogId, (int)!$archive],
+        'SELECT id,name,revision,active FROM catalog_entries WHERE catalog_id=?'.
+        ($showAll ? '' : ' AND active=?').' ORDER BY name,id',
+        $showAll ? [$catalogId] : [$catalogId, (int)!$archive],
     )->fetchAll();
     $rows = [];
     $rowIds = [];
@@ -73,7 +75,7 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
         $rows[] = [
             'rowIndex'=>$entryId, 'rowLabel'=>count($rowIds), 'values'=>$values,
             'originalValues'=>$values, 'baseHash'=>workspace_client_grid_hash($entryId),
-            'kinds'=>$kinds, 'rowActions'=>$canEdit || $relatedUrl, 'relatedUrl'=>$relatedUrl,
+            'kinds'=>$kinds, 'rowActions'=>$canEdit || $relatedUrl, 'relatedUrl'=>$relatedUrl, 'archived'=>!(bool)$entry['active'],
             'singleLine'=>['A'=>true,'B'=>true], 'edits'=>['A'=>$version, 'B'=>$version],
             'readOnly'=>workspace_manager_catalog_id() && !$table['managerCatalogId']
                 ? ['B'=>'Менеджеры назначаются из справочника.'] : [],
@@ -81,7 +83,7 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
     }
     $syncLabel = $canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($catalogId) : null;
     return [
-        'catalogGrid'=>['id'=>$catalogId, 'archive'=>$archive, 'archiveRows'=>true,'search'=>$search, 'canEdit'=>$canEdit, 'syncLabel'=>$syncLabel,
+        'catalogGrid'=>['id'=>$catalogId, 'archive'=>$archive, 'showAll'=>$showAll, 'archiveRows'=>true,'search'=>$search, 'canEdit'=>$canEdit, 'syncLabel'=>$syncLabel,
             'relatedLabel'=>$canViewUnload ? 'Точки выгрузки' : null,'clientFilter'=>$clientFilter,
             'clientUnloadCatalog'=>$canViewUnload ? $unloadCatalog : null,
             'clientManagers'=>$table['managerCatalogId'],

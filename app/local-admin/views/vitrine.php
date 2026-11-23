@@ -110,7 +110,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>">Журнал изменений</a>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=reports')) ?>">Сводные</a>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=catalogs&table='.$managementTable)) ?>">Управление справочниками</a>
-          <?php if ($directoryUrl): ?>
+          <?php if ($directoryUrl && $directory !== 'clients'): ?>
           <a class="nav-sub-item" href="<?= $escape($viewUrl($directoryUrl.($catalogGrid['archive'] ? '' : '&archive=1').(empty($catalogGrid['clientFilter']) ? '' : '&client='.(int)$catalogGrid['clientFilter']['id']))) ?>"><?= $catalogGrid['archive'] ? 'Вернуться к справочнику' : 'Архив справочника' ?></a>
           <?php endif; ?>
           <?php if (!$directory): ?>

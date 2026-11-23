@@ -6,6 +6,7 @@
   const related = actions.querySelector('[data-directory-related]');
   const archive = actions.hasAttribute('data-archive');
   const archiveRows = actions.hasAttribute('data-archive-rows');
+  const actionFor = row => archive || row.hasAttribute('data-directory-archived') ? 'restore' : archiveRows ? 'archive' : 'delete';
   const deleteDialog = document.querySelector('[data-directory-delete-dialog]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const endpoint = window.VitrineGridScope.url('/api/vitrine/cell');
@@ -33,6 +34,10 @@
     window.VitrineGrid.select(cell);
     trigger = button;
     returnFocus = cell;
+    if (remove) {
+      const action = actionFor(cell.parentElement);
+      remove.textContent = {restore:'Восстановить строку',archive:'В архив',delete:'Удалить строку'}[action];
+    }
     if (related) {
       const href = cell.parentElement.dataset.relatedUrl;
       related.hidden = !href;
@@ -237,17 +242,19 @@
   remove?.addEventListener('click', async () => {
     const cell = trigger?.closest('tr').querySelector('td[data-edit-cell]');
     if (!cell || pending) return;
+    const tr = cell.closest('tr');
+    const action = actionFor(tr);
     const row = {row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base};
-    const label = cell.closest('tr').querySelector('[data-column="A"]').textContent ||
-      cell.closest('tr').querySelector('[data-column="B"]')?.textContent || '';
+    const label = tr.querySelector('[data-column="A"]').textContent ||
+      tr.querySelector('[data-column="B"]')?.textContent || '';
     closeMenu(true);
     pending = true;
     try {
-      const result = archive || archiveRows ? {name:label} : await request('check_delete',row);
+      const result = action === 'delete' ? await request('check_delete',row) : {name:label};
       if (window.VitrineGrid.editing()) return;
-      target = row;
+      target = {action,row};
       deleteDialog.querySelector('[data-directory-delete-text]').textContent =
-        (archive ? 'Восстановить' : archiveRows ? 'Перенести в архив' : 'Удалить')+' «'+result.name+'»?';
+        {restore:'Восстановить',archive:'Перенести в архив',delete:'Удалить'}[action]+' «'+result.name+'»?';
       deleteDialog.showModal();
     } catch (error) {
       onError(error);
@@ -256,7 +263,7 @@
     }
   });
   if (deleteDialog) bindForm(deleteDialog, async () => {
-    await request(archive ? 'restore' : archiveRows ? 'archive' : 'delete',target);
-    refresh(archive ? 'Запись восстановлена.' : archiveRows ? 'Запись перенесена в архив.' : 'Запись удалена.');
+    await request(target.action,target.row);
+    refresh({restore:'Запись восстановлена.',archive:'Запись перенесена в архив.',delete:'Запись удалена.'}[target.action]);
   });
 })();
