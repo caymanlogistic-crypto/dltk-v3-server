@@ -45,6 +45,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta id="vitrine-dropoff-options" content="<?= $escape(wjson($data['dropoffOptions'])) ?>">
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-dropoff.js')) ?>"></script>
   <?php endif; ?>
+  <?php if (!empty(array_filter($data['fleetOptions']??[]))): ?>
+  <meta id="vitrine-fleet-options" content="<?= $escape(wjson($data['fleetOptions'])) ?>">
+  <?php endif; ?>
   <meta id="vitrine-row-manifest" name="vitrine-row-manifest" content="<?= $escape(json_encode($data['rowIds'] ?? [])) ?>">
   <meta id="workspace-preferences" name="workspace-preferences" content="<?= $escape(wjson($preferences)) ?>">
   <meta name="workspace-event-cursor" content="<?= (int)$eventCursor ?>">

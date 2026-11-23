@@ -14,10 +14,11 @@ function vitrine_catalog_links(array $table): array {
         'I'=>['kind'=>'container-types','invalid'=>'Выберите тип контейнера из справочника.'],
         'K'=>['kind'=>'unload-points','target'=>'L','source'=>'Контакт из справочника точек выгрузки','empty'=>'У точки не указан контакт','invalid'=>'Выберите адрес выгрузки выбранного клиента.'],
         'M'=>['kind'=>'dropoff-points','invalid'=>'Выберите точку сдачи из справочника.'],
+        'O'=>['kind'=>'fleet-vehicles','target'=>'P','source'=>'Из справочника автотранспорта','empty'=>'За машиной не закреплён водитель','invalid'=>'Выберите машину из справочника автотранспорта.'],
         'S'=>['kind'=>'carriers','target'=>'AM','meta'=>'catalog_logists_','source'=>'Из справочника перевозчиков','empty'=>'У перевозчика не указан логист','invalid'=>'Выберите перевозчика из справочника.'],
     ];
     $links=[];
-    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','I','K','M','S') ORDER BY c.id",[$table['id']])->fetchAll();
+    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','I','K','M','O','S') ORDER BY c.id",[$table['id']])->fetchAll();
     foreach($bindings as $binding){
         $field=$binding['field_key'];$definition=$definitions[$field];
         if($definition['kind']===$binding['kind']&&!isset($links[$field])){
@@ -32,17 +33,19 @@ function vitrine_bound_catalog_menu(array $tables): array {
         if($table['slug']!=='vyvoz')continue;
         $links=vitrine_catalog_links($table);
         $items=[];
-        foreach(['E','I','K','M','S'] as $field){
+        foreach(['E','I','K','M','O','S'] as $field){
             $link=$links[$field]??null;
             if(!$link||!workspace_can('catalog',(string)$link['id'],'view',$table['id']))continue;
             $title=wquery('SELECT title FROM catalogs WHERE id=?',[$link['id']])->fetchColumn();
             $items[]=['id'=>$link['id'],'title'=>$title];
         }
-        $additional=wquery("SELECT c.id,c.title FROM catalogs c JOIN catalog_bindings b ON c.id=b.catalog_id
-            WHERE b.table_id=? AND b.field_key='' AND c.kind IN ('transport','drivers-detailed','drivers-legacy',
+        $additional=wquery("SELECT c.id,c.title,c.kind FROM catalogs c JOIN catalog_bindings b ON c.id=b.catalog_id
+            WHERE b.table_id=? AND b.field_key='' AND c.kind IN ('fleet-drivers','transport','drivers-detailed','drivers-legacy',
                 'terminals-detailed','application-contacts','application-checks','etrn-carriers') ORDER BY c.title,c.id",
             [$table['id']])->fetchAll();
+        $fleetEnabled=isset($links['O']);
         foreach($additional as $catalog){
+            if ($fleetEnabled && in_array($catalog['kind'],['transport','drivers-detailed','drivers-legacy'],true)) continue;
             if(workspace_can('catalog',(string)$catalog['id'],'view',$table['id'])) $items[]=$catalog;
         }
         return $items;
@@ -56,9 +59,9 @@ function vitrine_catalog_values(array $link): array {
     return is_array($map)?$map:[];
 }
 
-function vitrine_find_catalog_entry(int $catalog,string $name,bool $includeArchived=false): array|false {
+function vitrine_find_catalog_entry(int $catalog,string $name,bool $includeArchived=false,?string $normalized=null): array|false {
     if($name==='')return false;
-    $normalized=vitrine_catalog_key($name);
+    $normalized??=vitrine_catalog_key($name);
     $entry=wquery('SELECT id,name,color FROM catalog_entries WHERE catalog_id=? AND normalized=? AND (active=TRUE OR ?=TRUE)',[$catalog,$normalized,(int)$includeArchived])->fetch();
     if($entry||!$includeArchived)return $entry;
     $alias=workspace_client_catalog_aliases($catalog)[$normalized]??0;

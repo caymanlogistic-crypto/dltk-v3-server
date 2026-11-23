@@ -36,6 +36,10 @@ function workspace_directory_excel_schema(string $directory): array {
 function workspace_directory_excel_entries(array $schema): array {
     ['id'=>$id,'kind'=>$kind]=$schema;
     if (in_array($kind,['roles','employees'],true)) return workspace_access_excel_entries($kind);
+    if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) {
+        return array_map(static fn(array $entry): array=>$entry+['values'=>workspace_fleet_values($kind,$entry)],
+            workspace_fleet_entries($kind,$id));
+    }
     if ($kind==='order-statuses') {
         $entries=[];
         foreach (workspace_client_order_statuses(true) as $code=>$status) {
@@ -97,6 +101,7 @@ function workspace_directory_excel_header(array $labels,array $sheet): array {
 function workspace_directory_excel_payload(array $schema,array $values,?array $old): array {
     ['id'=>$id,'kind'=>$kind]=$schema;
     $payload=['catalogId'=>$id];
+    if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) return [workspace_fleet_values_validated($kind,$values)['key'],$payload];
     if (in_array($kind,['roles','employees'],true)) return workspace_access_excel_payload($kind,$values,$old);
     if ($kind==='managers') {
         $profile=workspace_manager_validate($values);
@@ -156,7 +161,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             }
             if (!$id) {
                 $lookup=$kind==='employees' ? $values['B'] : $values['A'];
-                if (in_array($kind,['managers','unload-points'],true)) {
+                if (in_array($kind,['managers','unload-points',...WORKSPACE_FLEET_KINDS],true)) {
                     [$lookup]=workspace_directory_excel_payload($schema,$values,null);
                 } else {
                     $lookup=vitrine_status_key($lookup);
@@ -256,13 +261,14 @@ function workspace_directory_excel_apply(array $schema,array $entries,array $ope
                     'color'=>$entry['color'],'active'=>false,'archive'=>true]);
                 continue;
             }
-            if ($entry && !$entry['active'] && in_array($kind,['managers','unload-points'],true)) {
+            if ($entry && !$entry['active'] && in_array($kind,['managers','unload-points',...WORKSPACE_FLEET_KINDS],true)) {
                 $restored=workspace_catalog_write(['catalogId'=>$id,'id'=>$entryId,'revision'=>$revision,
                     'name'=>$entry['name'],'active'=>true]);
                 $revision=$restored['revision'];
             }
             $result=match($kind) {
                 'managers'=>workspace_manager_write($id,$operation['values'],$entryId,$revision),
+                'fleet-drivers','fleet-vehicles'=>workspace_fleet_write($kind,$id,$operation['values'],$entryId,$revision),
                 'unload-points'=>workspace_unload_write_point($id,$operation['values'],$entryId,$revision,
                     primaryContact:$operation['values']['C']),
                 default=>workspace_catalog_write($operation['payload']),

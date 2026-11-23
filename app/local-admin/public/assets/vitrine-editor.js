@@ -336,13 +336,18 @@
     }
 
     let choices = [];
-    try { choices = JSON.parse(cell.dataset.choices || '[]'); } catch {}
+    try {
+      const shared=cell.dataset.sharedChoices;
+      choices=shared ? JSON.parse(document.getElementById('vitrine-fleet-options')?.content || '{}')[shared]
+        : JSON.parse(cell.dataset.choices || '[]');
+    } catch {}
     if (!Array.isArray(choices)) choices = [];
     const useCustom = !mask && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
     const typeEditor = isContainerTypeCell(cell);
     const unloadEditor = isUnloadingCell(cell);
     const unloadClient = catalog==='entries' && cell.dataset.column==='A' && document.getElementById('unload-contacts-dialog');
-    const searchableCatalog = dropoffEditor || pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
+    const fleetEditor = cell.dataset.kind==='fleet-assignment' || (catalog==='entries' && cell.dataset.label==='Водитель') || (!catalog && cell.dataset.column==='O' && Number(cell.dataset.catalogId)>0);
+    const searchableCatalog = fleetEditor || dropoffEditor || pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
     let control = null;
     if (useCustom) {
       const required = cell.hasAttribute('data-required-choice');

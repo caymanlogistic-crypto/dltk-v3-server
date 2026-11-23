@@ -64,7 +64,7 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
             throw new ApiError('not_found','Запись удалена.',404);
         }
         if($old&&(int)$old['revision']!==(int)($b['revision']??0))throw new ApiError('revision_conflict','Запись уже изменена. Откройте её заново; ваш ввод сохранён.',409);
-        $profileCatalog=in_array($catalog['kind'],['unload-points','managers'],true);
+        $profileCatalog=in_array($catalog['kind'],['unload-points','managers',...WORKSPACE_FLEET_KINDS],true);
         if($profileCatalog&&(!$old||!isset($b['active'])||$name!==$old['name'])){
             throw new ApiError('invalid_action','Откройте справочник для редактирования записи.');
         }

@@ -66,6 +66,7 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         $values = $body['values'];
         if ($kind==='unload-points') return workspace_unload_save_point($catalogId,$values);
         if ($kind==='managers') return workspace_manager_save($catalogId,$values);
+        if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) return workspace_fleet_save($kind,$catalogId,$values);
         $name = workspace_catalog_validate_name($values['A'] ?? '');
         $payload = ['catalogId'=>$catalogId,'name'=>$name];
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
@@ -106,6 +107,7 @@ function workspace_assert_catalog_entry_unused(string $kind, int $catalogId, arr
         return;
     }
     $id = (int)$entry['id'];
+    if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) workspace_fleet_assert_unused($kind,$entry);
     if ($kind==='managers') {
         $clients=(int)wquery('SELECT COUNT(*) FROM client_manager_links WHERE manager_id=?',[$id])->fetchColumn();
         if ($clients) throw new ApiError('entry_in_use','Менеджер назначен у клиентов: '.$clients.'. Удалить его нельзя.',409);

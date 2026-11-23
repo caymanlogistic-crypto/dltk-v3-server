@@ -43,7 +43,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
             $dropoffOptions[$normalized]=$dropoffProfiles[$entryId]??[];
         }
     }
-    $dependentLinks=array_filter($links,static fn(array $link): bool=>isset($link['target'])&&$link['kind']!=='unload-points');
+    $dependentLinks=array_filter($links,static fn(array $link): bool=>isset($link['target'])&&!in_array($link['kind'],['unload-points','fleet-vehicles'],true));
     $unloadLink=$links['K']??null;
     $canChooseUnload=$unloadLink && workspace_can('catalog',(string)$unloadLink['id'],'view',$t['id']);
     $unloadPoints=$unloadLink ? workspace_unload_points($unloadLink['id']) : [];
@@ -62,7 +62,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         foreach($columns as $f){$key=$f['letter'];$cell=$raw[(string)column_number($key)]??[];$kinds[$key]=$key==='A'?'status':(mb_strtolower(trim($f['label']))==='время'?'time':vitrine_clipboard_kind($cell,$key));
             if(!$raw){$kinds[$key]=match(mb_strtolower($f['label'])){'дата'=>'date','время'=>'time',default=>$key==='A'?'status':'text'};}
             if (isset($compactInputs[$key])) $kinds[$key]=$compactInputs[$key];
-            if (in_array($key,['I','K','M'],true) && isset($links[$key])) $kinds[$key]='text';
+            if (in_array($key,['I','K','M','O'],true) && isset($links[$key])) $kinds[$key]='text';
             if (isset($slots[$key])) $kinds[$key]='slot';
             if (isset($singleLine[$key])) $kinds[$key]='text';
             $display=display_cell($cell);if($display!==null){$baseline[$key]=$display;if(!isset($edits[(int)$r['id']][$key]))$values[$key]=$display;}
@@ -101,8 +101,9 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         $rows[array_key_last($rows)]+=['rowActions'=>true,'rowToken'=>$canManageRows ? workspace_table_row_token($r) : null,
             'archived'=>$archive,'relatedUrl'=>'/workspace?section=history&table='.rawurlencode($t['slug']).'&row='.(int)$r['row_num']];
         if ($dropoffDetails!==null) $rows[array_key_last($rows)]['dropoffDetails']=$dropoffDetails;
+        if (isset($boundCatalogs['O'])) $rows[array_key_last($rows)]['sharedChoices']['O']='vehicles';
     }
-    return ['rowIds'=>$rowIds,'columns'=>$columns,'rows'=>$rows,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette'],'dropoffOptions'=>$dropoffOptions,'dropoffEnabled'=>(bool)$dropoffCatalog];
+    return ['rowIds'=>$rowIds,'columns'=>$columns,'rows'=>$rows,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette'],'fleetOptions'=>['vehicles'=>$boundChoices['O']??[]],'dropoffOptions'=>$dropoffOptions,'dropoffEnabled'=>(bool)$dropoffCatalog];
 }
 
 function vitrine_store(array $body): array {
@@ -148,7 +149,7 @@ function vitrine_store(array $body): array {
             if($value!==''){
                 $unload=$link['kind']==='unload-points';
                 $entry=$unload ? ($body['reset']?null:vitrine_find_unload_point($t,$r,$values,$binding,$value))
-                    : vitrine_find_catalog_entry($binding,$value);
+                    : vitrine_find_catalog_entry($binding,$value,normalized:$key==='O'?workspace_fleet_plate_key($value):null);
                 if($entry){
                     $reference=(int)$entry['id'];$value=$unload?$entry['address']:$entry['name'];
                 }elseif(!$body['reset']&&($unload||$value!==$before)){
@@ -193,17 +194,23 @@ function vitrine_store(array $body): array {
             }
         }
         $dependentPatch=null;
-        if(isset($link['target'])&&($reference||$value!==$before||($key==='K'&&$body['reset']))){
+        if(isset($link['target'])&&($reference||$value!==$before||(in_array($key,['K','O'],true)&&$body['reset']))){
             if ($key==='K') {
                 $previous=workspace_string($values['L']??'');
                 $next=$resetUnload && $sameClient ? vitrine_unload_original_contact($r) : ($entry?workspace_unload_primary($entry):'');
+            } elseif ($key==='O') {
+                $previous=workspace_string($values['P']??'');
+                $assigned=$reference ? workspace_fleet_assigned_driver($reference) : null;
+                $next=$body['reset'] ? workspace_string(json_decode($r['baseline_json'],true)['P']??'') : ($assigned['name']??'');
+                wquery("DELETE FROM record_references WHERE record_id=? AND field_key='P'",[$r['id']]);
+                if ($assigned && !$body['reset']) wquery('INSERT INTO record_references VALUES(?,?,?)',[$r['id'],'P',$assigned['id']]);
             } else {
                 $entries=vitrine_catalog_values($link);
                 $previousEntry=vitrine_find_catalog_entry($binding,$before,$link['kind']==='clients');
                 $previous=$entries[$previousEntry['id']??0]??'';
                 $next=$entries[$reference]??'';
             }
-            $dependentPatch=vitrine_update_catalog_value($t,$r,$values,$link['target'],$next,$previous,$u,$action,$request,$operation,$key!=='K');
+            $dependentPatch=vitrine_update_catalog_value($t,$r,$values,$link['target'],$next,$previous,$u,$action,$request,$operation,!in_array($key,['K','O'],true));
         }
         $catalogStyle=[];
         if(($link['kind']??null)==='terminals-main'){
@@ -217,8 +224,8 @@ function vitrine_store(array $body): array {
                 wquery('INSERT INTO record_references VALUES(?,?,?) ON DUPLICATE KEY UPDATE entry_id=VALUES(entry_id)',[$r['id'],$key,$reference]);
                 $result+=['referenceId'=>$reference,'catalogId'=>(int)$binding];
             }
-            if($key==='K'&&$body['reset']){
-                wquery("DELETE FROM record_references WHERE record_id=? AND field_key='K'",[$r['id']]);
+            if(in_array($key,['K','O'],true)&&$body['reset']){
+                wquery('DELETE FROM record_references WHERE record_id=? AND field_key=?',[$r['id'],$key]);
                 $result+=['referenceId'=>0,'catalogId'=>(int)$binding];
             }
             if($dependentPatch)wquery('UPDATE records SET values_json=?,updated_at=UTC_TIMESTAMP(6) WHERE id=?',[wjson($values),$r['id']]);
