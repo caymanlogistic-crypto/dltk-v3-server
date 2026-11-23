@@ -83,12 +83,12 @@
     return parts ? parts[1].padStart(2,'0')+parts[2] : '';
   }
 
-  function readWeight(value) {
+  function readInteger(value) {
     const input = value.trim();
     return /^(?:[0-9]+|[0-9]{1,3}(?:[ \u00a0\u202f][0-9]{3})+)$/.test(input) ? digitsOnly(input) : '';
   }
 
-  function formatWeight(digits) {
+  function formatInteger(digits) {
     const first = digits.length % 3;
     const groups = digits.slice(first).match(/[0-9]{3}/g) ?? [];
     if (first) groups.unshift(digits.slice(0,first));
@@ -105,6 +105,8 @@
     date:mask(6,'25.10.26',digits=>digits.match(/.{1,2}/g)?.join('.') ?? '',readDate),
     time:mask(4,'08:00',digits=>digits.length>2
       ? digits.slice(0,-2)+':'+digits.slice(-2) : digits,readTime),
-    weight:mask(15000,'25 990',formatWeight,readWeight)
+    weight:mask(15000,'25 990',formatInteger,readInteger),
+    distance:mask(15000,'1 250',formatInteger,readInteger),
+    money:mask(15000,'25 000',formatInteger,readInteger)
   });
 })();

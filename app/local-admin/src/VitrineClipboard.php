@@ -66,7 +66,7 @@ function vitrine_compact_input(string $value, string $kind): ?string {
     $value = trim($value);
     if ($value === '') return '';
     if ($kind === 'container') return vitrine_container_input($value);
-    if ($kind === 'weight') {
+    if (vitrine_compact_integer_bounds($kind)!==null) {
         if (!preg_match('/^(?:[0-9]+|[0-9]{1,3}(?:[ \x{00A0}\x{202F}][0-9]{3})+)$/uD',$value)) return null;
         $digits = str_replace([' ',"\u{00A0}","\u{202F}"],'',$value);
         if (strlen($digits)>15000) return null;
@@ -100,9 +100,22 @@ function vitrine_slot_input(string $value): ?string {
     return "с $from до $to - $day.$month.$year";
 }
 
+function vitrine_compact_integer_bounds(string $kind): ?array {
+    return match ($kind) {
+        'weight'=>[1000,50000],
+        'distance'=>[1,10000],
+        'money'=>[1000,9999999],
+        default=>null,
+    };
+}
+
+function vitrine_compact_integer_in_range(string $formatted,array $bounds): bool {
+    $digits=str_replace(' ','',$formatted);
+    return $digits==='' || ($digits >= $bounds[0] && $digits <= $bounds[1]);
+}
+
 function vitrine_weight_in_range(string $formatted): bool {
-    $digits = str_replace(' ','',$formatted);
-    return $digits === '' || ($digits >= 1000 && $digits <= 50000);
+    return vitrine_compact_integer_in_range($formatted,vitrine_compact_integer_bounds('weight'));
 }
 
 /** Validate pasted text without coercing it, evaluating formulas, or rewriting the source. */

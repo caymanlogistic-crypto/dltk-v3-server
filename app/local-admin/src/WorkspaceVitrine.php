@@ -11,6 +11,10 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         if(mb_strtolower(trim($labels['G']??''))==='время')$compactInputs['G']='time';
         if(mb_strtolower(trim($labels['H']??''))==='номер ктк')$compactInputs['H']='container';
         if(mb_strtolower(trim($labels['J']??''))==='вес')$compactInputs['J']='weight';
+        if(mb_strtolower(trim($labels['W']??''))==='км')$compactInputs['W']='distance';
+        foreach (['X'=>'доход','Y'=>'расход','Z'=>'маржа'] as $letter=>$label) {
+            if (mb_strtolower(trim($labels[$letter]??''))===$label) $compactInputs[$letter]='money';
+        }
     }
     $slots=array_column(array_filter($columns,static fn(array $column): bool=>mb_strtolower(trim($column['label']))==='слот'),null,'letter');
     $singleLine=array_fill_keys(array_column(array_filter($columns,
@@ -102,8 +106,10 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         foreach (array_keys($slots) as $key) {
             if (isset($values[$key])) $values[$key] = vitrine_slot_input($values[$key]) ?? $values[$key];
         }
-        if (($compactInputs['J']??null)==='weight' && isset($values['J'])) {
-            $values['J']=vitrine_compact_input($values['J'],'weight')??$values['J'];
+        foreach ($compactInputs as $key=>$kind) {
+            if (vitrine_compact_integer_bounds($kind)!==null && isset($values[$key])) {
+                $values[$key]=vitrine_compact_input($values[$key],$kind)??$values[$key];
+            }
         }
         foreach($dependentLinks as $source=>$link){
             $entryId=$entriesByName[$source][vitrine_catalog_key($values[$source]??'')]??null;
