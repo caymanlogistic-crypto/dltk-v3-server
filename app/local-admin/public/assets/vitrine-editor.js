@@ -27,8 +27,10 @@
   function report(text, tone = 'warning') {
     window.PlanexNotifications.show({ tone, message:text });
   }
-  function notifyDerivedCell() {
-    report('Данные берутся из справочника. Эту ячейку нельзя редактировать.', 'info');
+  function notifyDerivedCell(cell) {
+    const margin=!catalog && cell.dataset.column==='Z' && cell.dataset.derivedSource;
+    report(margin ? 'Маржа рассчитывается автоматически. Эту ячейку нельзя редактировать.'
+      : 'Данные берутся из справочника. Эту ячейку нельзя редактировать.', 'info');
   }
   const loadError = document.querySelector('meta[name="vitrine-load-error"]')?.content;
   if (loadError) report(loadError,'danger');
@@ -381,7 +383,7 @@
       return;
     }
     if (cell.dataset.derivedSource) {
-      notifyDerivedCell();
+      notifyDerivedCell(cell);
       return;
     }
     if (pendingCells.has(cell)) { report('Дождитесь сохранения ячейки.'); return; }
@@ -656,7 +658,7 @@
     if (cell.dataset.kind === 'time' || cell.dataset.derivedSource || cell.hasAttribute('data-readonly-cell')) {
       select(cell);
       cell.focus({preventScroll:true});
-      if (cell.dataset.derivedSource) notifyDerivedCell();
+      if (cell.dataset.derivedSource) notifyDerivedCell(cell);
     } else open(cell);
   });
   let cells = Array.from(document.querySelectorAll('td[data-edit-cell]'));
@@ -723,7 +725,7 @@
   }
   function askClear(cell) {
     if (cell.dataset.derivedSource || cell.dataset.kind==='client-unload-points') {
-      notifyDerivedCell();
+      notifyDerivedCell(cell);
       return;
     }
     if (cell.hasAttribute('data-readonly-cell')) {
@@ -861,7 +863,7 @@
       report('Откройте поле пароля для вставки.','info');
       return;
     }
-    if (target.dataset.derivedSource) { notifyDerivedCell(); return; }
+    if (target.dataset.derivedSource) { notifyDerivedCell(target); return; }
     if (target.hasAttribute('data-readonly-cell')) { report(target.dataset.readonlyCell, 'info'); return; }
     if (pendingCells.has(target) || active?.saving) { report('Дождитесь сохранения ячейки.'); return; }
     const value = event.clipboardData.getData('text/plain');

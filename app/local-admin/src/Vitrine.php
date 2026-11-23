@@ -142,6 +142,7 @@ function vitrine_save_cell(): never {
         array_key_exists('dropoffDetails',$body) || array_key_exists('orderStatus',$body))) {
         throw new ApiError('invalid_edit','Проверьте запрос на очистку ячейки.');
     }
+    vitrine_require_manual_field($data['table'],$body['column']);
     $compactKind = $current['compactInputs'][$body['column']] ?? null;
     $compactInteger=$compactKind!==null && vitrine_compact_integer_bounds($compactKind)!==null;
     if (!$clear && !$body['reset'] && $compactKind !== null) {

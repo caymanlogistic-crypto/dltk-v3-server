@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/Workspace.php';
+require_once __DIR__.'/WorkspaceTripMargin.php';
 
 function workspace_string(mixed $v): string {if(is_bool($v))return $v?'TRUE':'FALSE';return (string)(visible_value($v)??'');}
 
@@ -105,6 +106,9 @@ function vitrine_derived_catalog_columns(array $links): array {
 }
 
 function vitrine_require_manual_field(array $table,string $column): void {
+    if ($column==='Z' && workspace_trip_margin_enabled($table)) {
+        throw new ApiError('derived_field','Маржа рассчитывается автоматически. Эту ячейку нельзя редактировать.',403);
+    }
     if (isset(vitrine_derived_catalog_columns(vitrine_catalog_links($table))[$column])) {
         throw new ApiError('derived_field','Данные берутся из справочника. Эту ячейку нельзя редактировать.',403);
     }

@@ -22,6 +22,10 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $links=vitrine_catalog_links($t);
     $orderStatusEnabled=isset($links['B']) && workspace_client_order_status_can_view($t);
     $derivedByColumn=vitrine_derived_catalog_columns($links);
+    $showMargin=isset($compactInputs['Z']) && workspace_trip_margin_enabled($t);
+    if ($showMargin) {
+        $derivedByColumn['Z']=['source'=>'Доход минус расход','empty'=>'Укажите доход и расход'];
+    }
     $documentsColumn=$links['O']['documentsTarget']??null;
     $canViewDocuments=$documentsColumn!==null && workspace_fleet_trip_documents_can_view($t['id']);
     foreach($columns as &$column){
@@ -78,6 +82,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $refs=[];if($records){$ids=array_column($records,'id');foreach(wquery('SELECT rr.record_id,rr.field_key,e.id,e.catalog_id,e.name FROM record_references rr JOIN catalog_entries e ON e.id=rr.entry_id WHERE rr.record_id IN ('.implode(',',array_fill(0,count($ids),'?')).')',$ids)->fetchAll() as $ref)$refs[(int)$ref['record_id']][$ref['field_key']]=['id'=>(int)$ref['id'],'catalogId'=>(int)$ref['catalog_id'],'name'=>$ref['name']];}
     $rows=[];foreach($records as $r){
         $values=json_decode($r['values_json'],true);$baseline=json_decode($r['baseline_json'],true);$raw=$r['metadata_zlib']?blob_json($r['metadata_zlib']):[];$kinds=[];$choices=[];
+        $margin=$showMargin ? workspace_trip_margin($values) : null;
         $dropoffDetails=$dropoffCatalog ? ($values['dropoffDetails']??[]) : null;
         $orderStatus=$orderStatusEnabled ? (string)($values['clientOrderStatus']??'') : null;
         unset($values['clientOrderStatus'],$values['dropoffDetails']);
@@ -111,6 +116,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
                 $values[$key]=vitrine_compact_input($values[$key],$kind)??$values[$key];
             }
         }
+        if ($margin!==null) $values['Z']=$margin;
         foreach($dependentLinks as $source=>$link){
             $entryId=$entriesByName[$source][vitrine_catalog_key($values[$source]??'')]??null;
             $values[$link['target']]=$dependentValues[$source][$entryId]??'';
@@ -289,7 +295,13 @@ function vitrine_store(array $body): array {
             if($dependentPatch || $phonePatch || $unloadChanged)wquery('UPDATE records SET values_json=?,updated_at=UTC_TIMESTAMP(6) WHERE id=?',[wjson($values),$r['id']]);
             wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);workspace_db()->commit();return $result;
         }
+        $updateMargin=$before!==$value && in_array($key,['X','Y'],true) && workspace_trip_margin_enabled($t);
+        $previousMargin=$updateMargin ? workspace_trip_margin($values) : '';
         $revision++;if($before!==$value)$values[$key]=$value;$statusId=$key==='A'?($body['statusId']??null):null;
+        if ($updateMargin && ($margin=workspace_trip_margin($values))!==$previousMargin) {
+            $marginPatch=vitrine_update_catalog_value($t,$r,$values,'Z',$margin,$previousMargin,$u,$action,$request,$operation,false);
+            if ($marginPatch && workspace_can('field','Z','view',$t['id'])) $derived['dependentCells'][]=$marginPatch;
+        }
         if($statusId){$valid=wquery("SELECT e.id FROM catalog_entries e JOIN catalog_bindings b ON b.catalog_id=e.catalog_id WHERE e.id=? AND e.active=TRUE AND b.table_id=? AND b.field_key='A'",[$statusId,$t['id']])->fetchColumn();if(!$valid)throw new ApiError('invalid_status','Статус не принадлежит справочнику этой таблицы.');}
         wquery('UPDATE records SET values_json=?,updated_at=UTC_TIMESTAMP(6) WHERE id=?',[wjson($values),$r['id']]);
         wquery('INSERT INTO cell_versions(record_id,field_key,value,revision,active,status_id) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE value=VALUES(value),revision=VALUES(revision),active=VALUES(active),status_id=VALUES(status_id)',[$r['id'],$key,$value,$revision,(int)$active,$statusId]);
