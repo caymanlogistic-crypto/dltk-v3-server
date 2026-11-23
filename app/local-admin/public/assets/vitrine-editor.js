@@ -410,8 +410,9 @@
     const dropoffEditor = isDropoffCell(cell);
     const fleetEditor = !catalog && cell.dataset.column==='O' && Number(cell.dataset.catalogId)>0;
     const catalogEditor = fleetEditor || dropoffEditor || pickupEditor || (['B', 'I', 'K', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
+    const incomeEditor = !catalog && cell.dataset.column==='X' && document.body.dataset.workspaceTable==='vyvoz';
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
-    if (mask || isSingleLine || isStatus || catalogEditor || catalog) {
+    if (mask || isSingleLine || isStatus || catalogEditor || incomeEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
     } else {
       const title = element('h2', 'vitrine-editor-title', dialogName);
@@ -546,7 +547,7 @@
         if (field.value && event.inputType?.startsWith('insert')) requestField.checked = false;
       });
     } else panel.append(control?.element || field);
-    if (!dropoff && !mask && !isSingleLine && !isStatus && !catalog && !orderField) {
+    if (!dropoff && !mask && !isSingleLine && !isStatus && !incomeEditor && !catalog && !orderField) {
       panel.append(element('p', 'vitrine-editor-help', useCustom ? 'Стрелки — выбор · Enter — подтвердить · Esc — отменить' : 'Enter — сохранить · Esc — отменить'));
     }
     const error = element('p', 'vitrine-editor-error');
