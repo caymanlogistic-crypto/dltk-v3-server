@@ -427,6 +427,7 @@
     const pickupEditor = cell.dataset.column === 'E' && Number(cell.dataset.catalogId) > 0 &&
       document.body.dataset.workspaceTable === 'vyvoz';
     const dropoffEditor = isDropoffCell(cell);
+    const unloadEditor = isUnloadingCell(cell);
     const fleetEditor = !catalog && cell.dataset.column==='O' && Number(cell.dataset.catalogId)>0;
     const documentStatusEditor = !catalog && ['T','U'].includes(cell.dataset.column) &&
       Number(cell.dataset.catalogId)>0 && document.body.dataset.workspaceTable==='vyvoz';
@@ -434,13 +435,17 @@
     const incomeEditor = !catalog && cell.dataset.column==='X' && document.body.dataset.workspaceTable==='vyvoz';
     const commentEditor = !catalog && ['V','AK'].includes(cell.dataset.column) && document.body.dataset.workspaceTable==='vyvoz';
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
-    if (mask || isSingleLine || isStatus || catalogEditor || incomeEditor || commentEditor || catalog) {
+    const compactEditor = mask || isSingleLine || isStatus || catalogEditor || incomeEditor || commentEditor || catalog;
+    if (compactEditor && !unloadEditor) {
       panel.setAttribute('aria-label', dialogName);
     } else {
-      const title = element('h2', 'vitrine-editor-title', dialogName);
+      const clientName = unloadEditor ? cell.parentElement.querySelector('td[data-column="B"]')?.textContent.trim() : '';
+      const unloadTitle = clientName ? 'Выгрузки ' + clientName : 'Выгрузки';
+      const title = element('h2', 'vitrine-editor-title', unloadEditor ? unloadTitle : dialogName);
       title.id = 'vitrine-editor-title';
       panel.setAttribute('aria-labelledby', title.id);
-      panel.append(title, element('p', 'vitrine-editor-note', 'Изменения сохраняются в БД'));
+      panel.append(title);
+      if (!compactEditor) panel.append(element('p', 'vitrine-editor-note', 'Изменения сохраняются в БД'));
     }
 
     let choices = [];
@@ -452,7 +457,6 @@
     if (!Array.isArray(choices)) choices = [];
     const useCustom = !mask && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
     const typeEditor = isContainerTypeCell(cell);
-    const unloadEditor = isUnloadingCell(cell);
     const unloadClient = catalog==='entries' && cell.dataset.column==='A' && document.getElementById('unload-contacts-dialog');
     const fleetSearchKey = value => value.toUpperCase().replace(/[АВЕКМНОРСТУХ]/g,
       letter => 'ABEKMHOPCTYX'['АВЕКМНОРСТУХ'.indexOf(letter)]).replace(/[\s-]+/g,'');
