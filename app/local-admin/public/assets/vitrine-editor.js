@@ -15,8 +15,11 @@
       if (Number(catalogId)!==Number(patch.catalogId)) continue;
       if (patch.bindings?.length && !patch.bindings.some(binding=>binding.tableSlug==='vyvoz' && binding.fieldKey===column)) continue;
       const aliases = new Set(patch.aliases || [patch.beforeName,patch.name]);
-      const options = (sharedOptions[column] || []).filter(option=>!aliases.has(option));
-      if (patch.active!==false && patch.active!==0) options.push(patch.name);
+      const options = (sharedOptions[column] || []).filter(option=>!aliases.has(option.value ?? option));
+      if (patch.active!==false && patch.active!==0) {
+        options.push(['E','T','U'].includes(column)
+          ? {value:patch.name,label:patch.name,color:patch.color} : patch.name);
+      }
       sharedOptions[column] = options;
     }
   }

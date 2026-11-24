@@ -150,6 +150,14 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         ? wquery('SELECT id,color FROM catalog_entries WHERE catalog_id IN ('.implode(',',array_fill(0,count($colorCatalogIds),'?')).')
             AND color IS NOT NULL',$colorCatalogIds)->fetchAll(PDO::FETCH_KEY_PAIR)
         : [];
+    $sharedOptions=['vehicles'=>$boundChoices['O']??[]]
+        +array_intersect_key($boundChoices,$sharedCatalogs+array_fill_keys($partyColumns,true));
+    foreach (array_intersect_key($sharedOptions,$colorLinks) as $column=>$labels) {
+        $sharedOptions[$column]=array_map(static function(string $label) use ($entriesByName,$catalogColors,$column): array {
+            $entryId=$entriesByName[$column][vitrine_catalog_key($label)]??0;
+            return ['value'=>$label,'label'=>$label,'color'=>$catalogColors[$entryId]??null];
+        },$labels);
+    }
     $edits=[];if($records){$ids=array_column($records,'id');foreach(wquery('SELECT * FROM cell_versions WHERE record_id IN ('.implode(',',array_fill(0,count($ids),'?')).')',$ids)->fetchAll() as $e)$edits[(int)$e['record_id']][$e['field_key']]=$e;}
     $refs=[];if($records){$ids=array_column($records,'id');foreach(wquery('SELECT rr.record_id,rr.field_key,e.id,e.catalog_id,e.name FROM record_references rr JOIN catalog_entries e ON e.id=rr.entry_id WHERE rr.record_id IN ('.implode(',',array_fill(0,count($ids),'?')).')',$ids)->fetchAll() as $ref)$refs[(int)$ref['record_id']][$ref['field_key']]=['id'=>(int)$ref['id'],'catalogId'=>(int)$ref['catalog_id'],'name'=>$ref['name']];}
     $rows=[];foreach($records as $r){
@@ -242,7 +250,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         if ($dropoffDetails!==null) $rows[array_key_last($rows)]['dropoffDetails']=$dropoffDetails;
         $rows[array_key_last($rows)]['sharedChoices']=$sharedChoices;
     }
-    return ['rowIds'=>$rowIds,'columns'=>$columns,'rows'=>$rows,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette'],'sharedOptions'=>['vehicles'=>$boundChoices['O']??[]]+array_intersect_key($boundChoices,$sharedCatalogs+array_fill_keys($partyColumns,true)),'sharedOptionCatalogs'=>$sharedCatalogs,'dropoffOptions'=>$dropoffOptions,'dropoffEnabled'=>(bool)$dropoffCatalog];
+    return ['rowIds'=>$rowIds,'columns'=>$columns,'rows'=>$rows,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette'],'sharedOptions'=>$sharedOptions,'sharedOptionCatalogs'=>$sharedCatalogs,'dropoffOptions'=>$dropoffOptions,'dropoffEnabled'=>(bool)$dropoffCatalog];
 }
 
 function vitrine_store(array $body): array {
