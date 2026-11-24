@@ -433,9 +433,10 @@
       Number(cell.dataset.catalogId)>0 && document.body.dataset.workspaceTable==='vyvoz';
     const catalogEditor = documentStatusEditor || fleetEditor || dropoffEditor || pickupEditor || (['B', 'I', 'K', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
     const incomeEditor = !catalog && cell.dataset.column==='X' && document.body.dataset.workspaceTable==='vyvoz';
+    const slotApplicationEditor = !catalog && cell.dataset.column==='N' && document.body.dataset.workspaceTable==='vyvoz';
     const commentEditor = !catalog && ['V','AK'].includes(cell.dataset.column) && document.body.dataset.workspaceTable==='vyvoz';
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
-    const compactEditor = mask || isSingleLine || isStatus || catalogEditor || incomeEditor || commentEditor || catalog;
+    const compactEditor = mask || isSingleLine || isStatus || catalogEditor || incomeEditor || commentEditor || slotApplicationEditor || catalog;
     if (compactEditor && !unloadEditor) {
       panel.setAttribute('aria-label', dialogName);
     } else {

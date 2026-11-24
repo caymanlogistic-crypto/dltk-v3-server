@@ -11,14 +11,14 @@
   function attach(panel,control,cell) {
     const initial=details(cell);
     const group=document.createElement('div');
-    group.className='vitrine-editor-field-group';
+    group.className='vitrine-editor-field-group ui-detail-card';
     const label=document.createElement('label');
     label.className='field-label';
     label.htmlFor=control.field.id;
     label.textContent='Точка сдачи';
     control.field.setAttribute('aria-label','Точка сдачи');
     const point=document.createElement('div');
-    point.className='vitrine-editor-note vitrine-dropoff-profile';
+    point.className='vitrine-editor-note vitrine-dropoff-profile registry-ui-secondary';
     const showPoint=()=>{
       const key=(control.resolveValue()||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru');
       const profile=catalog[key];
@@ -40,7 +40,7 @@
       heading.className='field-label';
       heading.textContent=title;
       const field=document.createElement('input');
-      field.className='field-input vitrine-editor-field';
+      field.className='field-input';
       field.type='text';
       field.maxLength=name==='validUntil' ? 8 : 160;
       field.value=initial[name]??'';
