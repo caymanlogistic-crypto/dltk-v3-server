@@ -25,6 +25,10 @@
 .vitrine .display-line-sample > span { padding:6px 9px; font:500 12px var(--font); background:var(--table-row); border-right:1px solid var(--preview-line,var(--line-soft)); border-bottom:1px solid var(--preview-line,var(--line-soft)); }
 .vitrine .display-line-sample > .display-line-heading { background:var(--surface-muted); }
 .vitrine .vitrine-table:is([data-line-preset="dark"],[data-line-preset="black"]) :is(td,th) { border-color:var(--vitrine-grid-line); }
+.vitrine .vitrine-table[data-frozen-count="1"] [data-frozen-column="1"],
+.vitrine .vitrine-table[data-frozen-count="2"] [data-frozen-column="2"] {
+  border-inline-end:3px solid var(--vitrine-grid-line,var(--tone-b0a89c));
+}
 .vitrine .vitrine-display-dialog .modal-foot { gap:8px; flex-wrap:wrap; }
 .vitrine .display-actions { margin-left:auto; }
 .vitrine td.has-status-color { color:var(--status-display-text,var(--text-main)) !important; }
