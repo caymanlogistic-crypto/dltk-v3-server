@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 function workspace_merge_preferences(array $current, array $changes): array {
-    $keys = ['order', 'hidden', 'widths', 'preset', 'lines', 'layoutWidth'];
+    $keys = ['order', 'hidden', 'pinned', 'widths', 'preset', 'lines', 'layoutWidth'];
     if (array_diff(array_keys($changes), $keys)) throw new ApiError('invalid_preferences', 'Неизвестный параметр отображения.');
     foreach ($changes as $key => $value) {
         if ($key !== 'widths') {
@@ -79,7 +79,7 @@ function workspace_read_color_preset(int $userId): ?array {
 }
 
 function workspace_prune_preference_columns(array $settings,array $columns): array {
-    foreach (['order','hidden'] as $key) {
+    foreach (['order','hidden','pinned'] as $key) {
         if (isset($settings[$key]) && is_array($settings[$key])) {
             $settings[$key]=array_values(array_filter($settings[$key],
                 static fn($column): bool=>in_array($column,$columns,true)));
@@ -93,12 +93,15 @@ function workspace_prune_preference_columns(array $settings,array $columns): arr
 
 function workspace_validate_preferences(mixed $settings, array $columns): void {
     if (!is_array($settings) || strlen(wjson($settings)) > 40000) throw new ApiError('invalid_preferences', 'Некорректные настройки отображения.');
-    foreach (['order', 'hidden'] as $key) {
-        if (!isset($settings[$key])) continue;
+    foreach (['order', 'hidden', 'pinned'] as $key) {
+        if (!isset($settings[$key]) && ($key!=='pinned' || !array_key_exists($key,$settings))) continue;
         if (!is_array($settings[$key])) throw new ApiError('invalid_preferences', 'Некорректный список столбцов.');
         foreach ($settings[$key] as $column) {
             if (!in_array($column, $columns, true)) throw new ApiError('invalid_preferences', 'В настройках есть неизвестные столбцы.');
         }
+    }
+    if (isset($settings['pinned']) && (!array_is_list($settings['pinned']) || count(array_unique($settings['pinned']))!==count($settings['pinned']))) {
+        throw new ApiError('invalid_preferences', 'Закреплённые столбцы должны быть указаны в порядке закрепления без повторов.');
     }
     $choices = ['preset'=>['base','saturated','acid','night'], 'lines'=>['base','dark','black'], 'layoutWidth'=>['full','compact']];
     foreach ($choices as $key => $values) {
@@ -128,6 +131,7 @@ function workspace_preferences(array $grid, ?array $body = null): array {
     $patch = $body['changes'] ?? null;
     if ($patch !== null && !is_array($patch)) throw new ApiError('invalid_preferences', 'Некорректные изменения настроек.');
     $columns = array_column($grid['columns'], 'letter');
+    $canPin = $grid['slug']==='vyvoz' && !isset($grid['catalogId']) && !isset($grid['directoryKey']);
     $orderVersion=$grid['columnOrderVersion']??null;
     $staleOrder=$orderVersion!==null && ($body['columnOrderVersion']??null)!==$orderVersion;
     if ($staleOrder && $patch!==null) unset($patch['order']);
@@ -144,6 +148,12 @@ function workspace_preferences(array $grid, ?array $body = null): array {
         if ($editsDefaults) $prior['widths']=array_intersect_key($widthDefaults['widths'],array_fill_keys($columns,true));
         $settings = $patch === null ? ($body['settings'] ?? null) : workspace_merge_preferences($prior,$patch);
         if ($staleOrder && is_array($settings)) $settings['order']=$prior['order']??$columns;
+        if (is_array($settings)) {
+            if (array_key_exists('pinned',$settings) && !$canPin) {
+                throw new ApiError('invalid_preferences', 'Закрепление доступно в таблице «Автовывоз».');
+            }
+            if ($canPin && isset($prior['pinned']) && !array_key_exists('pinned',$settings)) $settings['pinned']=$prior['pinned'];
+        }
         workspace_validate_preferences($settings, $columns);
         $submitted=$patch ?? $settings;
         $columnKeys=array_fill_keys($columns,true);

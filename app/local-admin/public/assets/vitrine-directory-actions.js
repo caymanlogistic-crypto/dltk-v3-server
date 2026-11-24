@@ -183,8 +183,6 @@
       const display = field.type === 'password' && value ? 'Введён' : value;
       cell.textContent = display;
       cell.toggleAttribute('data-draft-allow-empty',Boolean(field.allowEmpty));
-      cell.title = display || (field.allowEmpty ? 'Заполните поле «'+cell.dataset.label+'» или подтвердите пустое значение.'
-        : 'Щелчок — '+(field.type === 'choice' ? 'выбрать' : 'заполнить')+' поле «'+cell.dataset.label+'».');
       const fill = choice(column,value)?.color;
       if (fill) cell.style.setProperty('--order-status-fill',fill);
       else cell.style.removeProperty('--order-status-fill');

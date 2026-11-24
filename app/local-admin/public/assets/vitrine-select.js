@@ -15,7 +15,8 @@
   observer.observe(document.documentElement, {childList:true,subtree:true});
 
   window.VitrineSelect = Object.freeze({
-    create(sourceOptions, initialValue = '', {searchable = false, searchKey = value => value, showLabels = false} = {}) {
+    create(sourceOptions, initialValue = '', {searchable = false, searchKey = value => value, showLabels = false, showColorSwatches = false} = {}) {
+      const withSwatches = showColorSwatches || sourceOptions.some(option => Object.hasOwn(option, 'color'));
       const options = sourceOptions.map(option => ({value:String(option.value ?? ''),label:String(option.label ?? option.value ?? ''),color:option.color,search:String(option.search ?? '')}));
       const id = 'vitrine-select-' + (++sequence);
       const element = document.createElement('div');
@@ -54,8 +55,12 @@
       const nodes = options.map((option,index) => {
         const node = document.createElement('div'); node.className = 'cs-option'; node.id = id + '-' + index;
         node.setAttribute('role','option'); node.setAttribute('aria-selected',String(displayValue(option) === field.value));
-        if (/^#[0-9a-f]{6}$/i.test(option.color || '')) {
-          const chip = document.createElement('span'); chip.className = 'vitrine-select-chip'; window.VitrineDisplay.paint(chip,option.color); chip.setAttribute('aria-hidden','true'); node.append(chip);
+        if (withSwatches) {
+          const chip = document.createElement('span');
+          chip.className = 'vitrine-select-chip';
+          if (/^#[0-9a-f]{6}$/i.test(option.color || '')) window.VitrineDisplay.paint(chip,option.color);
+          chip.setAttribute('aria-hidden','true');
+          node.append(chip);
         }
         const label = document.createElement('span'); label.className = 'cs-value'; label.textContent = option.label; node.append(label);
         node.addEventListener('mousedown',event => event.preventDefault());

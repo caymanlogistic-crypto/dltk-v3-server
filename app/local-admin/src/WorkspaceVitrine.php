@@ -2,8 +2,59 @@
 declare(strict_types=1);
 require_once __DIR__.'/WorkspaceVitrineCatalogLinks.php';
 
+const WORKSPACE_AVTOVYVOZ_PAGE_SIZE = 32;
+
+function vitrine_requested_records(array $table, array $wanted, bool $archive, bool $checkArchiveWindow): array {
+    if (!$wanted) return [];
+    $args=[$table['id'],(int)$archive,...$wanted];
+    $slots=implode(',',array_fill(0,count($wanted),'?'));
+    $where="r.table_id=? AND r.archived=? AND r.row_num IN ($slots)";
+    if ($checkArchiveWindow) {
+        $visible=workspace_archive_row_visible();
+        $archiveOffset=WORKSPACE_MANIFEST_LIMIT-1;
+        $where.=" AND $visible AND r.row_num>=COALESCE((SELECT r.row_num FROM records r
+            WHERE r.table_id=? AND r.archived=1 AND $visible ORDER BY r.row_num DESC LIMIT 1 OFFSET $archiveOffset),0)";
+        $args[]=$table['id'];
+    }
+    return wquery("SELECT r.* FROM records r WHERE $where ORDER BY r.row_num DESC",$args)->fetchAll();
+}
+
+function vitrine_trip_driver_card(int $number,bool $archive): array {
+    $table=workspace_table();
+    if ($table['slug']!=='vyvoz' || (vitrine_catalog_links($table)['O']['kind']??null)!=='fleet-vehicles') {
+        throw new ApiError('not_found','Карточка водителя недоступна.',404);
+    }
+    workspace_require('field','O','view',$table['id']);
+    $row=vitrine_data([$number],$archive)['rows'][0]??null;
+    if (!$row || empty($row['values']['O'])) throw new ApiError('not_found','Машина в рейсе не указана.',404);
+    $name=workspace_can('field','P','view',$table['id']) ? ($row['values']['P']??'') : '';
+    $phones=workspace_can('field','Q','view',$table['id']) ? ($row['values']['Q']??'') : '';
+    $sections=['Водитель'=>['ФИО'=>$name,'Телефоны'=>$phones],'Автотранспорт'=>['Машина'=>$row['values']['O']]];
+    if (workspace_fleet_trip_documents_can_view($table['id'])) {
+        $reference=$row['references']['P']??null;
+        $drivers=workspace_fleet_catalog('fleet-drivers');
+        $driver=($reference['catalogId']??null)===$drivers ? $reference['id'] : 0;
+        if (!$driver && empty($row['edits']['O']['active']) && empty($row['edits']['P']['active'])) {
+            $driver=(int)wquery("SELECT o.entry_id FROM fleet_trip_origins o JOIN catalog_entries e ON e.id=o.entry_id
+                WHERE o.record_id=? AND o.field_key='P' AND e.catalog_id=?",[$row['recordId'],$drivers])->fetchColumn();
+        }
+        if ($driver) {
+            $documents=workspace_fleet_document_state(0,$driver,false)['values'];
+            $sections['Водитель']['Дата рождения']=$documents['P'];
+            $labels=workspace_fleet_document_labels();
+            foreach (['Паспорт'=>['J','N','O'],'Водительское удостоверение'=>['K','L','M']] as $section=>$fields) {
+                foreach ($fields as $key) $sections[$section][$labels[$key]]=$documents[$key];
+            }
+        } elseif (!empty($row['values']['R'])) {
+            $sections['Документы из рейса']=['Данные'=>$row['values']['R']];
+        }
+    }
+    return ['sections'=>$sections];
+}
+
 function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $t=workspace_table();$columns=array_values(array_filter($t['columns'],fn($f)=>workspace_can('field',$f['letter'],'view',$t['id'])));
+    $isAvtovyvoz=$t['slug']==='vyvoz';
     $compactInputs=[];
     if($t['slug']==='vyvoz'){
         $labels=array_column($columns,'label','letter');
@@ -32,6 +83,9 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $documentsColumn=$links['O']['documentsTarget']??null;
     $canViewDocuments=$documentsColumn!==null && workspace_fleet_trip_documents_can_view($t['id']);
     foreach($columns as &$column){
+        if ($isAvtovyvoz && $column['letter']==='O' && ($links['O']['kind']??null)==='fleet-vehicles') {
+            $column['tripDriverCard']=true;
+        }
         if ($column['letter']===$documentsColumn) {
             $column['export']=false;
             $column['fleetDocumentsVisible']=$canViewDocuments;
@@ -43,12 +97,13 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         }
     }
     unset($column);
-    // Own stable IDs, not Google coordinates. Manifest remains capped for the established grid.
-    $rowIds=workspace_manifest($t,$archive);
-    $wanted=$requestedRows===null ? array_slice($rowIds,0,100)
-        : ($archive ? array_values(array_intersect($requestedRows,$rowIds))
-            : array_values(array_unique(array_filter($requestedRows,fn($x)=>is_int($x)&&$x>1))));
-    $records=$wanted?wquery('SELECT * FROM records WHERE table_id=? AND archived=? AND row_num IN ('.implode(',',array_fill(0,count($wanted),'?')).') ORDER BY row_num DESC',[$t['id'],(int)$archive,...$wanted])->fetchAll():[];
+    $needsManifest=$requestedRows===null || !$isAvtovyvoz;
+    $rowIds=$needsManifest ? workspace_manifest($t,$archive) : [];
+    $pageSize=$isAvtovyvoz ? WORKSPACE_AVTOVYVOZ_PAGE_SIZE : 100;
+    $wanted=$requestedRows===null ? array_slice($rowIds,0,$pageSize)
+        : ($archive && $needsManifest ? array_values(array_intersect($requestedRows,$rowIds))
+            : array_values(array_unique(array_filter($requestedRows,static fn($id)=>is_int($id)&&($archive||$id>1)))));
+    $records=vitrine_requested_records($t,$wanted,$archive,$archive && !$needsManifest);
     $documentSnapshots=$canViewDocuments ? workspace_fleet_trip_documents_values(array_column($records,'id')) : [];
     $canManageRows=workspace_can('table',(string)$t['id'],'edit',$t['id']);
     $readOnly=[];
@@ -60,6 +115,14 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $catalog=workspace_status_catalog($t);$byId=[];$byName=[];foreach($catalog['statuses'] as &$status){$status['id']=(int)$status['id'];$status['revision']=(int)$status['revision'];$byId[$status['id']]=$status;$byName[vitrine_status_key($status['name'])]=$status;}unset($status);
     [$boundChoices,$boundCatalogs,$entriesByName]=vitrine_catalog_options($t,$links);
     $partyColumns=array_keys(workspace_edo_party_links());
+    $sharedCatalogs=$isAvtovyvoz ? array_intersect_key($boundCatalogs,
+        array_fill_keys(['B','E','I','M','S','T','U'],true), array_fill_keys(array_column($columns,'letter'),true)) : [];
+    $sharedChoices=[];
+    foreach ($sharedCatalogs as $column=>$_) $sharedChoices[$column]=$column;
+    if (isset($boundCatalogs['O'])) $sharedChoices['O']='vehicles';
+    foreach ($partyColumns as $field) {
+        if (isset($boundCatalogs[$field])) $sharedChoices[$field]=$field;
+    }
     foreach (['T','U',...$partyColumns] as $column) {
         if (isset($links[$column]) && !isset($boundCatalogs[$column])) {
             $readOnly[$column]='Нет доступа к справочнику.';
@@ -87,6 +150,14 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         ? wquery('SELECT id,color FROM catalog_entries WHERE catalog_id IN ('.implode(',',array_fill(0,count($colorCatalogIds),'?')).')
             AND color IS NOT NULL',$colorCatalogIds)->fetchAll(PDO::FETCH_KEY_PAIR)
         : [];
+    $sharedOptions=['vehicles'=>$boundChoices['O']??[]]
+        +array_intersect_key($boundChoices,$sharedCatalogs+array_fill_keys($partyColumns,true));
+    foreach (array_intersect_key($sharedOptions,$colorLinks) as $column=>$labels) {
+        $sharedOptions[$column]=array_map(static function(string $label) use ($entriesByName,$catalogColors,$column): array {
+            $entryId=$entriesByName[$column][vitrine_catalog_key($label)]??0;
+            return ['value'=>$label,'label'=>$label,'color'=>$catalogColors[$entryId]??null];
+        },$labels);
+    }
     $edits=[];if($records){$ids=array_column($records,'id');foreach(wquery('SELECT * FROM cell_versions WHERE record_id IN ('.implode(',',array_fill(0,count($ids),'?')).')',$ids)->fetchAll() as $e)$edits[(int)$e['record_id']][$e['field_key']]=$e;}
     $refs=[];if($records){$ids=array_column($records,'id');foreach(wquery('SELECT rr.record_id,rr.field_key,e.id,e.catalog_id,e.name FROM record_references rr JOIN catalog_entries e ON e.id=rr.entry_id WHERE rr.record_id IN ('.implode(',',array_fill(0,count($ids),'?')).')',$ids)->fetchAll() as $ref)$refs[(int)$ref['record_id']][$ref['field_key']]=['id'=>(int)$ref['id'],'catalogId'=>(int)$ref['catalog_id'],'name'=>$ref['name']];}
     $rows=[];foreach($records as $r){
@@ -177,12 +248,9 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         $rows[array_key_last($rows)]+=['rowActions'=>true,'rowToken'=>$canManageRows ? workspace_table_row_token($r) : null,
             'archived'=>$archive,'readOnly'=>$archive ? [] : $readOnly,'relatedUrl'=>'/workspace?section=history&table='.rawurlencode($t['slug']).'&row='.(int)$r['row_num']];
         if ($dropoffDetails!==null) $rows[array_key_last($rows)]['dropoffDetails']=$dropoffDetails;
-        if (isset($boundCatalogs['O'])) $rows[array_key_last($rows)]['sharedChoices']['O']='vehicles';
-        foreach ($partyColumns as $field) {
-            if (isset($boundCatalogs[$field])) $rows[array_key_last($rows)]['sharedChoices'][$field]=$field;
-        }
+        $rows[array_key_last($rows)]['sharedChoices']=$sharedChoices;
     }
-    return ['rowIds'=>$rowIds,'columns'=>$columns,'rows'=>$rows,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette'],'fleetOptions'=>['vehicles'=>$boundChoices['O']??[]]+array_intersect_key($boundChoices,array_fill_keys($partyColumns,true)),'dropoffOptions'=>$dropoffOptions,'dropoffEnabled'=>(bool)$dropoffCatalog];
+    return ['rowIds'=>$rowIds,'columns'=>$columns,'rows'=>$rows,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette'],'sharedOptions'=>$sharedOptions,'sharedOptionCatalogs'=>$sharedCatalogs,'dropoffOptions'=>$dropoffOptions,'dropoffEnabled'=>(bool)$dropoffCatalog];
 }
 
 function vitrine_store(array $body): array {

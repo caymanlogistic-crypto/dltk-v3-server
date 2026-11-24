@@ -18,7 +18,7 @@
   }
   function persist(settings,savePreset=false){
     const before=lastLocalSnapshot||settings,changes={};
-    for(const key of ['order','hidden','preset','lines','layoutWidth'])if(JSON.stringify(before[key])!==JSON.stringify(settings[key]))changes[key]=copy(settings[key]);
+    for(const key of ['order','hidden','pinned','preset','lines','layoutWidth'])if(JSON.stringify(before[key])!==JSON.stringify(settings[key]))changes[key]=copy(settings[key]);
     if(savePreset)changes.preset=settings.preset;
     for(const letter of new Set([...Object.keys(before.widths||{}),...Object.keys(settings.widths||{})]))if(before.widths?.[letter]!==settings.widths?.[letter]){changes.widths||={};changes.widths[letter]=settings.widths?.[letter]??null;}
     lastLocalSnapshot=copy(settings);mergeChanges(pendingChanges,changes);
@@ -69,12 +69,12 @@
     let next={...state,preset};
     if(incoming && Number(incoming.version)>=preferenceVersion){
       preferenceVersion=Number(incoming.version);const saved=incoming.settings;
-      next={order:validOrder(saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset,lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
+      next={order:validOrder(saved.order),hidden:validHidden(saved.hidden),pinned:validPinned(saved.pinned),widths:validWidths(saved.widths),preset,lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
     }
     if(widthsChanged && editsWidthDefaults)next.widths=validWidths(widthDefaults.widths);
     const settingsChanged=JSON.stringify(state)!==JSON.stringify(next);
     if(settingsChanged){
-      state=next;applyWidths(state.widths);applyLines();applyLayoutWidth();applyOrder(state.order);applyVisibility(state.hidden);paintAll();
+      state=next;applyWidths(state.widths);applyLines();applyLayoutWidth();applyColumns();paintAll();
     }else if(widthsChanged)applyWidths(state.widths);
     widthsChanged=false;
     lastLocalSnapshot=copy(state);try{localStorage.setItem(key,JSON.stringify(state));}catch{}
@@ -104,21 +104,33 @@
   const freezeColumns = table.hasAttribute('data-freeze-columns');
   const scrollContainer = table.parentElement;
   const rowNumberHeader = table.querySelector('thead .vitrine-row-number');
+  const headersByColumn = new Map([...table.querySelectorAll('thead th[data-column]')].map(header=>[header.dataset.column,header]));
   let frozenColumns = [];
   let frozenHeaders = [];
-  function updateFrozenWidths() {
-    const widths = frozenHeaders.map(header=>header.getBoundingClientRect().width);
-    const available = scrollContainer.clientWidth - rowNumberHeader.getBoundingClientRect().width - 64;
-    const count = widths.length===2 && widths[0]+widths[1]<=available ? 2 : (widths[0]<=available ? 1 : 0);
-    table.dataset.frozenCount = String(count);
-    table.style.setProperty('--vitrine-first-frozen-width',(widths[0]??0)+'px');
+  function updateFrozenWidths(force=false) {
+    let offset = rowNumberHeader.getBoundingClientRect().width;
+    const limit = scrollContainer.clientWidth - 64;
+    const next = [];
+    for (const header of frozenHeaders) {
+      const width = header.getBoundingClientRect().width;
+      if (offset+width > limit) break;
+      const letter = header.dataset.column;
+      next.push(letter);
+      table.style.setProperty('--vitrine-offset-'+letter,offset+'px');
+      offset += width;
+    }
+    if (!force && next.join(',')===frozenColumns.join(',')) return;
+    frozenColumns=next;
+    table.dataset.frozenCount=String(next.length);
+    markFrozenColumns(table.querySelectorAll(':is(th,td)[data-column]'));
   }
-  const frozenWidthObserver = freezeColumns ? new ResizeObserver(updateFrozenWidths) : null;
+  const frozenWidthObserver = freezeColumns ? new ResizeObserver(()=>updateFrozenWidths()) : null;
   function markFrozenColumns(cells) {
     for (const cell of cells) {
       const index = frozenColumns.indexOf(cell.dataset.column);
       if (index===-1) delete cell.dataset.frozenColumn;
       else cell.dataset.frozenColumn=String(index+1);
+      cell.toggleAttribute('data-frozen-edge',index!==-1 && index===frozenColumns.length-1);
     }
   }
   let catalog = {};
@@ -154,17 +166,20 @@
     const hidden = Array.isArray(value) ? [...new Set(value.filter(letter=>originalOrder.includes(letter)))] : [];
     return hidden.length === originalOrder.length ? hidden.slice(1) : hidden;
   }
+  function validPinned(value) {
+    return freezeColumns && Array.isArray(value) ? [...new Set(value.filter(letter=>headersByColumn.has(letter)))] : [];
+  }
   function validWidths(value) {
     const widths={};
     if(value && typeof value==='object') for(const letter of originalOrder) if(Number.isFinite(value[letter])) widths[letter]=Math.max(44,Math.min(1200,Math.round(value[letter])));
     return widths;
   }
-  let state = {order:[...originalOrder],hidden:[],widths:{},preset:'base',lines:'base',layoutWidth:defaultWidth};
+  let state = {order:[...originalOrder],hidden:[],pinned:[],widths:{},preset:'base',lines:'base',layoutWidth:defaultWidth};
   try {
     const savedOnServer=serverPreferences.settings && Object.keys(serverPreferences.settings).length>0;
     const saved = savedOnServer ? serverPreferences.settings : JSON.parse(localStorage.getItem(key) || 'null');
     const legacyLocalOrder=!savedOnServer && serverPreferences.columnOrderVersion!==undefined;
-    if (saved) state = {order:validOrder(legacyLocalOrder ? null : saved.order),hidden:validHidden(saved.hidden),widths:validWidths(saved.widths),preset:'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
+    if (saved) state = {order:validOrder(legacyLocalOrder ? null : saved.order),hidden:validHidden(saved.hidden),pinned:validPinned(saved.pinned),widths:validWidths(saved.widths),preset:'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
   } catch {}
   try {
     const fallback=JSON.parse(localStorage.getItem(legacyPresetKey)||'null')?.preset;
@@ -222,22 +237,28 @@
       container.insertBefore(fragment,container.querySelector(':scope > .vitrine-draft-note'));
     }
   }
-  function applyVisibility(hidden) {
-    const hiddenColumns = new Set(hidden);
+  function displayOrder() {
+    return [...state.pinned,...state.order.filter(letter=>!state.pinned.includes(letter))];
+  }
+  function applyColumns() {
+    applyOrder(displayOrder());
+    const hiddenColumns = new Set(state.hidden);
     table.querySelectorAll('[data-column]').forEach(node=>{node.hidden=hiddenColumns.has(node.dataset.column);});
     if (freezeColumns) {
-      frozenHeaders = [...table.querySelectorAll('thead th[data-column]:not([hidden])')].slice(0,2);
-      frozenColumns = frozenHeaders.map(header=>header.dataset.column);
-      markFrozenColumns(table.querySelectorAll(':is(th,td)[data-column]'));
+      for (const [letter,header] of headersByColumn) {
+        header.querySelector('[data-column-pin]').setAttribute('aria-pressed',String(state.pinned.includes(letter)));
+      }
+      frozenHeaders=state.pinned.filter(letter=>!hiddenColumns.has(letter)).map(letter=>headersByColumn.get(letter));
       frozenWidthObserver.disconnect();
       frozenWidthObserver.observe(scrollContainer);
+      frozenWidthObserver.observe(rowNumberHeader,{box:'border-box'});
       frozenHeaders.forEach(header=>frozenWidthObserver.observe(header,{box:'border-box'}));
-      updateFrozenWidths();
+      updateFrozenWidths(true);
     }
     window.dispatchEvent(new CustomEvent('vitrine-columns-updated'));
   }
   const widthRules=document.createElement('style');
-  widthRules.textContent=columns.map(column=>'.vitrine .vitrine-table [data-column="'+column.letter+'"] { --column-width:var(--vitrine-width-'+column.letter+','+(table.querySelector('th[data-column="'+column.letter+'"]').classList.contains('vitrine-time-column')?'var(--time-column-width,64px)':'var(--vitrine-default-width-'+column.letter+',190px)')+'); width:var(--column-width); min-width:var(--column-width); max-width:var(--column-width); }').join('\n');
+  widthRules.textContent=columns.map(column=>'.vitrine .vitrine-table [data-column="'+column.letter+'"] { --column-width:var(--vitrine-width-'+column.letter+','+(headersByColumn.get(column.letter).classList.contains('vitrine-time-column')?'var(--time-column-width,64px)':'var(--vitrine-default-width-'+column.letter+',190px)')+'); --vitrine-frozen-offset:var(--vitrine-offset-'+column.letter+'); width:var(--column-width); min-width:var(--column-width); max-width:var(--column-width); }').join('\n');
   document.head.append(widthRules);
   function applyWidths(widths) {
     const defaults=editsWidthDefaults ? {} : validWidths(widthDefaults?.widths);
@@ -265,11 +286,41 @@
     state=next;applyWidths(state.widths);persist(state);
     try{localStorage.setItem(key,JSON.stringify(state));}catch{}
   }
+  let pinAnimations=[];
+  function togglePin(letter,button) {
+    if (hasOpenEditor()) {
+      window.PlanexNotifications.show({tone:'warning',message:'Сначала сохраните правку ячейки или нажмите «Отмена».'});
+      return;
+    }
+    pinAnimations.forEach(animation=>animation.cancel());
+    pinAnimations=[];
+    const previousPositions = new Map();
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const bounds=scrollContainer.getBoundingClientRect();
+      for (const cell of table.querySelectorAll('th[data-column="'+letter+'"],td[data-column="'+letter+'"]')) {
+        const rect=cell.getBoundingClientRect();
+        if (rect.bottom>bounds.top && rect.top<bounds.bottom) previousPositions.set(cell,rect.left);
+      }
+    }
+    state.pinned=state.pinned.includes(letter) ? state.pinned.filter(item=>item!==letter) : [...state.pinned,letter];
+    applyColumns();
+    button.focus({preventScroll:true});
+    for (const [cell,left] of previousPositions) {
+      const shift=left-cell.getBoundingClientRect().left;
+      if (Math.abs(shift)>1) pinAnimations.push(cell.animate(
+        [{transform:'translateX('+shift+'px)'},{transform:'translateX(0)'}],
+        {duration:230,easing:'ease-out'}));
+    }
+    persist(state);
+  }
+  table.addEventListener('click',event=>{
+    const button=event.target.closest('[data-column-pin]');
+    if (!button) return;
+    togglePin(button.closest('th').dataset.column,button);
+  });
   for(const header of table.querySelectorAll('thead th[data-column]')){
     const letter=header.dataset.column;
-    const grip=document.createElement('span');grip.className='display-column-resize';grip.tabIndex=document.body.dataset.vitrineCatalog ? 0 : -1;grip.setAttribute('role','separator');grip.setAttribute('aria-orientation','vertical');grip.setAttribute('aria-label','Ширина столбца '+letter);grip.setAttribute('aria-valuemin','44');grip.setAttribute('aria-valuemax','1200');grip.title=editsWidthDefaults
-      ? 'Потяните для изменения ширины по умолчанию. Двойной щелчок — исходная ширина.'
-      : 'Потяните для изменения личной ширины. Двойной щелчок — ширина по умолчанию.';
+    const grip=document.createElement('span');grip.className='display-column-resize';grip.tabIndex=document.body.dataset.vitrineCatalog ? 0 : -1;grip.setAttribute('role','separator');grip.setAttribute('aria-orientation','vertical');grip.setAttribute('aria-label','Ширина столбца '+letter);grip.setAttribute('aria-valuemin','44');grip.setAttribute('aria-valuemax','1200');
     grip.addEventListener('focus',()=>grip.setAttribute('aria-valuenow',String(Math.round(header.getBoundingClientRect().width))));
     let drag=null,frame=0;
     function preview(){frame=0;if(drag){table.style.setProperty('--vitrine-width-'+letter,drag.width+'px');grip.setAttribute('aria-valuenow',String(drag.width));}}
@@ -298,16 +349,17 @@
     header.append(grip);
   }
   function prepareRows(rows) {
+    const order=displayOrder();
     for(const row of rows){
       const nodes=new Map(Array.from(row.querySelectorAll('td[data-column]')).map(node=>[node.dataset.column,node]));
       const fragment=document.createDocumentFragment();
-      for(const letter of state.order){const cell=nodes.get(letter);if(!cell)continue;cell.hidden=state.hidden.includes(letter);paintCell(cell);fragment.append(cell);}
+      for(const letter of order){const cell=nodes.get(letter);if(!cell)continue;cell.hidden=state.hidden.includes(letter);paintCell(cell);fragment.append(cell);}
       if (freezeColumns) markFrozenColumns(nodes.values());
       row.append(fragment);
     }
   }
   window.VitrineDisplay = Object.freeze({color,paint,paintCell,prepareRows});
-  applyWidths(state.widths); applyOrder(state.order); applyVisibility(state.hidden); applyLines();applyLayoutWidth(); paintAll();
+  applyWidths(state.widths);applyLines();applyLayoutWidth();applyColumns();paintAll();
   let dialog,body,foot,title,opener,draft,mode,dragged;
   const el = (tag,cls,text) => { const node=document.createElement(tag); if(cls) node.className=cls; if(text!==undefined) node.textContent=text; return node; };
   function button(text,action,primary=false) { const node=el('button','btn '+(primary?'btn-primary':'btn-secondary'),text); node.type='button'; node.addEventListener('click',action); return node; }
@@ -330,7 +382,7 @@
     draft.order.forEach((letter,index)=>{
       const column=columns.find(item=>item.letter===letter);
       const row=el('div','display-order-row'); row.dataset.letter=letter; row.setAttribute('role','listitem');
-      const handle=el('span','display-drag-handle','⠿'); handle.title='Перетащить столбец'; handle.setAttribute('aria-hidden','true');
+      const handle=el('span','display-drag-handle','⠿'); handle.setAttribute('aria-hidden','true');
       handle.addEventListener('pointerdown',event=>{
         if(event.button!==0)return;event.preventDefault();dragged=letter;handle.setPointerCapture(event.pointerId);row.classList.add('is-dragging');
       });
@@ -350,7 +402,7 @@
       });
       handle.addEventListener('pointercancel',()=>{dragged=null;list.querySelectorAll('.is-dragging,.is-drop-target').forEach(node=>node.classList.remove('is-dragging','is-drop-target'));});
       const label=el('span','display-column-name',letter+' · '+(column.label||'Без названия'));
-      const visible=el('input','display-column-visible');visible.type='checkbox';visible.checked=!draft.hidden.includes(letter);visible.setAttribute('aria-label','Показывать столбец '+letter);visible.title='Показывать столбец';
+      const visible=el('input','display-column-visible');visible.type='checkbox';visible.checked=!draft.hidden.includes(letter);visible.setAttribute('aria-label','Показывать столбец '+letter);
       row.classList.toggle('is-column-hidden',!visible.checked);
       visible.addEventListener('change',()=>{draft.hidden=visible.checked?draft.hidden.filter(item=>item!==letter):[...draft.hidden,letter];row.classList.toggle('is-column-hidden',!visible.checked);});
       const up=button('↑',()=>move(index,index-1,'up')); up.dataset.direction='up'; up.disabled=index===0; up.setAttribute('aria-label','Переместить '+letter+' вверх');
@@ -365,7 +417,7 @@
     const list=el('div','display-preset-list');
     for(const preset of presets){
       const card=el('label','display-preset radio-item'); const name=el('span','display-preset-title'); const radio=el('input');radio.type='radio';radio.name='display-preset';radio.value=preset.id;radio.setAttribute('aria-label',preset.name);radio.checked=draft.preset===preset.id;radio.addEventListener('change',()=>draft.preset=preset.id);const mark=el('span','radio-mark');mark.setAttribute('aria-hidden','true');name.append(radio,mark,el('span','radio-label',preset.name));
-      const swatches=el('span','display-swatches');preset.colors.forEach((fill,i)=>{const swatch=el('span','display-swatch');swatch.style.backgroundColor=fill;swatch.title=catalog.palette[i]?.name||'';swatches.append(swatch);});
+      const swatches=el('span','display-swatches');preset.colors.forEach((fill,i)=>{const swatch=el('span','display-swatch');swatch.style.backgroundColor=fill;swatch.setAttribute('role','img');swatch.setAttribute('aria-label',catalog.palette[i]?.name||'');swatches.append(swatch);});
       card.append(name,swatches,el('span','display-preset-note',preset.note));list.append(card);
     }
     body.append(list);
@@ -404,12 +456,10 @@
   function save() {
     if(draft.hidden.length>=originalOrder.length){window.PlanexNotifications.show({tone:'danger',message:'Оставьте видимым хотя бы один столбец.'});return;}
     try { localStorage.setItem(key,JSON.stringify(draft)); } catch {}
-    const orderChanged=state.order.join(',')!==draft.order.join(',');
-    state={order:[...draft.order],hidden:[...draft.hidden],widths:{...draft.widths},preset:draft.preset,lines:draft.lines,layoutWidth:draft.layoutWidth};
+    state=draft;
     applyWidths(state.widths);
     applyLines();applyLayoutWidth();
-    if(orderChanged) applyOrder(state.order);
-    applyVisibility(state.hidden);
+    applyColumns();
     paintAll();persist(state,mode==='colors');close();
   }
   const dialogModes={

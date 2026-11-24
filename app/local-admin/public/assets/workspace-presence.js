@@ -48,8 +48,7 @@
       }
       const names = [...group.users.values()].join(', ');
       if (node.textContent !== names) node.textContent = names;
-      node.title = 'Редактирует: ' + names;
-      node.setAttribute('aria-label',node.title);
+      node.setAttribute('aria-label','Редактирует: ' + names);
       const flash = pasteFlashes.get(key);
       if(flash && !group.persistent && node.dataset.flashToken !== flash.token){
         node.classList.remove('is-paste-flash');void node.offsetWidth;

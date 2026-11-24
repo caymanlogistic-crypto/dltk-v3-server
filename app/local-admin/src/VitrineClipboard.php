@@ -100,6 +100,22 @@ function vitrine_slot_input(string $value): ?string {
     return "с $from до $to - $day.$month.$year";
 }
 
+function vitrine_slot_date_in_window(string $normalized, ?DateTimeImmutable $now = null): bool {
+    return vitrine_date_in_window($normalized,0,30,$now);
+}
+
+/** Check the date at the end of a normalized date or slot against Moscow calendar days. */
+function vitrine_date_in_window(string $normalized, int $daysBack, int $daysAhead, ?DateTimeImmutable $now = null): bool {
+    if (!preg_match('/([0-9]{2})\.([0-9]{2})\.([0-9]{2})$/D',$normalized,$date)) return true;
+    [, $day, $month, $year] = $date;
+    $timezone = new DateTimeZone('Europe/Moscow');
+    $today = ($now ?? new DateTimeImmutable())->setTimezone($timezone);
+    $value = "20$year-$month-$day";
+    $earliest = $today->modify("-$daysBack days")->format('Y-m-d');
+    $latest = $today->modify("+$daysAhead days")->format('Y-m-d');
+    return $value >= $earliest && $value <= $latest;
+}
+
 function vitrine_compact_integer_bounds(string $kind): ?array {
     return match ($kind) {
         'weight'=>[1000,50000],

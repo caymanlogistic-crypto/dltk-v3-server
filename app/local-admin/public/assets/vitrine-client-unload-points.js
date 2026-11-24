@@ -109,13 +109,11 @@
       const location=node('td');
       const addressCell=data.canEdit ? action(point.address,button=>edit(point,button))
         : node('span',point.address,'vitrine-client-relations-cell');
-      addressCell.title=data.canEdit ? 'Щелчок — изменить адрес и контакты' : point.address;
       location.append(addressCell);
       const contactCell=node('td');
       const contacts=data.canEdit ? action(point.contact||'—',button=>edit(point,button))
         : node('span',point.contact||'—','vitrine-client-relations-cell');
       if (data.canEdit) {
-        contacts.title='Щелчок — изменить адрес и контакты';
         contacts.dataset.unloadContact='true';
       }
       contactCell.append(contacts);
@@ -132,7 +130,6 @@
     const cell=window.VitrineRows?.resolveCell(opener)??opener;
     cell.textContent=data.summary;
     cell.dataset.original=data.summary;
-    cell.title='Щелчок — открыть точки выгрузки. '+data.summary;
   }
   async function open(cell) {
     if (busy || dialog.open) return;

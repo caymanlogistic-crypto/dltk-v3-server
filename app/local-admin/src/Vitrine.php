@@ -32,6 +32,11 @@ function vitrine_rows_endpoint(): never {
     if (!is_string($value) || !preg_match('/^\d+(?:,\d+){0,99}$/D',$value)) throw new ApiError('invalid_rows','Запрашивайте от 1 до 100 строк.');
     $ids = array_map('intval',explode(',',$value));
     $directory = vitrine_directory_requested();
+    if (($_GET['tripDriver']??'')==='1') {
+        if ($directory!==null || count($ids)!==1) throw new ApiError('invalid_rows','Выберите один рейс.');
+        header('Cache-Control: no-store');
+        json_response(vitrine_trip_driver_card($ids[0],($_GET['archive']??null)==='1'));
+    }
     if (($_GET['fleetDocuments']??'')==='1') {
         if ($directory!==null || count($ids)!==1) throw new ApiError('invalid_rows','Выберите один рейс.');
         $table=workspace_table();
@@ -71,6 +76,22 @@ function vitrine_require_compact_integer_range(string $value,string $kind): void
     throw new ApiError($kind.'_out_of_range',$message);
 }
 
+function vitrine_require_slot_date_limit(string $normalized): void {
+    if (!vitrine_slot_date_in_window($normalized)) {
+        throw new ApiError('slot_date_out_of_range','Укажите дату слота от сегодняшней до 30 календарных дней вперёд включительно.');
+    }
+}
+
+function vitrine_require_trip_date_limit(string $value): void {
+    $normalized = vitrine_compact_input($value,'date');
+    if ($normalized === null) {
+        throw new ApiError('invalid_date','Введите действительную дату в формате ДДММГГ.');
+    }
+    if (!vitrine_date_in_window($normalized,10,60)) {
+        throw new ApiError('trip_date_out_of_range','Дата рейса может быть не раньше чем 10 дней назад и не позже чем через 60 дней от сегодня.');
+    }
+}
+
 function vitrine_validate_paste(array $body, array $data, array $target): void {
     vitrine_require_manual_field($data['table'],$body['column']);
     if ($body['column']==='M' && !empty($target['catalogBindings']['M'])) {
@@ -97,6 +118,10 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
     $accepted = $compact ? $normalized !== null
         : vitrine_clipboard_accepts($body['value'],$kind,$target['choices'][$body['column']]??[]);
     if (!$accepted) throw new ApiError('clipboard_value_mismatch','Значение не подходит для формата «'.$labels[$kind].'» или заданного списка. Вставка отменена.');
+    if ($kind === 'slot') vitrine_require_slot_date_limit(vitrine_slot_input($body['value']));
+    if ($compact && $kind === 'date' && $data['table']['slug']==='vyvoz' && $body['column']==='F') {
+        vitrine_require_trip_date_limit($normalized);
+    }
 }
 
 function vitrine_paste_check(): never {
@@ -172,18 +197,22 @@ function vitrine_save_cell(): never {
         if ($normalized === null && $body['value'] !== ($current['values'][$body['column']] ?? '')) throw new ApiError('invalid_time','Введите время: 800 или 0800 → 08:00. Часы 00–23, минуты 00–59.');
         if ($normalized !== null) $body['value'] = $normalized;
     }
-    if (!$body['reset'] && ($current['kinds'][$body['column']] ?? '') === 'slot') {
-        $normalized = vitrine_slot_input($body['value']);
+    $original = $current['originalValues'][$body['column']] ?? '';
+    if ($compactKind==='date' && $data['table']['slug']==='vyvoz' && $body['column']==='F') {
+        vitrine_require_trip_date_limit($body['reset'] ? $original : $body['value']);
+    }
+    if (($current['kinds'][$body['column']] ?? '') === 'slot') {
+        $normalized = vitrine_slot_input($body['reset'] ? $original : $body['value']);
         if ($normalized === null) {
             throw new ApiError('invalid_slot','Введите 10 цифр: часы начала и окончания от 00 до 23 и действительную дату ДДММГГ.');
         }
+        vitrine_require_slot_date_limit($normalized);
         $body['value'] = $normalized;
     }
     if (!$body['reset']) {
         if (isset($body['paste'])) vitrine_validate_paste($body,$data,$current);
         else vitrine_validate_single_line($body['value'],$current,$body['column']);
     }
-    $original = $current['originalValues'][$body['column']] ?? '';
     $statusId = null;
     if ($body['column']==='A' && !$body['reset'] && $body['value']!=='') {
         foreach ($data['statuses'] as $status) if (vitrine_status_key($status['name'])===vitrine_status_key($body['value'])) { $statusId=$status['id']; $body['value']=$status['name']; }
