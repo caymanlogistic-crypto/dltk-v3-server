@@ -43,6 +43,7 @@
     if (!showVehicleDriver) return;
     const vehicle=row.querySelector('td[data-column="O"]:not([data-catalog-id="0"])');
     if (!vehicle) return;
+    const value=vehicle.querySelector('[data-trip-vehicle-value]');
     const driver=row.querySelector('td[data-column="P"]')?.textContent.trim() ?? '';
     const shortName=shortDriverName(driver);
     const previousSuffix=vehicle.dataset.fleetDriverSuffix ?? '';
@@ -51,11 +52,13 @@
     }
     if (!vehicle.textContent.trim() || !shortName) {
       delete vehicle.dataset.fleetDriverSuffix;
+      if (value) delete value.dataset.fleetDriverSuffix;
       vehicle.removeAttribute('aria-label');
       return;
     }
     const suffix=' '+shortName;
     vehicle.dataset.fleetDriverSuffix=suffix;
+    if (value) value.dataset.fleetDriverSuffix=suffix;
     vehicle.setAttribute('aria-label',vehicle.textContent+suffix);
     if (vehicle.title) vehicle.title+=suffix;
   }
