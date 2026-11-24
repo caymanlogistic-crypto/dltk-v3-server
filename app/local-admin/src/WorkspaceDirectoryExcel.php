@@ -27,8 +27,10 @@ function workspace_directory_excel_schema(string $directory): array {
         workspace_require('catalog',(string)$id,'edit');
     }
     if (!$id && !in_array($kind,['order-statuses','roles','employees'],true)) throw new ApiError('not_found','Справочник не найден.',404);
+    if ($kind==='fleet-vehicles') workspace_require('catalog',(string)workspace_fleet_catalog('fleet-drivers'),'view');
     $labels=array_column($model['columns'],'label','letter');
     if ($kind==='clients') unset($labels['C']);
+    if ($kind==='fleet-vehicles') $labels=array_diff_key($labels,workspace_fleet_document_fields());
     if ($kind==='unload-points') $labels['C']='Основной контакт';
     return ['id'=>$id,'kind'=>$kind,'labels'=>$labels,'orderKey'=>$id ?: $directory];
 }
@@ -36,6 +38,11 @@ function workspace_directory_excel_schema(string $directory): array {
 function workspace_directory_excel_entries(array $schema): array {
     ['id'=>$id,'kind'=>$kind]=$schema;
     if (in_array($kind,['roles','employees'],true)) return workspace_access_excel_entries($kind);
+    if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) {
+        $entries=workspace_fleet_entries($kind,$id);
+        if ($kind==='fleet-vehicles') $entries=array_filter($entries,static fn(array $entry): bool=>!workspace_fleet_trailer_key($entry['name']));
+        return array_map(static fn(array $entry): array=>$entry+['values'=>workspace_fleet_values($kind,$entry)],$entries);
+    }
     if ($kind==='order-statuses') {
         $entries=[];
         foreach (workspace_client_order_statuses(true) as $code=>$status) {
@@ -50,7 +57,9 @@ function workspace_directory_excel_entries(array $schema): array {
     }
     $secondary=match($kind) {
         'clients'=>workspace_client_manager_values($id),
-        'carriers'=>workspace_client_catalog_metadata('catalog_logists_'.$id),
+        'carriers'=>workspace_carrier_directory_values($id),
+        'edo-counterparties'=>workspace_edo_party_profiles($id),
+        'margin-rules'=>workspace_margin_rule_profiles($id),
         'dropoff-points'=>workspace_dropoff_profiles($id),
         'managers'=>array_column(workspace_manager_entries($id),null,'id'),
         'unload-points'=>workspace_unload_points($id),
@@ -66,8 +75,12 @@ function workspace_directory_excel_entries(array $schema): array {
         $entry['detail']=$detail;
         $base=['A'=>$entry['name']];
         $entry['values']=match($kind) {
-            'clients','carriers'=>$base+['B'=>$detail??''],
-            'status','terminals-main','order-statuses'=>$base+['B'=>$palette[$entry['color']]??''],
+            'clients'=>$base+['B'=>$detail??''],
+            'carriers'=>$base+($detail??workspace_carrier_values([])),
+            'edo-operators'=>workspace_edo_operator_values($entry),
+            'edo-counterparties'=>workspace_edo_party_values($entry['name'],$detail??[]),
+            'margin-rules'=>workspace_margin_rule_values($entry['name'],$detail??[]),
+            'status','terminals-main','order-statuses','assignment-statuses','etrn-statuses'=>$base+['B'=>$palette[$entry['color']]??''],
             'dropoff-points'=>$base+($detail??workspace_dropoff_profile([])),
             'managers'=>workspace_manager_values($detail),
             'unload-points'=>workspace_unload_point_values($detail)+['C'=>workspace_unload_primary($detail)],
@@ -78,13 +91,16 @@ function workspace_directory_excel_entries(array $schema): array {
     return $entries;
 }
 
-function workspace_directory_excel_header(array $labels,array $sheet): array {
+function workspace_directory_excel_header(array $labels,array $sheet,string $kind): array {
     $header=array_filter(array_map('trim',$sheet[1]??[]),'strlen');
     $exportedContacts=($labels['C']??'')==='Основной контакт' && in_array('Контакты',$header,true);
     if ($exportedContacts) $labels['C']='Контакты';
     $allowed=[...array_values($labels),'ID записи','Версия записи','Строка'];
     if (in_array('Клиент',$labels,true) && in_array('Менеджер',$labels,true)) $allowed[]='Точки выгрузки';
-    $required=($labels['C']??null)==='Пароль' ? array_diff($labels,['Пароль']) : $labels;
+    if ($kind==='fleet-vehicles') $allowed[]='Тип транспорта';
+    $required=array_diff($labels,['Пароль','Доп. телефон']);
+    if ($kind==='carriers') unset($required['D']);
+    if ($kind==='edo-counterparties') unset($required['E']);
     if (count($header)!==count(array_unique($header)) || array_diff($header,$allowed) ||
         array_diff($required,$header) || (in_array('ID записи',$header,true)!==in_array('Версия записи',$header,true))) {
         directory_xlsx_error('Проверьте заголовки первой строки. Нужны столбцы: '.implode(', ',$labels).'.');
@@ -97,7 +113,23 @@ function workspace_directory_excel_header(array $labels,array $sheet): array {
 function workspace_directory_excel_payload(array $schema,array $values,?array $old): array {
     ['id'=>$id,'kind'=>$kind]=$schema;
     $payload=['catalogId'=>$id];
+    if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) return [workspace_fleet_values_validated($kind,$values)['key'],$payload];
     if (in_array($kind,['roles','employees'],true)) return workspace_access_excel_payload($kind,$values,$old);
+    if ($kind==='margin-rules') {
+        $date=workspace_margin_rule_date($values['A']);
+        workspace_margin_rule_profile($values);
+        return [$date,$payload+['name'=>$date,'marginRule'=>$values]];
+    }
+    if ($kind==='edo-counterparties') {
+        $name=workspace_catalog_validate_name($values['A']);
+        $profile=workspace_edo_party_profile($values);
+        if ($old) workspace_edo_party_assert_roles($old['detail']??[],$profile,(int)$old['id']);
+        return [workspace_edo_party_key($name,$profile),$payload+['name'=>$name,'edoParty'=>$profile]];
+    }
+    if ($kind==='edo-operators') {
+        $code=workspace_edo_operator_code($values['A']);
+        return [strtolower($code),$payload+['operatorCode'=>$code,'name'=>workspace_catalog_validate_name($values['B'])]];
+    }
     if ($kind==='managers') {
         $profile=workspace_manager_validate($values);
         $key=hash('sha256',implode("\n",array_map('vitrine_catalog_key',[$profile['surname'],$profile['name'],$profile['patronymic']])));
@@ -115,19 +147,22 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
                 workspace_client_manager_ids($payload['manager']);
             }
         }
-        if ($kind==='carriers') $payload['logist']=workspace_client_validate_manager($values['B']);
+        if ($kind==='carriers') {
+            $payload['carrierDetails']=workspace_carrier_details(['B'=>$values['B'],'edoId'=>$values['C']]);
+            $payload['logist']=workspace_client_validate_manager($values['E']);
+        }
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
-        if ($kind==='status' || $kind==='order-statuses' || ($kind==='terminals-main' && $values['B']!=='')) {
+        if ($kind==='status' || $kind==='order-statuses' || (workspace_catalog_has_palette($kind) && $values['B']!=='')) {
             $payload['color']=workspace_directory_color($values['B']);
-        } elseif ($kind==='terminals-main') $payload['color']=null;
+        } elseif (workspace_catalog_has_palette($kind)) $payload['color']=null;
     }
     return [$key,$payload];
 }
 
 function workspace_directory_excel_plan(array $schema,array $entries,array $sheet): array {
-    [$positions,$header,$exportedContacts]=workspace_directory_excel_header($schema['labels'],$sheet);
-    unset($sheet[1]);
     $kind=$schema['kind'];
+    [$positions,$header,$exportedContacts]=workspace_directory_excel_header($schema['labels'],$sheet,$kind);
+    unset($sheet[1]);
     $keys=[];
     foreach ($entries as $id=>$entry) $keys[$entry['normalized']][]=(int)$id;
     $aliases=in_array($kind,['clients','terminals-main'],true) ? workspace_client_catalog_aliases($schema['id']) : [];
@@ -140,6 +175,10 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             }
             $values=[];
             foreach ($schema['labels'] as $letter=>$label) $values[$letter]=trim($cells[$positions[$label]??0]??'');
+            if ($kind==='carriers') $values['D']=workspace_carrier_edo_operator(workspace_carrier_edo_id($values['C']));
+            if ($kind==='edo-counterparties') $values=workspace_edo_party_values($values['A'],workspace_edo_party_profile($values));
+            if ($kind==='edo-operators') $values['A']=workspace_edo_operator_code($values['A']);
+            if ($kind==='margin-rules') $values=workspace_margin_rule_values(workspace_margin_rule_date($values['A']),workspace_margin_rule_profile($values));
             if ($kind==='employees') {
                 if (!in_array($values['C'],['','Скрыт'],true)) directory_xlsx_error('Пароли сотрудников задаются только в карточке.');
                 $values['C']='Скрыт';
@@ -156,7 +195,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             }
             if (!$id) {
                 $lookup=$kind==='employees' ? $values['B'] : $values['A'];
-                if (in_array($kind,['managers','unload-points'],true)) {
+                if (in_array($kind,['managers','unload-points','margin-rules','edo-counterparties',...WORKSPACE_FLEET_KINDS],true)) {
                     [$lookup]=workspace_directory_excel_payload($schema,$values,null);
                 } else {
                     $lookup=vitrine_status_key($lookup);
@@ -165,6 +204,10 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
                 if (count($matches)>1) directory_xlsx_error('Найдено несколько записей с таким названием. Укажите ID записи и её версию.');
                 $id=$matches[0]??0;
                 $old=$entries[$id]??null;
+            }
+            if ($kind==='fleet-vehicles' && $old) {
+                if (!isset($positions[$schema['labels']['Q']])) $values['Q']=$old['values']['Q'];
+                $values=array_replace($old['values'],$values);
             }
             if ($exportedContacts) {
                 $primary=$old['values']['C']??'';
@@ -256,13 +299,14 @@ function workspace_directory_excel_apply(array $schema,array $entries,array $ope
                     'color'=>$entry['color'],'active'=>false,'archive'=>true]);
                 continue;
             }
-            if ($entry && !$entry['active'] && in_array($kind,['managers','unload-points'],true)) {
+            if ($entry && !$entry['active'] && in_array($kind,['managers','unload-points',...WORKSPACE_FLEET_KINDS],true)) {
                 $restored=workspace_catalog_write(['catalogId'=>$id,'id'=>$entryId,'revision'=>$revision,
                     'name'=>$entry['name'],'active'=>true]);
                 $revision=$restored['revision'];
             }
             $result=match($kind) {
                 'managers'=>workspace_manager_write($id,$operation['values'],$entryId,$revision),
+                'fleet-drivers','fleet-vehicles'=>workspace_fleet_write($kind,$id,$operation['values'],$entryId,$revision),
                 'unload-points'=>workspace_unload_write_point($id,$operation['values'],$entryId,$revision,
                     primaryContact:$operation['values']['C']),
                 default=>workspace_catalog_write($operation['payload']),

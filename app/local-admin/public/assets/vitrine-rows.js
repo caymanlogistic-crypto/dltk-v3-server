@@ -25,8 +25,39 @@
   const positions=new Map(ids.map((id,index)=>[String(id),index]));
   const remotePatches=new Map(),catalogPatches=new Map();
   const pageSize=100,cache=new Map(),loaded=new Map(),pending=new Map();
+  const showVehicleDriver=document.body.dataset.workspaceTable==='vyvoz' && !document.body.hasAttribute('data-vitrine-catalog');
+  function shortDriverName(driver) {
+    const parts=driver.replaceAll('.',' ').trim().split(/\s+/u);
+    if (parts.length>3 || !parts.every(part=>/^\p{L}+(?:[-’']\p{L}+)*$/u.test(part))) return '';
+    const [surname,...names]=parts;
+    const initials=names.map(name=>Array.from(name)[0].toUpperCase()).join('.');
+    return initials ? surname+' '+initials : surname;
+  }
+  function updateVehicleDriver(row) {
+    if (!showVehicleDriver) return;
+    const vehicle=row.querySelector('td[data-column="O"]:not([data-catalog-id="0"])');
+    if (!vehicle) return;
+    const driver=row.querySelector('td[data-column="P"]')?.textContent.trim() ?? '';
+    const shortName=shortDriverName(driver);
+    const previousSuffix=vehicle.dataset.fleetDriverSuffix ?? '';
+    if (previousSuffix && vehicle.title.endsWith(previousSuffix)) {
+      vehicle.title=vehicle.title.slice(0,-previousSuffix.length);
+    }
+    if (!vehicle.textContent.trim() || !shortName) {
+      delete vehicle.dataset.fleetDriverSuffix;
+      vehicle.removeAttribute('aria-label');
+      return;
+    }
+    const suffix=' '+shortName;
+    vehicle.dataset.fleetDriverSuffix=suffix;
+    vehicle.setAttribute('aria-label',vehicle.textContent+suffix);
+    if (vehicle.title) vehicle.title+=suffix;
+  }
   const initial=Array.from(body.querySelectorAll('[data-vitrine-row]'));
-  for(const row of initial)cache.set(Number(row.dataset.rowNumber),row);
+  for (const row of initial) {
+    updateVehicleDriver(row);
+    cache.set(Number(row.dataset.rowNumber),row);
+  }
   loaded.set(0,true);
   let height=initial[0]?.getBoundingClientRect().height||32,headHeight=table.querySelector('thead').getBoundingClientRect().height,generation=0,frame=0,first=-1,last=-1,navigation=null,navigationGeneration=0,mounts=0,lastScrollTop=scroll.scrollTop,manifestVersion=0;
   const top=document.createElement('tr'),bottom=document.createElement('tr');
@@ -46,12 +77,14 @@
     if(!Array.isArray(result.rowIds)||typeof result.html!=='string')throw new Error('Не удалось прочитать строки таблицы.');
     const template=document.createElement('template');
     template.innerHTML='<table><tbody>'+result.html+'</tbody></table>';
-    return {rowIds:result.rowIds, rows:template.content.querySelectorAll('[data-vitrine-row]')};
+    const rows=template.content.querySelectorAll('[data-vitrine-row]');
+    for (const row of rows) updateVehicleDriver(row);
+    return {rowIds:result.rowIds, rows};
   }
   async function exportRows(columns){
     const selectedIds=[...ids], search=appliedSearch, values=new Map(), missing=[];
     function capture(row){
-      const cells=new Map(Array.from(row.querySelectorAll('td[data-column]'),cell=>[cell.dataset.column,cell.textContent]));
+      const cells=new Map(Array.from(row.querySelectorAll('td[data-column]'),cell=>[cell.dataset.column,cell.textContent+(cell.dataset.fleetDriverSuffix ?? '')]));
       values.set(Number(row.dataset.rowNumber),[row.querySelector('th')?.firstChild?.textContent ?? '',...columns.map(column=>cells.get(column) ?? '')]);
     }
     for(const id of selectedIds){
@@ -148,7 +181,7 @@
     await page(Math.floor(index/pageSize));if(ticket!==navigationGeneration)return null;
     ensureVisible(index);await render();if(ticket!==navigationGeneration)return null;
     const target=cache.get(ids[index])?.querySelector('td[data-column="'+cell.dataset.column+'"]:not([hidden])');
-    if(target){window.VitrineGrid.select(target);target.focus({preventScroll:true});target.scrollIntoView({block:'nearest',inline:'nearest'});action?.(target);}
+    if(target){window.VitrineGrid.select(target);target.focus({preventScroll:true});window.VitrineGrid.reveal(target);action?.(target);}
     return target;
   }
   function go(cell,r,c){
@@ -196,22 +229,22 @@
   }
   const normalizedCatalogName = name => (name ?? '').trim().toLowerCase().replace(/\s+/gu,' ');
   function applyCatalogPatch(row,patch){
-    if(!row)return;
+    if(!row || patch.kind==='edo-counterparties')return;
     const active=window.VitrineGrid?.editingCell();
     for(const cell of row.querySelectorAll('td[data-catalog-id]')){
       if(String(cell.dataset.catalogId)!==String(patch.catalogId)||cell===active)continue;
       const bindings=patch.bindings||[];
       if(bindings.length&&!bindings.some(binding=>binding.tableSlug===(document.body.dataset.workspaceTable||'vyvoz')&&binding.fieldKey===cell.dataset.column))continue;
-      if(cell.dataset.column==='A'||(cell.dataset.column==='K'&&document.body.dataset.workspaceTable==='vyvoz'))continue;
+      if(cell.dataset.column==='A'||((cell.dataset.column==='K'||cell.dataset.column==='O')&&document.body.dataset.workspaceTable==='vyvoz'))continue;
       let choices=[];try{choices=JSON.parse(cell.dataset.choices||'[]');}catch{}
       choices=choices.filter(value=>!(patch.aliases||[patch.beforeName,patch.name]).includes(value));
       if(patch.active!==false&&patch.active!==0)choices.push(patch.name);
       cell.dataset.choices=JSON.stringify([...new Set(choices)]);
       const matchesReference=String(cell.dataset.referenceId)===String(patch.id);
-      const pickup=cell.dataset.column==='E'&&document.body.dataset.workspaceTable==='vyvoz';
-      const legacyPickup=pickup&&!Number(cell.dataset.referenceId)&&cell.textContent!==''&&
+      const coloredCatalog=['E','T','U'].includes(cell.dataset.column)&&document.body.dataset.workspaceTable==='vyvoz';
+      const legacyMatch=coloredCatalog&&!Number(cell.dataset.referenceId)&&cell.textContent!==''&&
         [patch.name,patch.beforeName,...(patch.aliases||[])].some(name=>normalizedCatalogName(name)===normalizedCatalogName(cell.textContent));
-      if(pickup&&(matchesReference||legacyPickup)){
+      if(coloredCatalog&&(matchesReference||legacyMatch)){
         if(patch.color)cell.style.setProperty('--catalog-fill',patch.color);
         else cell.style.removeProperty('--catalog-fill');
         window.VitrineDisplay?.paintCell(cell);
@@ -273,8 +306,43 @@
     return refreshTask;
   }
   window.addEventListener('vitrine-editor-closed',()=>{if(manifestDeferred){manifestDeferred=false;refreshManifest().catch(report);}});
+  const fleetDocumentRequests=new WeakMap();
+  function fleetDocumentCell(rowNumber) {
+    return cache.get(Number(rowNumber))?.querySelector('td[data-fleet-documents-visible]');
+  }
+
+  function applyFleetDocuments(rowNumber,value,cleared=false) {
+    const cell=fleetDocumentCell(rowNumber);
+    if (!cell) return;
+    fleetDocumentRequests.delete(cell);
+    if (cell.textContent===value) return;
+    cell.textContent=value;
+    cell.title=cell.dataset.derivedSource+'. '+(value || cell.dataset.emptyLabel+'.');
+    if (value) cell.removeAttribute('aria-label');
+    else cell.setAttribute('aria-label',cell.dataset.emptyLabel);
+    cell.classList.remove('just-saved','just-remote','just-cleared');
+    void cell.offsetWidth;
+    cell.classList.add(cleared ? 'just-cleared' : 'just-saved');
+  }
+
+  async function refreshFleetDocuments(rowNumber,cleared=false) {
+    const cell=fleetDocumentCell(rowNumber);
+    if (!cell) return;
+    const request=Symbol();
+    fleetDocumentRequests.set(cell,request);
+    const url=window.VitrineGridScope.url('/api/vitrine/rows',{ids:[Number(rowNumber)],rowFilters:true,fleetDocuments:true});
+    const response=await fetch(url,{credentials:'same-origin',cache:'no-store'});
+    const data=await response.json();
+    if (!response.ok || typeof data.value!=='string') throw new Error(data.error?.message || 'Не удалось обновить ПД.');
+    if (fleetDocumentCell(rowNumber)===cell && fleetDocumentRequests.get(cell)===request) {
+      applyFleetDocuments(rowNumber,data.value,cleared);
+    }
+  }
+
   window.VitrineRows=Object.freeze({
     refreshManifest,
+    refreshFleetDocuments,
+    applyFleetDocuments,
     exportRows,
     filterDirectory(query){
       requestedSearch=query;
@@ -296,6 +364,8 @@
       for(const item of catalogPatches.values())applyCatalogPatch(row,item);
     },
     activate:(cell,action)=>activate(cell,action).catch(report),
+    updateVehicleDriver,
+    shortDriverName,
     resolveCell:cell=>cache.get(Number(cell.dataset.row))?.querySelector('td[data-column="'+cell.dataset.column+'"]')||cell,
     move(cell,dr,dc,wrap){const columns=visibleColumns();let r=(navigation?.r??rowIndex(cell))+dr,c=(navigation?.c??columns.indexOf(cell.dataset.column))+dc;if(wrap&&c<0){r--;c=columns.length-1;}if(wrap&&c>=columns.length){r++;c=0;}return go(cell,r,c);},
     edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?ids.length+drafts.length-1:0):rowIndex(cell),end?columns.length-1:0);},

@@ -40,9 +40,15 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="csrf-token" content="<?= $escape(csrf_token()) ?>">
   <meta id="vitrine-status-data" name="vitrine-status-data" content="<?= $escape(json_encode(['statuses'=>$data['statuses'] ?? [], 'palette'=>$data['palette'] ?? []], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE)) ?>">
   <meta id="vitrine-order-statuses" content="<?= $escape(wjson(workspace_active_client_order_statuses())) ?>">
+  <?php if (($currentTable['catalogKind']??null)==='fleet-vehicles'): ?>
+  <meta id="vitrine-fleet-edit-groups" content="<?= $escape(wjson(workspace_fleet_edit_groups())) ?>">
+  <?php endif; ?>
   <?php if (!empty($data['dropoffEnabled'])): ?>
   <meta id="vitrine-dropoff-options" content="<?= $escape(wjson($data['dropoffOptions'])) ?>">
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-dropoff.js')) ?>"></script>
+  <?php endif; ?>
+  <?php if (!empty(array_filter($data['fleetOptions']??[]))): ?>
+  <meta id="vitrine-fleet-options" content="<?= $escape(wjson($data['fleetOptions'])) ?>">
   <?php endif; ?>
   <meta id="vitrine-row-manifest" name="vitrine-row-manifest" content="<?= $escape(json_encode($data['rowIds'] ?? [])) ?>">
   <script src="<?= htmlspecialchars(app_url_path('/assets/vitrine-theme.js'),ENT_QUOTES,'UTF-8') ?>"></script>
@@ -187,6 +193,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
       <?php require __DIR__.'/vitrine-directory-toolbar.php'; ?>
     <?php else: ?>
     <section class="vitrine-catalog-toolbar" aria-label="Управление таблицей">
+      <h1>Таблица: <strong><?= $escape($currentTable['title']) ?></strong></h1>
       <div class="vitrine-grid-tools">
         <?php require __DIR__.'/vitrine-archive-filter.php'; ?>
         <?php require __DIR__.'/vitrine-export-button.php'; ?>
@@ -194,16 +201,17 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
     </section>
     <?php endif; ?>
     <?php if ($canManageRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
-    if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php'; ?>
+    if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php';
+    require __DIR__.'/vitrine-clear-cell-dialog.php'; ?>
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
       <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
-        <table class="table vitrine-table<?= !empty($catalogGrid['unloadPoints']) ? ' vitrine-unload-points' : '' ?>">
+        <table class="table vitrine-table<?= !empty($catalogGrid['unloadPoints']) ? ' vitrine-unload-points' : '' ?>"<?= !$directory && $currentTable['slug']==='vyvoz' ? ' data-freeze-columns' : '' ?>>
           <caption class="vitrine-sr-only"><?php if ($directory): ?>Справочник «<?= $escape($currentTable['title']) ?>»<?php else: ?>Последние непустые строки листа <?= $escape($data['sheetTitle'] ?? 'ВЫВОЗ') ?>. Все исходные столбцы.<?php endif; ?></caption>
           <colgroup><col class="vitrine-row-column"><?php foreach ($columns as $column): ?><col class="vitrine-data-column<?= $columnClass($column) ?>" data-column="<?= $escape($column['letter']) ?>"><?php endforeach; ?></colgroup>
           <thead><tr><th scope="col" class="vitrine-row-number">Строка</th>
             <?php foreach ($columns as $column): ?>
-              <th scope="col" data-column="<?= $escape($column['letter']) ?>" class="<?= trim($columnClass($column)) ?>" title="<?= $escape($column['label']) ?>">
+              <th scope="col" data-column="<?= $escape($column['letter']) ?>"<?= ($column['export']??true) ? '' : ' data-no-export' ?> class="<?= trim($columnClass($column)) ?>" title="<?= $escape($column['label']) ?>">
                 <span class="vitrine-column-letter"><?= $escape($column['letter']) ?><?php if (isset($column['derivedSource'])): ?>
                   <span class="vitrine-derived-icon" role="img" tabindex="0" aria-label="<?= $escape($column['derivedSource']) ?>" data-source-label="<?= $escape($column['derivedSource']) ?>">
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7L12 5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19"/></svg>

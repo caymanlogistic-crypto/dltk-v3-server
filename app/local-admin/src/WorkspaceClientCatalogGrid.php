@@ -112,8 +112,11 @@ function workspace_client_grid_endpoint(bool $pasteCheck = false): never {
     if (!is_int($body['row'] ?? null) || !in_array($body['column'] ?? null, ['A','B'], true) || !is_string($body['value'] ?? null)) {
         throw new ApiError('invalid_edit', 'Некорректные данные ячейки справочника.');
     }
-    if ($body['column']==='B' && workspace_manager_catalog_id()) {
-        throw new ApiError('manager_editor','Откройте список менеджеров из ячейки.');
+    if ($body['column']==='B' && ($managerCatalog=workspace_manager_catalog_id())) {
+        if ($pasteCheck || ($body['editAction']??null)!=='clear' || $body['value']!=='') {
+            throw new ApiError('manager_editor','Откройте список менеджеров из ячейки.');
+        }
+        workspace_require('catalog',(string)$managerCatalog,'view');
     }
     $entry = wquery('SELECT id,name,active,revision FROM catalog_entries WHERE id=? AND catalog_id=?', [$body['row'], $catalogId])->fetch();
     if (!$entry || !$entry['active']) throw new ApiError('not_found', 'Активная запись справочника не найдена.', 404);

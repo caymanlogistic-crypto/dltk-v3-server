@@ -66,14 +66,28 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         $values = $body['values'];
         if ($kind==='unload-points') return workspace_unload_save_point($catalogId,$values);
         if ($kind==='managers') return workspace_manager_save($catalogId,$values);
-        $name = workspace_catalog_validate_name($values['A'] ?? '');
+        if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) return workspace_fleet_save($kind,$catalogId,$values);
+        $name = workspace_catalog_validate_name($values[$kind==='edo-operators' ? 'B' : 'A'] ?? '');
         $payload = ['catalogId'=>$catalogId,'name'=>$name];
+        if ($kind==='margin-rules') {
+            $payload['name']=workspace_margin_rule_date($values['A']??'');
+            $payload['marginRule']=$values;
+            $name=$payload['name'];
+        }
+        if ($kind==='edo-counterparties') $payload['edoParty']=workspace_edo_party_profile($values);
+        if ($kind==='edo-operators') $payload['operatorCode']=workspace_edo_operator_code($values['A']??'');
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
-        if (workspace_catalog_has_palette($kind)) $payload['color'] = workspace_directory_color($values['B'] ?? '');
+        if (workspace_catalog_has_palette($kind)) {
+            $color=$values['B']??'';
+            $payload['color']=workspace_is_document_status_catalog($kind) && $color==='' ? null : workspace_directory_color($color);
+        }
         if ($kind === 'clients' && isset($values['B'])) $payload['manager'] = $values['B'];
-        if ($kind === 'carriers' && isset($values['B'])) $payload['logist'] = $values['B'];
+        if ($kind==='carriers') {
+            $payload['carrierDetails']=workspace_carrier_details(['B'=>$values['B']??'','edoId'=>$values['C']??'']);
+            $payload['logist']=$values['E']??'';
+        }
         $previous = wquery('SELECT id,revision FROM catalog_entries WHERE catalog_id=? AND normalized=? AND active=FALSE',
-            [$catalogId,vitrine_status_key($name)])->fetch();
+            [$catalogId,$kind==='edo-counterparties' ? workspace_edo_party_key($name,$payload['edoParty']) : vitrine_status_key($payload['operatorCode']??$name)])->fetch();
         if ($previous) $payload += ['id'=>(int)$previous['id'],'revision'=>(int)$previous['revision']];
         return workspace_catalog_save($payload);
     }
@@ -105,7 +119,12 @@ function workspace_assert_catalog_entry_unused(string $kind, int $catalogId, arr
         workspace_assert_flight_status_unused($catalogId,$entry);
         return;
     }
+    if ($kind==='edo-operators') {
+        workspace_edo_operator_assert_unused($entry['normalized']);
+        return;
+    }
     $id = (int)$entry['id'];
+    if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) workspace_fleet_assert_unused($kind,$entry);
     if ($kind==='managers') {
         $clients=(int)wquery('SELECT COUNT(*) FROM client_manager_links WHERE manager_id=?',[$id])->fetchColumn();
         if ($clients) throw new ApiError('entry_in_use','Менеджер назначен у клиентов: '.$clients.'. Удалить его нельзя.',409);

@@ -87,7 +87,7 @@
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
   button.addEventListener('click', async () => {
-    const columns = Array.from(table.querySelectorAll('thead th[data-column]:not([hidden])'));
+    const columns = Array.from(table.querySelectorAll('thead th[data-column]:not([hidden]):not([data-no-export])'));
     const heading = ['Строка', ...columns.map(column => column.querySelector('.vitrine-column-label').textContent)];
     button.disabled = true;
     try {
