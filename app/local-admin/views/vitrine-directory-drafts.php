@@ -7,6 +7,8 @@ declare(strict_types=1);
 <?php
 (static function (array $columns, array $fields, Closure $escape, Closure $columnClass): void {
     $template = ['rowLabel'=>'','draftSlot'=>true,
+        'readOnly'=>array_fill_keys(array_column(array_filter($columns,static fn(array $column): bool=>($column['export']??true)===false),'letter'),
+            'Сначала сохраните машину и укажите водителя.'),
         'singleLine'=>array_map(static fn(array $field): bool=>$field['singleLine'] ?? true,$fields),
         'choices'=>array_map(static fn(array $field): array=>$field['choices'] ?? [],$fields),
         'draftTypes'=>array_map(static fn(array $field): string=>$field['type'],$fields)];

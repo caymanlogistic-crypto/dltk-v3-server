@@ -194,30 +194,53 @@
   }
   for (const row of drafts.keys()) showDraft(row);
 
+  function validateDraftValue(column,value) {
+    const field=fields[column];
+    if (!field) throw new Error('Сначала добавьте запись в справочник.');
+    if (field.type !== 'password') value = value.trim();
+    else if (value && (Array.from(value).length < 8 || new TextEncoder().encode(value).length > 72)) {
+      throw new Error('Пароль должен содержать от 8 символов и занимать до 72 байт.');
+    }
+    if (value && field.compactInput) {
+      const input=window.VitrineCompactInput[field.compactInput];
+      const raw=input.read(value);
+      if (!raw || !input.valid(raw)) throw new Error(input.invalidMessage);
+      value=input.format(raw);
+    }
+    if (value && field.type === 'choice' && !choice(column,value)) throw new Error('Выберите значение из списка.');
+    const maxLength=field.maxLength ?? 160;
+    if (field.type === 'text' && (Array.from(value).length > maxLength || (field.singleLine !== false && /[\r\n]/.test(value)))) {
+      throw new Error(field.singleLine === false
+        ? `Введите не более ${maxLength} символов.`
+        : `Введите текст одной строкой, до ${maxLength} символов.`);
+    }
+    return value;
+  }
+
   window.VitrineDirectoryDrafts = Object.freeze({
     secret(cell) {
       return drafts.get(cell.closest('[data-draft-slot]')).values[cell.dataset.column];
     },
-    async write(cell,value) {
+    clear(cell) {
+      const row=cell.closest('[data-draft-slot]');
+      const draft=drafts.get(row);
+      if (draft.saving) throw new Error('Дождитесь сохранения строки.');
+      const column=cell.dataset.column;
+      draft.values[column]='';
+      draft.confirmed.delete(column);
+      storeDrafts();
+      showDraft(row);
+    },
+    async write(cell,value,group) {
       const row = cell.closest('[data-draft-slot]');
       const draft = drafts.get(row);
       if (draft.saving) throw new Error('Дождитесь сохранения строки.');
       const column = cell.dataset.column;
-      const field = fields[column];
-      if (!field) throw new Error('Сначала добавьте запись в справочник.');
-      if (field.type !== 'password') value = value.trim();
-      else if (value && (Array.from(value).length < 8 || new TextEncoder().encode(value).length > 72)) {
-        throw new Error('Пароль должен содержать от 8 символов и занимать до 72 байт.');
+      const changes=Object.entries(group ?? {[column]:value}).map(([key,input])=>[key,validateDraftValue(key,input)]);
+      for (const [key,input] of changes) {
+        draft.values[key]=input;
+        if (fields[key].allowEmpty) draft.confirmed.add(key);
       }
-      if (value && field.type === 'choice' && !choice(column,value)) throw new Error('Выберите значение из списка.');
-      const maxLength = field.maxLength ?? 160;
-      if (field.type === 'text' && (Array.from(value).length > maxLength || (field.singleLine !== false && /[\r\n]/.test(value)))) {
-        throw new Error(field.singleLine === false
-          ? `Введите не более ${maxLength} символов.`
-          : `Введите текст одной строкой, до ${maxLength} символов.`);
-      }
-      draft.values[column] = value;
-      if (field.allowEmpty) draft.confirmed.add(column);
       storeDrafts();
       showDraft(row);
       const result = {draft:true,value:cell.textContent,original:'',revision:0,baseHash:''};
@@ -233,7 +256,6 @@
     },
     async finish(cell) {
       showDraft(cell.closest('[data-draft-slot]'));
-      notice('Запись добавлена.','success');
       try {
         await window.VitrineRows.refreshManifest();
         if (cell.classList.contains('is-current-cell') && !window.VitrineGrid.editing()) window.VitrineGrid.reveal(cell);

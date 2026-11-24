@@ -15,15 +15,18 @@
   observer.observe(document.documentElement, {childList:true,subtree:true});
 
   window.VitrineSelect = Object.freeze({
-    create(sourceOptions, initialValue = '', {searchable = false} = {}) {
-      const options = sourceOptions.map(option => ({value:String(option.value ?? ''),label:String(option.label ?? option.value ?? ''),color:option.color}));
+    create(sourceOptions, initialValue = '', {searchable = false, searchKey = value => value, showLabels = false} = {}) {
+      const options = sourceOptions.map(option => ({value:String(option.value ?? ''),label:String(option.label ?? option.value ?? ''),color:option.color,search:String(option.search ?? '')}));
       const id = 'vitrine-select-' + (++sequence);
       const element = document.createElement('div');
       element.className = 'custom-select vitrine-select';
       const field = document.createElement('input');
       field.type = 'text'; field.readOnly = !searchable;
       field.className = 'cs-trigger vitrine-select-field';
-      field.value = String(initialValue);
+      const displayValue = option => showLabels && option.value !== '' ? option.label : option.value;
+      const initialOption = options.find(option=>option.value === String(initialValue));
+      const initialDisplay = initialOption ? displayValue(initialOption) : String(initialValue);
+      field.value = initialDisplay;
       field.placeholder = options.find(option => option.value === '')?.label || 'Не выбран';
       field.setAttribute('role','combobox'); field.setAttribute('aria-autocomplete',searchable ? 'list' : 'none');
       field.setAttribute('aria-haspopup','listbox'); field.setAttribute('aria-controls',id);
@@ -50,7 +53,7 @@
       let visible = options.map((_,index)=>index);
       const nodes = options.map((option,index) => {
         const node = document.createElement('div'); node.className = 'cs-option'; node.id = id + '-' + index;
-        node.setAttribute('role','option'); node.setAttribute('aria-selected',String(option.value === field.value));
+        node.setAttribute('role','option'); node.setAttribute('aria-selected',String(displayValue(option) === field.value));
         if (/^#[0-9a-f]{6}$/i.test(option.color || '')) {
           const chip = document.createElement('span'); chip.className = 'vitrine-select-chip'; window.VitrineDisplay.paint(chip,option.color); chip.setAttribute('aria-hidden','true'); node.append(chip);
         }
@@ -60,11 +63,11 @@
         node.addEventListener('pointermove',() => activate(index));
         list.append(node); return node;
       });
-      function selectedIndex() { return options.findIndex(option => option.value === field.value); }
+      function selectedIndex() { return options.findIndex(option => displayValue(option) === field.value); }
       function activate(index) {
         activeIndex = index;
         nodes.forEach((node,i) => {
-          const selected = options[i].value === field.value;
+          const selected = displayValue(options[i]) === field.value;
           node.classList.toggle('is-selected',selected); node.setAttribute('aria-selected',String(selected));
           node.classList.toggle('is-active',i === index);
         });
@@ -77,9 +80,10 @@
       }
       function filter(query) {
         const term = normalize(query);
+        const key = normalize(searchKey(query));
         visible = [];
         for (const [index,option] of options.entries()) {
-          const match = !term || (option.value !== '' && normalize(option.label).includes(term));
+          const match = !term || (option.value !== '' && (normalize(option.label).includes(term) || (key && normalize(option.search).includes(key))));
           nodes[index].hidden = !match;
           if (match) visible.push(index);
         }
@@ -100,7 +104,7 @@
       }
       function choose(index) {
         if (!options[index]) return;
-        field.value = options[index].value; filtering = false; activate(index); close();
+        field.value = displayValue(options[index]); filtering = false; activate(index); close();
         if (!searchable) field.dispatchEvent(new Event('input',{bubbles:true})); field.dispatchEvent(new Event('change',{bubbles:true}));
         field.focus({preventScroll:true});
       }
@@ -135,7 +139,12 @@
       element.addEventListener('focusout',event => { if (!element.contains(event.relatedTarget)) close(); });
       const instance = {element,close,attached:false}; instances.add(instance);
       function resolveValue() {
-        if (!searchable || field.value === String(initialValue)) return field.value;
+        if (field.value === initialDisplay) return String(initialValue);
+        if (showLabels) {
+          const selected = options[selectedIndex()];
+          if (selected) return selected.value;
+        }
+        if (!searchable) return field.value;
         const query = field.value.trim();
         if (!query) return '';
         const exact = options.find(option=>option.value === query);

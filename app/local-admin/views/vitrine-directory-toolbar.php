@@ -30,6 +30,10 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
     <?php if (!empty($catalogGrid['showAll'])): ?><input type="hidden" name="archive" value="all"><?php endif; ?>
     <?php if (!empty($catalogGrid['clientFilter'])): ?><input type="hidden" name="client" value="<?= (int)$catalogGrid['clientFilter']['id'] ?>"><?php endif; ?>
     <?php require __DIR__.'/vitrine-archive-filter.php'; ?>
+    <?php if (!empty($catalogGrid['partyRoles'])): ?>
+    <div class="vitrine-directory-visibility" data-party-role="<?= $escape($catalogGrid['partyRole']) ?>"
+         data-party-roles="<?= $escape(wjson($catalogGrid['partyRoles'])) ?>"></div>
+    <?php endif; ?>
     <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape($catalogGrid['search']) ?>"
            aria-label="<?= $escape($searchLabel) ?>" placeholder="<?= $escape($searchPlaceholder) ?>">
     <?php require __DIR__.'/vitrine-export-button.php'; ?>

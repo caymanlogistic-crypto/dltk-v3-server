@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/Workspace.php';
+require_once __DIR__.'/WorkspaceTripMargin.php';
+require_once __DIR__.'/WorkspaceMarginRules.php';
 
 function workspace_string(mixed $v): string {if(is_bool($v))return $v?'TRUE':'FALSE';return (string)(visible_value($v)??'');}
 
@@ -14,10 +16,21 @@ function vitrine_catalog_links(array $table): array {
         'I'=>['kind'=>'container-types','invalid'=>'Выберите тип контейнера из справочника.'],
         'K'=>['kind'=>'unload-points','target'=>'L','source'=>'Контакт из справочника точек выгрузки','empty'=>'У точки не указан контакт','invalid'=>'Выберите адрес выгрузки выбранного клиента.'],
         'M'=>['kind'=>'dropoff-points','invalid'=>'Выберите точку сдачи из справочника.'],
+        'O'=>['kind'=>'fleet-vehicles','target'=>'P','source'=>'Из справочника автотранспорта','empty'=>'За машиной не закреплён водитель',
+            'phoneTarget'=>'Q','phoneEmpty'=>'У водителя не указан телефон',
+            'documentsTarget'=>'R','documentsEmpty'=>'У водителя нет данных для ПД','invalid'=>'Выберите машину из справочника автотранспорта.'],
         'S'=>['kind'=>'carriers','target'=>'AM','meta'=>'catalog_logists_','source'=>'Из справочника перевозчиков','empty'=>'У перевозчика не указан логист','invalid'=>'Выберите перевозчика из справочника.'],
+        'T'=>['kind'=>'assignment-statuses','invalid'=>'Выберите статус поручения из справочника.'],
+        'U'=>['kind'=>'etrn-statuses','invalid'=>'Выберите статус ЭТрН из справочника.'],
     ];
+    foreach (workspace_edo_party_links() as $field=>[$role,$target]) {
+        $definitions[$field]=['kind'=>'edo-counterparties','role'=>$role,
+            'invalid'=>'Выберите контрагента с подходящей ролью из справочника.'];
+        if ($target!==null) $definitions[$field]+=['target'=>$target,'source'=>'Из справочника контрагентов ЭДО',
+            'empty'=>'Оператор ЭДО не определён'];
+    }
     $links=[];
-    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','I','K','M','S') ORDER BY c.id",[$table['id']])->fetchAll();
+    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','I','K','M','O','S','T','U','AA','AC','AE','AG') ORDER BY c.id",[$table['id']])->fetchAll();
     foreach($bindings as $binding){
         $field=$binding['field_key'];$definition=$definitions[$field];
         if($definition['kind']===$binding['kind']&&!isset($links[$field])){
@@ -32,17 +45,19 @@ function vitrine_bound_catalog_menu(array $tables): array {
         if($table['slug']!=='vyvoz')continue;
         $links=vitrine_catalog_links($table);
         $items=[];
-        foreach(['E','I','K','M','S'] as $field){
+        foreach(['E','I','K','M','O','S','T','U'] as $field){
             $link=$links[$field]??null;
             if(!$link||!workspace_can('catalog',(string)$link['id'],'view',$table['id']))continue;
             $title=wquery('SELECT title FROM catalogs WHERE id=?',[$link['id']])->fetchColumn();
             $items[]=['id'=>$link['id'],'title'=>$title];
         }
-        $additional=wquery("SELECT c.id,c.title FROM catalogs c JOIN catalog_bindings b ON c.id=b.catalog_id
+        $additional=wquery("SELECT c.id,c.title,c.kind FROM catalogs c JOIN catalog_bindings b ON c.id=b.catalog_id
             WHERE b.table_id=? AND b.field_key='' AND c.kind IN ('transport','drivers-detailed','drivers-legacy',
-                'terminals-detailed','application-contacts','application-checks','etrn-carriers') ORDER BY c.title,c.id",
+                'terminals-detailed','application-contacts','application-checks','etrn-carriers','edo-operators','margin-rules','edo-counterparties') ORDER BY c.title,c.id",
             [$table['id']])->fetchAll();
+        $fleetEnabled=isset($links['O']);
         foreach($additional as $catalog){
+            if ($fleetEnabled && in_array($catalog['kind'],['transport','drivers-detailed','drivers-legacy'],true)) continue;
             if(workspace_can('catalog',(string)$catalog['id'],'view',$table['id'])) $items[]=$catalog;
         }
         return $items;
@@ -52,13 +67,20 @@ function vitrine_bound_catalog_menu(array $tables): array {
 
 function vitrine_catalog_values(array $link): array {
     if($link['kind']==='clients')return workspace_client_manager_values($link['id']);
+    if ($link['kind']==='edo-counterparties') {
+        return array_map(static fn(array $profile): string=>workspace_carrier_edo_operator($profile['F']),workspace_edo_party_profiles($link['id']));
+    }
     $map=json_decode((string)wquery('SELECT value FROM workspace_meta WHERE `key`=?',[$link['meta'].$link['id']])->fetchColumn(),true);
     return is_array($map)?$map:[];
 }
 
-function vitrine_find_catalog_entry(int $catalog,string $name,bool $includeArchived=false): array|false {
+function vitrine_catalog_uses_cell_fill(string $kind): bool {
+    return $kind==='terminals-main' || workspace_is_document_status_catalog($kind);
+}
+
+function vitrine_find_catalog_entry(int $catalog,string $name,bool $includeArchived=false,?string $normalized=null): array|false {
     if($name==='')return false;
-    $normalized=vitrine_catalog_key($name);
+    $normalized??=vitrine_catalog_key($name);
     $entry=wquery('SELECT id,name,color FROM catalog_entries WHERE catalog_id=? AND normalized=? AND (active=TRUE OR ?=TRUE)',[$catalog,$normalized,(int)$includeArchived])->fetch();
     if($entry||!$includeArchived)return $entry;
     $alias=workspace_client_catalog_aliases($catalog)[$normalized]??0;
@@ -81,14 +103,27 @@ function vitrine_find_unload_point(array $table,array $record,array $values,int 
     return null;
 }
 
-function vitrine_unload_original_contact(array $record): string {
+function vitrine_catalog_original_value(array $record,string $column): string {
     $baseline=json_decode($record['baseline_json'],true);
     $metadata=$record['metadata_zlib']?blob_json($record['metadata_zlib']):[];
-    return workspace_string(display_cell($metadata[column_number('L')]??[])??($baseline['L']??''));
+    return workspace_string(display_cell($metadata[column_number($column)]??[])??($baseline[$column]??''));
+}
+
+function vitrine_derived_catalog_columns(array $links): array {
+    $columns=array_column(array_filter($links,static fn(array $link): bool=>isset($link['target'])),null,'target');
+    foreach ($links as $link) {
+        foreach (['phone','documents'] as $field) {
+            if (isset($link[$field.'Target'])) $columns[$link[$field.'Target']]=['source'=>$link['source'],'empty'=>$link[$field.'Empty']];
+        }
+    }
+    return $columns;
 }
 
 function vitrine_require_manual_field(array $table,string $column): void {
-    if(in_array($column,array_column(vitrine_catalog_links($table),'target'),true)){
+    if ($column==='Z' && workspace_trip_margin_enabled($table)) {
+        throw new ApiError('derived_field','Маржа рассчитывается автоматически. Эту ячейку нельзя редактировать.',403);
+    }
+    if (isset(vitrine_derived_catalog_columns(vitrine_catalog_links($table))[$column])) {
         throw new ApiError('derived_field','Данные берутся из справочника. Эту ячейку нельзя редактировать.',403);
     }
 }
@@ -97,9 +132,22 @@ function vitrine_catalog_options(array $t,array $links): array {
     $boundChoices=[];$boundCatalogs=[];$catalogVisibility=[];$entriesByName=[];
     $catalogIds=array_column($links,'id')?:[0];
     $catalogSlots=implode(',',array_fill(0,count($catalogIds),'?'));
+    $partyOptions=[];
     foreach(wquery("SELECT b.field_key,c.id AS catalog_id,e.id AS entry_id,e.name,e.normalized,e.active FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id LEFT JOIN catalog_entries e ON e.catalog_id=c.id AND (e.active=TRUE OR c.kind IN ('clients','terminals-main')) WHERE b.table_id=? AND b.field_key NOT IN ('','A') AND c.kind<>'unload-points' AND (?=TRUE OR c.id IN ($catalogSlots)) ORDER BY e.id",[$t['id'],(int)$t['is_demo'],...$catalogIds])->fetchAll() as $option){
         $key=$option['field_key'];$catalogId=(int)$option['catalog_id'];
         $linked=($links[$key]['id']??0)===$catalogId;
+        if ($linked && $links[$key]['kind']==='edo-counterparties') {
+            if (!($catalogVisibility[$catalogId]??=workspace_can('catalog',(string)$catalogId,'view',$t['id']))) continue;
+            $boundCatalogs[$key]=$catalogId;
+            $boundChoices[$key]??=[];
+            $profile=workspace_edo_party_profiles($catalogId)[(int)$option['entry_id']]??[];
+            if ($option['active'] && ($profile[$links[$key]['role']]??'')==='Да') {
+                $label=workspace_edo_party_label($option['name'],$profile);
+                $entriesByName[$key][vitrine_catalog_key($label)]=(int)$option['entry_id'];
+                $partyOptions[$key][]=$label;
+            }
+            continue;
+        }
         if($linked&&$option['entry_id']!==null)$entriesByName[$key][$option['normalized']]=(int)$option['entry_id'];
         if($linked&&!($catalogVisibility[$catalogId]??=workspace_can('catalog',(string)$catalogId,'view',$t['id'])))continue;
         if(!$linked&&(!$t['is_demo']||!$option['active']))continue;
@@ -107,8 +155,28 @@ function vitrine_catalog_options(array $t,array $links): array {
         $boundChoices[$key]??=[];
         if($option['active'])$boundChoices[$key][]=$option['name'];
     }
+    if (isset($links['O'],$boundChoices['O'])) {
+        $vehicles=workspace_fleet_entries('fleet-vehicles',$links['O']['id']);
+        $driverCatalog=workspace_fleet_catalog('fleet-drivers');
+        $canViewDriver=$driverCatalog && workspace_can('catalog',(string)$driverCatalog,'view',$t['id']);
+        $available=array_fill_keys($boundChoices['O'],true);
+        $boundChoices['O']=[];
+        foreach ($vehicles as $vehicle) {
+            $plate=$vehicle['name'];
+            if (!isset($available[$plate]) || workspace_fleet_trailer_key($plate)) continue;
+            $trailer=$vehicle['trailer_plate']??'';
+            $value=workspace_fleet_trip_vehicle_label($plate,$trailer);
+            $name=$canViewDriver ? trim(implode(' ',[$vehicle['surname']??'',$vehicle['given_name']??'',$vehicle['patronymic']??''])) : '';
+            $boundChoices['O'][]=['value'=>$value,'driver'=>$name,
+                'search'=>workspace_fleet_plate_key($plate).' '.workspace_fleet_plate_key($trailer)];
+        }
+    }
     foreach(['B','E'] as $key){
         if(isset($links[$key]))$entriesByName[$key]=($entriesByName[$key]??[])+workspace_client_catalog_aliases($links[$key]['id']);
+    }
+    foreach ($partyOptions as $key=>$labels) {
+        natcasesort($labels);
+        $boundChoices[$key]=array_values($labels);
     }
     return [$boundChoices,$boundCatalogs,$entriesByName];
 }
