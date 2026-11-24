@@ -88,7 +88,8 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $refs=[];if($records){$ids=array_column($records,'id');foreach(wquery('SELECT rr.record_id,rr.field_key,e.id,e.catalog_id,e.name FROM record_references rr JOIN catalog_entries e ON e.id=rr.entry_id WHERE rr.record_id IN ('.implode(',',array_fill(0,count($ids),'?')).')',$ids)->fetchAll() as $ref)$refs[(int)$ref['record_id']][$ref['field_key']]=['id'=>(int)$ref['id'],'catalogId'=>(int)$ref['catalog_id'],'name'=>$ref['name']];}
     $rows=[];foreach($records as $r){
         $values=json_decode($r['values_json'],true);$baseline=json_decode($r['baseline_json'],true);$raw=$r['metadata_zlib']?blob_json($r['metadata_zlib']):[];$kinds=[];$choices=[];
-        $margin=$showMargin ? workspace_trip_margin($values) : null;
+        $tripAmounts=$showMargin ? array_intersect_key($values,['X'=>true,'Y'=>true]) : [];
+        $tripOriginals=$showMargin ? array_intersect_key($baseline,['X'=>true,'Y'=>true]) : [];
         $dropoffDetails=$dropoffCatalog ? ($values['dropoffDetails']??[]) : null;
         $orderStatus=$orderStatusEnabled ? (string)($values['clientOrderStatus']??'') : null;
         unset($values['clientOrderStatus'],$values['dropoffDetails']);
@@ -125,7 +126,16 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
                 $values[$key]=vitrine_compact_input($values[$key],$kind)??$values[$key];
             }
         }
-        if ($margin!==null) $values['Z']=$margin;
+        if ($showMargin) {
+            foreach (['X','Y'] as $key) {
+                $initial=workspace_trip_amount_minor($tripOriginals[$key]??null);
+                if ($initial!==null) $baseline[$key]=workspace_trip_amount_label($initial);
+                $source=!empty($rowEdits[$key]['active']) ? ($values[$key]??null) : ($tripAmounts[$key]??$values[$key]??null);
+                $amount=workspace_trip_amount_minor($source);
+                if ($amount!==null) $values[$key]=workspace_trip_amount_label($amount);
+            }
+            $values['Z']=workspace_trip_margin($values);
+        }
         foreach($dependentLinks as $source=>$link){
             if ($link['kind']==='edo-counterparties') {
                 $ref=$refs[(int)$r['id']][$source]??null;

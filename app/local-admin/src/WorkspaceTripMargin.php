@@ -26,9 +26,12 @@ function workspace_trip_margin(array $values): string {
     $income=workspace_trip_amount_minor($values['X']??null);
     $cost=workspace_trip_amount_minor($values['Y']??null);
     if ($income===null || $cost===null) return '';
-    $difference=$income-$cost;
-    $absolute=abs($difference);
+    return workspace_trip_amount_label($income-$cost);
+}
+
+function workspace_trip_amount_label(int $minor): string {
+    $absolute=abs($minor);
     $whole=vitrine_compact_input((string)intdiv($absolute,100),'money');
     $fraction=$absolute%100;
-    return ($difference<0 ? '-' : '').$whole.($fraction ? ','.str_pad((string)$fraction,2,'0',STR_PAD_LEFT) : '');
+    return ($minor<0 ? '-' : '').$whole.($fraction ? ','.str_pad((string)$fraction,2,'0',STR_PAD_LEFT) : '');
 }
