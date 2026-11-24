@@ -71,9 +71,9 @@ function vitrine_require_compact_integer_range(string $value,string $kind): void
     throw new ApiError($kind.'_out_of_range',$message);
 }
 
-function vitrine_require_current_slot_date(string $normalized): void {
-    if (vitrine_slot_date_is_past($normalized)) {
-        throw new ApiError('slot_date_past','Дата слота не может быть раньше сегодняшней.');
+function vitrine_require_slot_date_limit(string $normalized): void {
+    if (vitrine_slot_date_too_old($normalized)) {
+        throw new ApiError('slot_date_past','Дата слота не может быть старше 30 календарных дней.');
     }
 }
 
@@ -103,7 +103,7 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
     $accepted = $compact ? $normalized !== null
         : vitrine_clipboard_accepts($body['value'],$kind,$target['choices'][$body['column']]??[]);
     if (!$accepted) throw new ApiError('clipboard_value_mismatch','Значение не подходит для формата «'.$labels[$kind].'» или заданного списка. Вставка отменена.');
-    if ($kind === 'slot') vitrine_require_current_slot_date(vitrine_slot_input($body['value']));
+    if ($kind === 'slot') vitrine_require_slot_date_limit(vitrine_slot_input($body['value']));
 }
 
 function vitrine_paste_check(): never {
@@ -184,7 +184,7 @@ function vitrine_save_cell(): never {
         if ($normalized === null) {
             throw new ApiError('invalid_slot','Введите 10 цифр: часы начала и окончания от 00 до 23 и действительную дату ДДММГГ.');
         }
-        vitrine_require_current_slot_date($normalized);
+        vitrine_require_slot_date_limit($normalized);
         $body['value'] = $normalized;
     }
     if (!$body['reset']) {
