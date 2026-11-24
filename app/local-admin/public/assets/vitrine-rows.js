@@ -30,6 +30,7 @@
   const bufferAfter=compactWindow ? 12 : 20;
   const refillMargin=compactWindow ? 3 : 5;
   const cachedPages=compactWindow ? 5 : 3;
+  let windowStartPage=0,windowEndPage=-1;
   const showVehicleDriver=document.body.dataset.workspaceTable==='vyvoz' && !document.body.hasAttribute('data-vitrine-catalog');
   function shortDriverName(driver) {
     const parts=driver.replaceAll('.',' ').trim().split(/\s+/u);
@@ -71,7 +72,12 @@
   table.setAttribute('aria-colcount',String(table.querySelectorAll('thead th').length));
   function report(error){window.PlanexNotifications.show({tone:'danger',message:error.message||'Не удалось загрузить строки. Повторите прокрутку.'});}
   function prune(){
-    while(loaded.size>cachedPages){const page=loaded.keys().next().value;loaded.delete(page);for(const id of ids.slice(page*pageSize,(page+1)*pageSize)){const row=cache.get(id);if(row&&!row.isConnected)cache.delete(id);}}
+    // A zoomed-out viewport can need more pages than the usual cache limit.
+    const limit=Math.max(cachedPages,windowEndPage-windowStartPage+2);
+    for (const number of loaded.keys()) {
+      if (loaded.size<=limit) break;
+      if (number<windowStartPage || number>windowEndPage) loaded.delete(number);
+    }
     for(const [id,row] of cache)if(!row.isConnected&&!loaded.has(Math.floor(positions.get(String(id))/pageSize)))cache.delete(id);
   }
   async function fetchRows(wanted, search){
@@ -119,7 +125,7 @@
       if(missing.size){
         ids=ids.filter(id=>!missing.has(id));positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         for(const id of missing)cache.delete(id);
-        loaded.clear();manifestVersion++;generation++;navigationGeneration++;navigation=null;first=last=-1;
+        loaded.clear();pending.clear();manifestVersion++;generation++;navigationGeneration++;navigation=null;first=last=-1;
         setCounts();table.removeAttribute('aria-busy');
         queue();return;
       }
@@ -131,17 +137,20 @@
   function stamp(spacer,size){spacer.hidden=size===0;spacer.firstElementChild.style.setProperty('--spacer-height',size+'px');}
   async function render(forceIndex=null){
     if(window.VitrineGrid?.editing())return;
-    if(!ids.length){body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);first=last=0;table.removeAttribute('aria-busy');return;}
+    if(!ids.length){body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');return;}
     const visible=Math.max(1,Math.ceil((scroll.clientHeight-headHeight)/height)),viewportStart=forceIndex??Math.floor(scroll.scrollTop/height),viewportEnd=Math.min(ids.length,viewportStart+visible+1);
     if(first>=0&&(first===0||viewportStart>=first+refillMargin)&&(last===ids.length||viewportEnd<=last-refillMargin))return;
     const start=Math.max(0,Math.min(ids.length-1,viewportStart-bufferBefore));
     const end=Math.min(ids.length,compactWindow ? viewportEnd+bufferAfter : start+visible+bufferBefore+bufferAfter);
     const ticket=++generation;
+    windowStartPage=Math.floor(start/pageSize);
+    windowEndPage=Math.floor((end-1)/pageSize);
     table.setAttribute('aria-busy','true');
     try{
-      const needed=[];for(let p=Math.floor(start/pageSize);p<=Math.floor((end-1)/pageSize);p++)needed.push(page(p));
+      const needed=[];for(let p=windowStartPage;p<=windowEndPage;p++)needed.push(page(p));
       await Promise.all(needed);if(ticket!==generation||window.VitrineGrid?.editing())return;
       const rows=ids.slice(start,end).map(id=>cache.get(id));
+      if(rows.some(row=>!row))throw new Error('Не удалось загрузить все строки окна. Повторите прокрутку.');
       const mountStarted=performance.now();
       window.VitrineDisplay?.prepareRows(rows.filter(row=>!row.isConnected));
       rows.forEach((row,index)=>row.setAttribute('aria-rowindex',String(start+index+2)));
