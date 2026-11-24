@@ -6,6 +6,12 @@ Runtime contract: [workspace] INI, APP_URL/WS_URL/DB_HOST/DB_PORT/DB_NAME/DB_USE
 
 Portable QA: all PHP and JavaScript syntax checks,66 format checks and9 HTTP integration checks passed locally using a dedicated temporary server process. The latter exercised health, distinct cookie, account login,6000-row grid,5 tables/6 roles, configured WebSocket URL, Host/Origin rejection and removed legacy route. No business values were written. Actual Linux deployment/performance remain separate acceptance steps.
 
+## Страница входа
+
+Страница входа использует верхнюю панель Витрины, шрифт IBM Plex Sans и общие компоненты формы, полей и кнопок. Оформление учитывает последний цветовой пресет браузера. Ошибка входа выводится сверху через PlanexNotifications.
+
+Пример для сверки — маршрут /login. В изолированной серверной копии браузерная проверка подтвердила расположение элементов, шрифт, обязательное поле пароля и уведомление при неверном входе по Enter.
+
 ## Ночной цветовой пресет
 
 «Отображение данных → Цветовые пресеты → Ночной» включает тёмный фон таблиц, справочников, форм, журнала и страницы входа. Пресет хранится в общей настройке пользователя и применяется до отрисовки авторизованной страницы. Страница входа использует последний режим этого браузера.
