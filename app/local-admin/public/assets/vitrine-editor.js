@@ -693,7 +693,7 @@
     window.dispatchEvent(new CustomEvent('vitrine-cell-selected'));
   }
   function eventCell(event) {
-    if (event.target.closest('.vitrine-derived-icon')) return null;
+    if (event.target.closest('.vitrine-derived-icon, [data-column-pin]')) return null;
     return event.target === document.body || event.target.closest('.vitrine-table-scroll') ? selected : null;
   }
   select(selected);

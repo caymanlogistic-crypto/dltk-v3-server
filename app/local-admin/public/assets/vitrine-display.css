@@ -11,6 +11,15 @@
 .vitrine .vitrine-table thead th[data-column] { position:relative; }
 .vitrine .display-column-resize { position:absolute; top:0; right:0; bottom:0; width:7px; cursor:col-resize; touch-action:none; z-index:1; }
 .vitrine .display-column-resize:hover,.vitrine .display-column-resize:focus-visible { background:var(--accent-line); }
+.vitrine .display-column-pin {
+  position:absolute; inset-block-start:5px; inset-inline-end:8px;
+  display:grid; place-items:center; inline-size:22px; block-size:22px; padding:0;
+  border:0; border-radius:2px; background:transparent; color:var(--text-muted); cursor:pointer;
+}
+.vitrine .display-column-pin svg { inline-size:13px; block-size:13px; }
+.vitrine .display-column-pin:hover,.vitrine .display-column-pin:focus-visible { background:var(--surface-muted); color:var(--text-main); }
+.vitrine .display-column-pin[aria-pressed="true"] { color:var(--accent); }
+.vitrine .display-column-pin[aria-pressed="true"] svg { fill:currentColor; }
 .vitrine.is-column-resizing,.vitrine.is-column-resizing * { cursor:col-resize !important; user-select:none !important; }
 .vitrine .display-order-row .btn { min-width:30px; padding:3px 8px; }
 .vitrine .display-preset-list { display:grid; gap:10px; }
@@ -25,8 +34,7 @@
 .vitrine .display-line-sample > span { padding:6px 9px; font:500 12px var(--font); background:var(--table-row); border-right:1px solid var(--preview-line,var(--line-soft)); border-bottom:1px solid var(--preview-line,var(--line-soft)); }
 .vitrine .display-line-sample > .display-line-heading { background:var(--surface-muted); }
 .vitrine .vitrine-table:is([data-line-preset="dark"],[data-line-preset="black"]) :is(td,th) { border-color:var(--vitrine-grid-line); }
-.vitrine .vitrine-table[data-frozen-count="1"] [data-frozen-column="1"],
-.vitrine .vitrine-table[data-frozen-count="2"] [data-frozen-column="2"] {
+.vitrine .vitrine-table [data-frozen-edge] {
   border-inline-end:3px solid var(--vitrine-frozen-line,var(--vitrine-grid-line,var(--tone-b0a89c)));
 }
 .vitrine .vitrine-display-dialog .modal-foot { gap:8px; flex-wrap:wrap; }
