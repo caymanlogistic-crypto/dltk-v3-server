@@ -14,7 +14,9 @@
       await navigator.clipboard.writeText(clipboardText);
     } catch {
       window.PlanexNotifications.show({tone:'danger',message:'Не удалось скопировать данные в буфер обмена.'});
+      return;
     }
+    window.PlanexNotifications.show({tone:'success',message:'Скопировано в буфер обмена.'});
   });
 
   document.addEventListener('click', async event => {
