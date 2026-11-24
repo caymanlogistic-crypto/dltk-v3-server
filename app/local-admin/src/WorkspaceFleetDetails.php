@@ -28,17 +28,6 @@ function workspace_fleet_write_trailer(int $vehicle,array $trailer): void {
         ON DUPLICATE KEY UPDATE trailer_key=VALUES(trailer_key)',[$vehicle,$trailer['key']]);
 }
 
-function workspace_fleet_can_documents(): bool {
-    $userId=workspace_current_user()['id'];
-    if (PHP_SAPI==='cli-server'
-        && in_array($_SERVER['REMOTE_ADDR']??'',['127.0.0.1','::1'],true)
-        && is_file(private_dir().'/.development-fleet-documents')) {
-        return true;
-    }
-    return (bool)wquery("SELECT 1 FROM user_roles u JOIN roles r ON r.id=u.role_id
-        WHERE u.user_id=? AND r.code='superadmin'",[$userId])->fetchColumn();
-}
-
 function workspace_fleet_trip_vehicle_label(string $tractor,?string $trailer): string {
     return $trailer ? $tractor.' / '.$trailer : $tractor;
 }
@@ -136,7 +125,6 @@ function workspace_fleet_document_date(string $value,bool $fullYear=false): ?str
 }
 
 function workspace_fleet_document_cell(array $body,bool $pasteCheck): never {
-    if (!workspace_fleet_can_documents()) throw new ApiError('forbidden','Документы доступны суперадмину.',403);
     $driverCatalog=(string)workspace_fleet_catalog('fleet-drivers');
     workspace_require('catalog',$driverCatalog,'view');
     workspace_require('catalog',$driverCatalog,'edit');

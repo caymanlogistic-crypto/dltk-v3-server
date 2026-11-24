@@ -3,8 +3,9 @@ declare(strict_types=1);
 
 function workspace_fleet_trip_documents_can_view(int $tableId): bool {
     static $byTable=[];
-    return $byTable[$tableId]??=(workspace_fleet_can_documents()
-        && workspace_can('catalog',(string)workspace_fleet_catalog('fleet-drivers'),'view',$tableId)
+    if (isset($byTable[$tableId])) return $byTable[$tableId];
+    $catalogId=workspace_fleet_catalog('fleet-drivers');
+    return $byTable[$tableId] = ($catalogId>0 && workspace_can('catalog',(string)$catalogId,'view',$tableId)
         && workspace_can('field','R','view',$tableId));
 }
 

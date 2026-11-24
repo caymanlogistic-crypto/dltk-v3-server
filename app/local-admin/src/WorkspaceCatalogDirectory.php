@@ -61,9 +61,8 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $managers=$kind==='managers';
     $fleet=in_array($kind,WORKSPACE_FLEET_KINDS,true);
     $driverCatalog=$kind==='fleet-vehicles' ? workspace_fleet_catalog('fleet-drivers') : 0;
-    $showDocuments=$driverCatalog && workspace_fleet_can_documents() && workspace_can('catalog',(string)$driverCatalog,'view');
+    $showDocuments=$driverCatalog && workspace_can('catalog',(string)$driverCatalog,'view');
     $canEditDocuments=$showDocuments && $canEdit && workspace_can('catalog',(string)$driverCatalog,'edit');
-    $canViewDrivers=$driverCatalog && workspace_can('catalog',(string)$driverCatalog,'view');
     $partyRoles=$kind==='edo-counterparties' ? workspace_edo_party_roles() : [];
     $partyProfiles=$partyRoles ? workspace_edo_party_profiles($id) : [];
     $roleFilter=is_string($_GET['partyRole']??null) && isset($partyRoles[$_GET['partyRole']]) ? $_GET['partyRole'] : '';
@@ -110,7 +109,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         if (workspace_catalog_has_palette($kind)) $values['B'] = $palette[$entry['color']] ?? '';
         if ($kind==='clients') $values['B'] = $clientManagers[$entryId] ?? '';
         if ($kind==='carriers') $values+=($carrierValues[$entryId]??workspace_carrier_values([]));
-        if ($driverCatalog && !$canViewDrivers) {
+        if ($driverCatalog && !$showDocuments) {
             $values=array_replace($values,array_fill_keys(array_keys(workspace_fleet_driver_columns()),''));
         }
         if ($kind==='fleet-vehicles') unset($values['C']);
@@ -149,13 +148,13 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
                 $row['singleLine'][$column]=true;
                 $row['kinds'][$column]='fleet-document';
                 $row['edits'][$column]=['revision'=>$documentState['revision']??0,'baseHash'=>$documentState['baseHash']??''];
-                $row['readOnly'][$column]=$documentState['readOnly']??'Документы доступны суперадмину.';
+                $row['readOnly'][$column]=$documentState['readOnly']??'Нет доступа к документам водителя.';
             }
             $row['kinds']['P']='fleet-driver';
             $row['edits']['P']=['revision'=>(int)$entry['revision']];
             if ($canEditDocuments && !$archive) $row['readOnly']['P']='';
             foreach (array_keys(workspace_fleet_driver_columns()) as $column) {
-                if ($canViewDrivers) $row['kinds'][$column]='fleet-driver';
+                if ($showDocuments) $row['kinds'][$column]='fleet-driver';
                 else $row['readOnly'][$column]='Нет доступа к данным водителя.';
             }
         }
@@ -221,7 +220,6 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         }
         $birth=null;
         if ($isFleet && array_key_exists('P',$changes)) {
-            if (!workspace_fleet_can_documents()) throw new ApiError('forbidden','Дата рождения доступна суперадмину.',403);
             $driverCatalog=(string)workspace_fleet_catalog('fleet-drivers');
             workspace_require('catalog',$driverCatalog,'view');
             workspace_require('catalog',$driverCatalog,'edit');
@@ -249,15 +247,14 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         $baseHash=workspace_catalog_directory_hash($id,$body['row']);
         if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
         $result=workspace_fleet_save($kind,$id,$values,$body['row'],$body['revision'],$birth);
-        if ($kind==='fleet-vehicles' && !workspace_can('catalog',(string)workspace_fleet_catalog('fleet-drivers'),'view')) {
-            $result['values']=array_diff_key($result['values'],workspace_fleet_driver_columns());
-        }
-        if ($kind==='fleet-vehicles' && workspace_fleet_can_documents()) {
+        if ($isFleet) {
             $driverCatalog=(string)workspace_fleet_catalog('fleet-drivers');
             if (workspace_can('catalog',$driverCatalog,'view')) {
                 $driver=workspace_fleet_driver_id($body['row']);
                 $result['fleetBirthEditable']=workspace_can('catalog',$driverCatalog,'edit');
                 $result['fleetDocuments']=workspace_fleet_document_state($body['row'],$driver,$result['fleetBirthEditable']);
+            } else {
+                $result['values']=array_diff_key($result['values'],workspace_fleet_driver_columns());
             }
         }
         $value=$result['values'][$column]??$result['fleetDocuments']['values'][$column]??'';
