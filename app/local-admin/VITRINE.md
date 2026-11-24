@@ -6,6 +6,12 @@ Runtime contract: [workspace] INI, APP_URL/WS_URL/DB_HOST/DB_PORT/DB_NAME/DB_USE
 
 Portable QA: all PHP and JavaScript syntax checks,66 format checks and9 HTTP integration checks passed locally using a dedicated temporary server process. The latter exercised health, distinct cookie, account login,6000-row grid,5 tables/6 roles, configured WebSocket URL, Host/Origin rejection and removed legacy route. No business values were written. Actual Linux deployment/performance remain separate acceptance steps.
 
+## Страница входа
+
+Страница `/login` использует фирменную верхнюю панель `vitrine-topbar`, шрифт IBM Plex Sans, компоненты `modal-head`, `field-input`, `modal-foot` и `btn-primary`. Компактная форма размещается по центру рабочей области и сужается вместе с окном. Ошибки входа показываются сверху через `PlanexNotifications`.
+
+Пример сверки. Откройте [локальную страницу входа](http://127.0.0.1:33385/login). Во встроенном браузере проверены форма при ширине 360 px, сообщение о неверном логине, сохранение ввода и переход в «Автовывоз» по Enter.
+
 ## Горизонтальное меню Витрины
 
 Верхняя навигация использует стандартные классы `nav-item`, `nav-label`, `nav-icon`, `nav-chevron` и `nav-sub-item`. Типографика и состояния берутся из общей Витрины. У пунктов первого уровня IBM Plex Sans, 12,5 px, 600 и высота 34 px. У вложенных пунктов 12 px и обычное начертание уровня меню. Раскладка отличается направлением: верхний уровень идёт в один ряд, подписи не переносятся, а на узкой ширине верхняя навигация прокручивается горизонтально.
