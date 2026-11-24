@@ -1,4 +1,5 @@
-/* Extracted unchanged from design/demo/index.html. */
+/* Shared Vitrine styles. */
+@import url("vitrine-night.css");
 /* Смысловые основы палитры. Расчётные оттенки сохраняют объём и исходное оформление. */
 :root {
 
