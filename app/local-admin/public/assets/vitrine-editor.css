@@ -69,7 +69,7 @@
 }
 .vitrine-trip-driver-button[hidden] { display:none; }
 .vitrine-trip-driver-button:is(:hover,:focus-visible) {
-  color:var(--text-main); background:var(--surface-strong); border-color:var(--line);
+  color:#fff; background:var(--accent); border-color:var(--accent);
 }
 .vitrine-trip-driver-dialog h3 { margin:0; font:inherit; font-weight:700; }
 .vitrine-trip-driver-dialog dl {
