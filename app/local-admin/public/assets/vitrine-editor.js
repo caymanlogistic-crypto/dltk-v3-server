@@ -7,6 +7,19 @@
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
   const fleetGroups = Object.entries(JSON.parse(document.getElementById('vitrine-fleet-edit-groups')?.content || '{}'));
+  const sharedOptionsMeta = document.getElementById('vitrine-shared-options');
+  const sharedOptions = JSON.parse(sharedOptionsMeta?.content || '{}');
+  const sharedOptionCatalogs = JSON.parse(sharedOptionsMeta?.dataset.catalogs || '{}');
+  function patchSharedOptions(patch) {
+    for (const [column,catalogId] of Object.entries(sharedOptionCatalogs)) {
+      if (Number(catalogId)!==Number(patch.catalogId)) continue;
+      if (patch.bindings?.length && !patch.bindings.some(binding=>binding.tableSlug==='vyvoz' && binding.fieldKey===column)) continue;
+      const aliases = new Set(patch.aliases || [patch.beforeName,patch.name]);
+      const options = (sharedOptions[column] || []).filter(option=>!aliases.has(option));
+      if (patch.active!==false && patch.active!==0) options.push(patch.name);
+      sharedOptions[column] = options;
+    }
+  }
   const orderLabels = Object.fromEntries(Object.entries(orderStatuses).map(([code,status])=>[status.label,code]));
   const normalizeContainer = value => value.replace(/[ \t\u00a0\u202f-]+/g,'').toUpperCase();
   function isUnloadingCell(cell) {
@@ -433,7 +446,7 @@
     let choices = [];
     try {
       const shared=cell.dataset.sharedChoices;
-      choices=shared ? JSON.parse(document.getElementById('vitrine-fleet-options')?.content || '{}')[shared]
+      choices=shared ? sharedOptions[shared]
         : JSON.parse(cell.dataset.choices || '[]');
     } catch {}
     if (!Array.isArray(choices)) choices = [];
@@ -816,7 +829,7 @@
     const typedContainer = cell.dataset.kind === 'container' && /^[a-z]$/i.test(event.key);
     const typedType = isContainerTypeCell(cell) && /^[\p{L}0-9]$/u.test(event.key);
     const typedCatalog = (isUnloadingCell(cell) || isDropoffCell(cell) || isEdoPartyCell(cell)) && /^[\p{L}0-9]$/u.test(event.key);
-    if ((typedType || typedCatalog || ((typedText || typedContainer) && cell.dataset.choices === '[]'))
+    if ((typedType || typedCatalog || ((typedText || typedContainer) && (cell.dataset.choices ?? '[]') === '[]'))
       && !cell.hasAttribute('data-required-choice')
       && !cell.hasAttribute('data-readonly-cell') && !event.defaultPrevented && !event.isComposing
       && (!event.ctrlKey && !event.metaKey && !event.altKey || event.getModifierState('AltGraph'))) {
@@ -912,5 +925,5 @@
   });
   document.querySelector('.vitrine-table-scroll')?.addEventListener('scroll', position);
   window.addEventListener('resize', fitEditor);
-  window.VitrineGrid=Object.freeze({select,reveal,positionPanel,editing:()=>Boolean(active || clearTarget),editingCell:()=>active?.cell||clearTarget,applyRemote});
+  window.VitrineGrid=Object.freeze({select,reveal,positionPanel,editing:()=>Boolean(active || clearTarget),editingCell:()=>active?.cell||clearTarget,applyRemote,patchSharedOptions});
 })();

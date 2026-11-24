@@ -24,7 +24,12 @@
   }
   const positions=new Map(ids.map((id,index)=>[String(id),index]));
   const remotePatches=new Map(),catalogPatches=new Map();
-  const pageSize=100,cache=new Map(),loaded=new Map(),pending=new Map();
+  const pageSize=Number(table.dataset.rowPageSize)||100,cache=new Map(),loaded=new Map(),pending=new Map();
+  const compactWindow=table.hasAttribute('data-row-page-size');
+  const bufferBefore=compactWindow ? 6 : 20;
+  const bufferAfter=compactWindow ? 12 : 20;
+  const refillMargin=compactWindow ? 3 : 5;
+  const cachedPages=compactWindow ? 5 : 3;
   const showVehicleDriver=document.body.dataset.workspaceTable==='vyvoz' && !document.body.hasAttribute('data-vitrine-catalog');
   function shortDriverName(driver) {
     const parts=driver.replaceAll('.',' ').trim().split(/\s+/u);
@@ -66,7 +71,7 @@
   table.setAttribute('aria-colcount',String(table.querySelectorAll('thead th').length));
   function report(error){window.PlanexNotifications.show({tone:'danger',message:error.message||'Не удалось загрузить строки. Повторите прокрутку.'});}
   function prune(){
-    while(loaded.size>3){const page=loaded.keys().next().value;loaded.delete(page);for(const id of ids.slice(page*pageSize,(page+1)*pageSize)){const row=cache.get(id);if(row&&!row.isConnected)cache.delete(id);}}
+    while(loaded.size>cachedPages){const page=loaded.keys().next().value;loaded.delete(page);for(const id of ids.slice(page*pageSize,(page+1)*pageSize)){const row=cache.get(id);if(row&&!row.isConnected)cache.delete(id);}}
     for(const [id,row] of cache)if(!row.isConnected&&!loaded.has(Math.floor(positions.get(String(id))/pageSize)))cache.delete(id);
   }
   async function fetchRows(wanted, search){
@@ -92,8 +97,9 @@
       if(row)capture(row);
       else missing.push(id);
     }
-    for(let start=0;start<missing.length;start+=pageSize){
-      const result=await fetchRows(missing.slice(start,start+pageSize),search);
+    const exportBatchSize=100;
+    for(let start=0;start<missing.length;start+=exportBatchSize){
+      const result=await fetchRows(missing.slice(start,start+exportBatchSize),search);
       for(const row of result.rows)capture(row);
     }
     if(values.size!==selectedIds.length)throw new Error('Состав таблицы изменился. Скачайте Excel ещё раз.');
@@ -108,7 +114,8 @@
       if(!wanted.length)return;
       const result=await fetchRows(wanted,appliedSearch);
       if(version!==manifestVersion){queue();return;}
-      const missing=new Set(wanted.filter(id=>!result.rowIds.includes(id)));
+      const received=new Set(result.rowIds);
+      const missing=new Set(wanted.filter(id=>!received.has(id)));
       if(missing.size){
         ids=ids.filter(id=>!missing.has(id));positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         for(const id of missing)cache.delete(id);
@@ -126,8 +133,10 @@
     if(window.VitrineGrid?.editing())return;
     if(!ids.length){body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);first=last=0;table.removeAttribute('aria-busy');return;}
     const visible=Math.max(1,Math.ceil((scroll.clientHeight-headHeight)/height)),viewportStart=forceIndex??Math.floor(scroll.scrollTop/height),viewportEnd=Math.min(ids.length,viewportStart+visible+1);
-    if(first>=0&&(first===0||viewportStart>=first+5)&&(last===ids.length||viewportEnd<=last-5))return;
-    const start=Math.max(0,Math.min(ids.length-1,viewportStart-20)),end=Math.min(ids.length,start+visible+40),ticket=++generation;
+    if(first>=0&&(first===0||viewportStart>=first+refillMargin)&&(last===ids.length||viewportEnd<=last-refillMargin))return;
+    const start=Math.max(0,Math.min(ids.length-1,viewportStart-bufferBefore));
+    const end=Math.min(ids.length,compactWindow ? viewportEnd+bufferAfter : start+visible+bufferBefore+bufferAfter);
+    const ticket=++generation;
     table.setAttribute('aria-busy','true');
     try{
       const needed=[];for(let p=Math.floor(start/pageSize);p<=Math.floor((end-1)/pageSize);p++)needed.push(page(p));
@@ -198,7 +207,8 @@
     if(ready?.isConnected){
       window.VitrineGrid.select(ready);ready.focus({preventScroll:true});ensureVisible(r);
       if(ready.dataset.column!==cell.dataset.column)window.VitrineGrid.reveal(ready);
-      const ahead=Math.floor(r/pageSize)+(r%pageSize>60?1:r%pageSize<40?-1:0);
+      const offset=r%pageSize;
+      const ahead=Math.floor(r/pageSize)+(offset>pageSize*.6?1:offset<pageSize*.4?-1:0);
       if(ahead>=0&&ahead*pageSize<ids.length&&!loaded.has(ahead))page(ahead).catch(()=>{});
       return true;
     }
@@ -236,10 +246,12 @@
       const bindings=patch.bindings||[];
       if(bindings.length&&!bindings.some(binding=>binding.tableSlug===(document.body.dataset.workspaceTable||'vyvoz')&&binding.fieldKey===cell.dataset.column))continue;
       if(cell.dataset.column==='A'||((cell.dataset.column==='K'||cell.dataset.column==='O')&&document.body.dataset.workspaceTable==='vyvoz'))continue;
-      let choices=[];try{choices=JSON.parse(cell.dataset.choices||'[]');}catch{}
-      choices=choices.filter(value=>!(patch.aliases||[patch.beforeName,patch.name]).includes(value));
-      if(patch.active!==false&&patch.active!==0)choices.push(patch.name);
-      cell.dataset.choices=JSON.stringify([...new Set(choices)]);
+      if (!cell.dataset.sharedChoices) {
+        let choices=[];try{choices=JSON.parse(cell.dataset.choices||'[]');}catch{}
+        choices=choices.filter(value=>!(patch.aliases||[patch.beforeName,patch.name]).includes(value));
+        if(patch.active!==false&&patch.active!==0)choices.push(patch.name);
+        cell.dataset.choices=JSON.stringify([...new Set(choices)]);
+      }
       const matchesReference=String(cell.dataset.referenceId)===String(patch.id);
       const coloredCatalog=['E','T','U'].includes(cell.dataset.column)&&document.body.dataset.workspaceTable==='vyvoz';
       const legacyMatch=coloredCatalog&&!Number(cell.dataset.referenceId)&&cell.textContent!==''&&
@@ -353,7 +365,8 @@
       const key=patch.catalogId+':'+patch.id,old=catalogPatches.get(key);
       if(old&&Number(old.revision||0)>Number(patch.revision||0))return;
       patch={...patch,aliases:[...new Set([...(old?.aliases||[]),patch.beforeName,patch.name])]};
-      catalogPatches.set(key,patch);for(const row of cache.values())applyCatalogPatch(row,patch);
+      catalogPatches.set(key,patch);window.VitrineGrid?.patchSharedOptions(patch);
+      for(const row of cache.values())applyCatalogPatch(row,patch);
     },
     patch(patch){
       const key=patch.row+':'+patch.column,old=remotePatches.get(key);
