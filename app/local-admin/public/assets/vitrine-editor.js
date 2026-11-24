@@ -356,7 +356,7 @@
       editor.saveButton.textContent = 'Сохранить';
       editor.panel.removeAttribute('aria-busy');
       editor.error.textContent = error instanceof TypeError ? 'Нет связи с сервером. Текст сохранён в поле — повторите попытку.' : error.message;
-      if (error.code?.startsWith('margin_rule_')) editor.error.hidden = false;
+      if (error.code === 'slot_date_past' || error.code?.startsWith('margin_rule_')) editor.error.hidden = false;
       else report(editor.error.textContent, 'danger');
       position();
       editor.field.focus();

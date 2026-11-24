@@ -100,6 +100,14 @@ function vitrine_slot_input(string $value): ?string {
     return "с $from до $to - $day.$month.$year";
 }
 
+function vitrine_slot_date_is_past(string $normalized, ?DateTimeImmutable $now = null): bool {
+    if (!preg_match('/([0-9]{2})\.([0-9]{2})\.([0-9]{2})$/D',$normalized,$date)) return false;
+    [, $day, $month, $year] = $date;
+    $timezone = new DateTimeZone('Europe/Moscow');
+    $today = ($now ?? new DateTimeImmutable())->setTimezone($timezone)->format('Y-m-d');
+    return "20$year-$month-$day" < $today;
+}
+
 function vitrine_compact_integer_bounds(string $kind): ?array {
     return match ($kind) {
         'weight'=>[1000,50000],
