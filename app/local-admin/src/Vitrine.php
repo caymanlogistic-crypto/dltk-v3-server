@@ -72,8 +72,8 @@ function vitrine_require_compact_integer_range(string $value,string $kind): void
 }
 
 function vitrine_require_slot_date_limit(string $normalized): void {
-    if (vitrine_slot_date_too_old($normalized)) {
-        throw new ApiError('slot_date_past','Дата слота не может быть старше 30 календарных дней.');
+    if (!vitrine_slot_date_in_window($normalized)) {
+        throw new ApiError('slot_date_out_of_range','Укажите дату слота от сегодняшней до 30 календарных дней вперёд включительно.');
     }
 }
 
@@ -179,8 +179,9 @@ function vitrine_save_cell(): never {
         if ($normalized === null && $body['value'] !== ($current['values'][$body['column']] ?? '')) throw new ApiError('invalid_time','Введите время: 800 или 0800 → 08:00. Часы 00–23, минуты 00–59.');
         if ($normalized !== null) $body['value'] = $normalized;
     }
-    if (!$body['reset'] && ($current['kinds'][$body['column']] ?? '') === 'slot') {
-        $normalized = vitrine_slot_input($body['value']);
+    $original = $current['originalValues'][$body['column']] ?? '';
+    if (($current['kinds'][$body['column']] ?? '') === 'slot') {
+        $normalized = vitrine_slot_input($body['reset'] ? $original : $body['value']);
         if ($normalized === null) {
             throw new ApiError('invalid_slot','Введите 10 цифр: часы начала и окончания от 00 до 23 и действительную дату ДДММГГ.');
         }
@@ -191,7 +192,6 @@ function vitrine_save_cell(): never {
         if (isset($body['paste'])) vitrine_validate_paste($body,$data,$current);
         else vitrine_validate_single_line($body['value'],$current,$body['column']);
     }
-    $original = $current['originalValues'][$body['column']] ?? '';
     $statusId = null;
     if ($body['column']==='A' && !$body['reset'] && $body['value']!=='') {
         foreach ($data['statuses'] as $status) if (vitrine_status_key($status['name'])===vitrine_status_key($body['value'])) { $statusId=$status['id']; $body['value']=$status['name']; }

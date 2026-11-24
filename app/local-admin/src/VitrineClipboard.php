@@ -100,12 +100,13 @@ function vitrine_slot_input(string $value): ?string {
     return "с $from до $to - $day.$month.$year";
 }
 
-function vitrine_slot_date_too_old(string $normalized, ?DateTimeImmutable $now = null): bool {
-    if (!preg_match('/([0-9]{2})\.([0-9]{2})\.([0-9]{2})$/D',$normalized,$date)) return false;
+function vitrine_slot_date_in_window(string $normalized, ?DateTimeImmutable $now = null): bool {
+    if (!preg_match('/([0-9]{2})\.([0-9]{2})\.([0-9]{2})$/D',$normalized,$date)) return true;
     [, $day, $month, $year] = $date;
     $timezone = new DateTimeZone('Europe/Moscow');
-    $earliest = ($now ?? new DateTimeImmutable())->setTimezone($timezone)->modify('-30 days')->format('Y-m-d');
-    return "20$year-$month-$day" < $earliest;
+    $today = ($now ?? new DateTimeImmutable())->setTimezone($timezone);
+    $slotDate = "20$year-$month-$day";
+    return $slotDate >= $today->format('Y-m-d') && $slotDate <= $today->modify('+30 days')->format('Y-m-d');
 }
 
 function vitrine_compact_integer_bounds(string $kind): ?array {

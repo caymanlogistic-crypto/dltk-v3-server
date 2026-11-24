@@ -63,13 +63,13 @@ foreach (['001225102','001225102026','2412251026','0024251026','0012310426','001
     verify(!vitrine_clipboard_accepts((string)$input,'slot'),'Invalid slot paste rejected '.$input);
 }
 $moscowMidnight = new DateTimeImmutable('2026-11-24T21:00:00Z');
-verify(vitrine_slot_date_too_old('с 01 до 02 - 25.10.26',$moscowMidnight),'Slot 31 calendar days ago is rejected at Moscow midnight');
-verify(!vitrine_slot_date_too_old('с 01 до 02 - 26.10.26',$moscowMidnight),'Slot exactly 30 days ago is allowed');
-verify(!vitrine_slot_date_too_old('с 01 до 02 - 24.11.26',$moscowMidnight),'Slot yesterday is allowed');
-verify(!vitrine_slot_date_too_old('с 01 до 02 - 25.11.26',$moscowMidnight),'Slot today is allowed');
-verify(!vitrine_slot_date_too_old('с 01 до 02 - 26.11.26',$moscowMidnight),'Slot tomorrow is allowed');
-verify(!vitrine_slot_date_too_old('Слот?',$moscowMidnight),'Slot request has no date');
-verify(!vitrine_slot_date_too_old('',$moscowMidnight),'Clearing a slot has no date');
+verify(!vitrine_slot_date_in_window('с 01 до 02 - 24.11.26',$moscowMidnight),'Slot yesterday is rejected at Moscow midnight');
+verify(vitrine_slot_date_in_window('с 01 до 02 - 25.11.26',$moscowMidnight),'Slot today is allowed');
+verify(vitrine_slot_date_in_window('с 01 до 02 - 25.12.26',$moscowMidnight),'Slot exactly 30 days ahead is allowed');
+verify(!vitrine_slot_date_in_window('с 01 до 02 - 26.12.26',$moscowMidnight),'Slot 31 days ahead is rejected');
+verify(!vitrine_slot_date_in_window('с 02 до 06 - 12.12.62',$moscowMidnight),'Slot in 2062 is rejected');
+verify(vitrine_slot_date_in_window('Слот?',$moscowMidnight),'Slot request has no date');
+verify(vitrine_slot_date_in_window('',$moscowMidnight),'Clearing a slot has no date');
 foreach (['251026'=>'25.10.26','25.10.26'=>'25.10.26','25.10.2026'=>'25.10.26',
     '2026-10-25'=>'25.10.26','290200'=>'29.02.00',''=>''] as $input=>$expected) {
     verify(vitrine_compact_input((string)$input,'date')===$expected,'Compact date normalizes '.$input);
