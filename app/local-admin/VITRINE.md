@@ -6,6 +6,14 @@ Runtime contract: [workspace] INI, APP_URL/WS_URL/DB_HOST/DB_PORT/DB_NAME/DB_USE
 
 Portable QA: all PHP and JavaScript syntax checks,66 format checks and9 HTTP integration checks passed locally using a dedicated temporary server process. The latter exercised health, distinct cookie, account login,6000-row grid,5 tables/6 roles, configured WebSocket URL, Host/Origin rejection and removed legacy route. No business values were written. Actual Linux deployment/performance remain separate acceptance steps.
 
+## Ночной цветовой пресет
+
+«Отображение данных → Цветовые пресеты → Ночной» включает тёмный фон таблиц, справочников, форм, журнала и страницы входа. Пресет хранится в общей настройке пользователя и применяется до отрисовки авторизованной страницы. Страница входа использует последний режим этого браузера.
+
+Значения и системные группы ячеек сохраняются. Ночные оттенки определены в `vitrine-display.js`, а поверхности, текст, поля и уведомления используют общие токены `vitrine-night.css`. Сетка сохраняет три уровня контраста. Закреплённая граница использует более светлый оттенок соответствующего уровня.
+
+Проверка во встроенном браузере: выбор и повторное открытие пресета, возврат к базовому, таблица, условные заливки, редактор, справочник, журнал и страница входа. У светлого текста на девяти ночных заливках расчётный контраст 7,44–9,76:1. [Правила Витрины](http://127.0.0.1:61128/demo/layout-rules.html).
+
 ## Горизонтальное меню Витрины
 
 Верхняя навигация использует стандартные классы `nav-item`, `nav-label`, `nav-icon`, `nav-chevron` и `nav-sub-item`. Типографика и состояния берутся из общей Витрины. У пунктов первого уровня IBM Plex Sans, 12,5 px, 600 и высота 34 px. У вложенных пунктов 12 px и обычное начертание уровня меню. Раскладка отличается направлением: верхний уровень идёт в один ряд, подписи не переносятся, а на узкой ширине верхняя навигация прокручивается горизонтально.
