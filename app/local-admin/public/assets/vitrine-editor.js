@@ -135,7 +135,8 @@
     window.VitrineDropoff?.update(cell,result);
     const slotRequested = cell.dataset.kind === 'slot' && window.VitrineSlot.isRequest(result.value);
     cell.toggleAttribute('data-slot-request',slotRequested);
-    const integerMask = ['weight','distance','money'].includes(cell.dataset.kind) ? window.VitrineCompactInput[cell.dataset.kind] : null;
+    const integerMask = ['weight','distance','money','cargo-value','cargo-places'].includes(cell.dataset.kind)
+      ? window.VitrineCompactInput[cell.dataset.kind] : null;
     const integerDigits = integerMask?.read(result.value);
     cell.textContent = slotRequested ? window.VitrineSlot.requestLabel
       : integerDigits ? integerMask.format(integerDigits) : result.value;
@@ -418,7 +419,7 @@
       Number(cell.dataset.catalogId)>0 && document.body.dataset.workspaceTable==='vyvoz';
     const catalogEditor = documentStatusEditor || fleetEditor || dropoffEditor || pickupEditor || (['B', 'I', 'K', 'S'].includes(cell.dataset.column) && document.body.dataset.workspaceTable === 'vyvoz');
     const incomeEditor = !catalog && cell.dataset.column==='X' && document.body.dataset.workspaceTable==='vyvoz';
-    const commentEditor = !catalog && cell.dataset.column==='V' && document.body.dataset.workspaceTable==='vyvoz';
+    const commentEditor = !catalog && ['V','AK'].includes(cell.dataset.column) && document.body.dataset.workspaceTable==='vyvoz';
     const dialogName = cell.dataset.column + cell.dataset.row + (cell.dataset.label ? ' · ' + cell.dataset.label : '');
     if (mask || isSingleLine || isStatus || catalogEditor || incomeEditor || commentEditor || catalog) {
       panel.setAttribute('aria-label', dialogName);
@@ -462,7 +463,7 @@
     }
     const field = control?.field || element(mask || isSingleLine ? 'input' : 'textarea', 'field-input');
     field.classList.add('vitrine-editor-field');
-    if (cell.dataset.compactInput==='money') field.classList.add('vitrine-money-input');
+    if (['money','cargo-value'].includes(cell.dataset.compactInput)) field.classList.add('vitrine-money-input');
     field.id = 'vitrine-editor-field';
     field.setAttribute('aria-label', 'Значение ячейки');
     const draftType = cell.dataset.draftType;

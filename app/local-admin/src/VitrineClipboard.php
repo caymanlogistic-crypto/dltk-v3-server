@@ -105,6 +105,8 @@ function vitrine_compact_integer_bounds(string $kind): ?array {
         'weight'=>[1000,50000],
         'distance'=>[1,10000],
         'money'=>[1000,9999999],
+        'cargo-value'=>[1000,99999999],
+        'cargo-places'=>[1,10000],
         default=>null,
     };
 }

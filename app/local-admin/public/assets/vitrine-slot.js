@@ -142,6 +142,8 @@
       ? digits.slice(0,-2)+':'+digits.slice(-2) : digits,readTime),
     weight:mask(15000,'25 990',formatInteger,readInteger),
     distance:mask(15000,'1 250',formatInteger,readInteger),
+    'cargo-value':mask(15000,'1 000 000',formatInteger,readInteger),
+    'cargo-places':mask(15000,'1 250',formatInteger,readInteger),
     money:{...mask(15000,'25 000',formatInteger,readInteger),
       valid:value=>Number(value)>=1000 && Number(value)<=9999999,
       invalidMessage:'Введите сумму от 1 000 до 9 999 999.'},

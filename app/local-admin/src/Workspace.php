@@ -95,6 +95,13 @@ function workspace_table(?string $slug=null): array {
     $t=wquery('SELECT * FROM table_definitions WHERE slug=?',[$slug])->fetch();if(!$t)throw new ApiError('table_not_found','Таблица не найдена.',404);
     $t['id']=(int)$t['id'];workspace_require('table',(string)$t['id'],'view',$t['id']);$t['columns']=json_decode($t['columns_json'],true);
     $t['title']=workspace_table_display_title($t['slug'],$t['title']);
+    if ($t['slug']==='vyvoz') {
+        $cargoLabels=['J'=>'Вес (брутто)','AI'=>'Вес груза (нетто)','AK'=>'Характеристики'];
+        foreach ($t['columns'] as &$column) {
+            $column['label']=$cargoLabels[$column['letter']]??$column['label'];
+        }
+        unset($column);
+    }
     return $t;
 }
 function workspace_manifest(array $t, bool $archive=false): array {

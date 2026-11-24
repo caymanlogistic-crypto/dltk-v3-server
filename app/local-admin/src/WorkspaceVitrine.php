@@ -10,10 +10,13 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         if(mb_strtolower(trim($labels['F']??''))==='дата')$compactInputs['F']='date';
         if(mb_strtolower(trim($labels['G']??''))==='время')$compactInputs['G']='time';
         if(mb_strtolower(trim($labels['H']??''))==='номер ктк')$compactInputs['H']='container';
-        if(mb_strtolower(trim($labels['J']??''))==='вес')$compactInputs['J']='weight';
+        if(mb_strtolower(trim($labels['J']??''))==='вес (брутто)')$compactInputs['J']='weight';
         if(mb_strtolower(trim($labels['W']??''))==='км')$compactInputs['W']='distance';
         foreach (['X'=>'доход','Y'=>'расход','Z'=>'маржа'] as $letter=>$label) {
             if (mb_strtolower(trim($labels[$letter]??''))===$label) $compactInputs[$letter]='money';
+        }
+        foreach (['AH'=>'cargo-value','AI'=>'weight','AJ'=>'cargo-places'] as $letter=>$kind) {
+            if (isset($labels[$letter])) $compactInputs[$letter]=$kind;
         }
     }
     $slots=array_column(array_filter($columns,static fn(array $column): bool=>mb_strtolower(trim($column['label']))==='слот'),null,'letter');
@@ -99,8 +102,13 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
             if (in_array($key,['I','K','M','O','T','U',...$partyColumns],true) && isset($links[$key])) $kinds[$key]='text';
             if (isset($slots[$key])) $kinds[$key]='slot';
             if (isset($singleLine[$key])) $kinds[$key]='text';
+            if ($t['slug']==='vyvoz' && $key==='AK') $kinds[$key]='text';
             $display=display_cell($cell);if($display!==null){$baseline[$key]=$display;if(!isset($edits[(int)$r['id']][$key]))$values[$key]=$display;}
-            if(($cell['dataValidation']['condition']['type']??'')==='ONE_OF_LIST')foreach($cell['dataValidation']['condition']['values']??[] as $o)if(isset($o['userEnteredValue']))$choices[$key][]=(string)$o['userEnteredValue'];
+            if (($t['slug']!=='vyvoz' || $key!=='AK') && ($cell['dataValidation']['condition']['type']??'')==='ONE_OF_LIST') {
+                foreach ($cell['dataValidation']['condition']['values']??[] as $o) {
+                    if (isset($o['userEnteredValue'])) $choices[$key][]=(string)$o['userEnteredValue'];
+                }
+            }
         }
         foreach($values as &$v)$v=workspace_string($v);unset($v);foreach($baseline as &$v)$v=workspace_string($v);unset($v);
         $rowEdits=[];foreach($edits[(int)$r['id']]??[] as $key=>$e){$values[$key]=$e['active']?$e['value']:($baseline[$key]??'');$rowEdits[$key]=['revision'=>(int)$e['revision'],'conflict'=>false,'value'=>$values[$key],'active'=>(bool)$e['active']];}

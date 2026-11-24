@@ -1,6 +1,6 @@
 .vitrine .vitrine-table { user-select:none; -webkit-user-select:none; }
 .vitrine td[data-edit-cell] { cursor:default; }
-.vitrine td[data-kind="money"], .vitrine .vitrine-money-input { text-align:right; }
+.vitrine td:is([data-kind="money"],[data-kind="cargo-value"]), .vitrine .vitrine-money-input { text-align:right; }
 .vitrine td[data-edit-cell]:focus { outline:none; }
 .vitrine td[data-fleet-driver-suffix]::after { content:attr(data-fleet-driver-suffix); }
 .vitrine .vitrine-time-inline { position:fixed; z-index:100; box-sizing:border-box; }

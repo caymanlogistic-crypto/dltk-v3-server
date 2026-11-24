@@ -65,6 +65,8 @@ function vitrine_require_compact_integer_range(string $value,string $kind): void
         'weight'=>'Введите вес от 1 000 до 50 000.',
         'distance'=>'Введите пробег от 1 до 10 000 км.',
         'money'=>'Введите сумму от 1 000 до 9 999 999.',
+        'cargo-value'=>'Введите стоимость груза от 1 000 до 99 999 999.',
+        'cargo-places'=>'Введите количество мест от 1 до 10 000.',
     };
     throw new ApiError($kind.'_out_of_range',$message);
 }
@@ -80,7 +82,7 @@ function vitrine_validate_paste(array $body, array $data, array $target): void {
     $kind = $target['kinds'][$body['column']] ?? 'text';
     $compact = isset($target['compactInputs'][$body['column']]);
     if (!$compact && $kind === 'time') $body['value'] = vitrine_time_input($body['value']) ?? $body['value'];
-    $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','slot'=>'Слот','container'=>'Номер КТК','weight'=>'Вес','distance'=>'КМ','money'=>'Сумма','boolean'=>'TRUE/FALSE'];
+    $labels = ['status'=>'Статус','text'=>'Текст','number'=>'Число','date'=>'Дата','datetime'=>'Дата и время','time'=>'Время','slot'=>'Слот','container'=>'Номер КТК','weight'=>'Вес','distance'=>'КМ','money'=>'Сумма','cargo-value'=>'Стоимость груза','cargo-places'=>'Места','boolean'=>'TRUE/FALSE'];
     if ($paste['source'] !== null) {
         $source = $paste['source'];
         if (!is_array($source) || !is_int($source['row']??null) || !is_string($source['column']??null) || !is_int($source['revision']??null) || !is_string($source['baseHash']??null) || !is_string($source['value']??null)) throw new ApiError('invalid_clipboard','Некорректный формат скопированной ячейки.');
@@ -154,6 +156,8 @@ function vitrine_save_cell(): never {
                 'weight'=>'Введите вес целым числом, только цифрами.',
                 'distance'=>'Введите пробег целым числом, только цифрами.',
                 'money'=>'Введите сумму целым числом, только цифрами.',
+                'cargo-value'=>'Введите стоимость груза целым числом, только цифрами.',
+                'cargo-places'=>'Введите количество мест целым числом, только цифрами.',
                 'date'=>'Введите действительную дату в формате ДДММГГ.',
                 'time'=>'Введите время в формате ЧЧММ. Часы 00–23, минуты 00–59.',
             };
