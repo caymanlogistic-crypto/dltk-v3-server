@@ -1,3 +1,51 @@
-<?php declare(strict_types=1); ?>
-<!doctype html><html lang="ru"><head><meta name="app-base-path" content="<?= htmlspecialchars(runtime_config()['APP_BASE_PATH'],ENT_QUOTES,'UTF-8') ?>"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="<?=htmlspecialchars(csrf_token(),ENT_QUOTES,'UTF-8')?>"><title>Вход — ЛК ДЛТК</title><link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-base.css'),ENT_QUOTES,'UTF-8') ?>"><link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/workspace-auth.css'),ENT_QUOTES,'UTF-8') ?>"><script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-paths.js'),ENT_QUOTES,'UTF-8') ?>"></script><script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-notifications.js'),ENT_QUOTES,'UTF-8') ?>"></script><script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-auth.js'),ENT_QUOTES,'UTF-8') ?>"></script><script src="<?= htmlspecialchars(app_url_path('/assets/vitrine-theme.js'),ENT_QUOTES,'UTF-8') ?>"></script></head>
-<body class="vitrine"><main class="auth-card"><div class="auth-brand">ЛК ДЛТК</div><h1>Вход в систему</h1><p>Серверный стенд · данные в БД</p><form id="workspace-login" autocomplete="on"><label>Логин<input name="login" autocomplete="username" autofocus required maxlength="80"></label><label>Пароль<input name="password" type="password" autocomplete="current-password" required maxlength="256"></label><button class="btn btn-primary" type="submit">Войти</button></form><p class="auth-hint">Демоаккаунты: manager, logist, dispatcher, head, admin, superadmin.</p></main></body></html>
+<?php
+declare(strict_types=1);
+
+$escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+$path = static fn(string $value): string => $escape(app_url_path($value));
+?>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="app-base-path" content="<?= $escape(runtime_config()['APP_BASE_PATH']) ?>">
+  <meta name="csrf-token" content="<?= $escape(csrf_token()) ?>">
+  <title>Вход — ЛК ДЛТК</title>
+  <link rel="stylesheet" href="<?= $path('/assets/vitrine-base.css') ?>">
+  <link rel="stylesheet" href="<?= $path('/assets/vitrine.css') ?>">
+  <link rel="stylesheet" href="<?= $path('/assets/workspace-auth.css') ?>">
+  <script defer src="<?= $path('/assets/workspace-paths.js') ?>"></script>
+  <script defer src="<?= $path('/assets/vitrine-notifications.js') ?>"></script>
+  <script defer src="<?= $path('/assets/workspace-auth.js') ?>"></script>
+  <script src="<?= $path('/assets/vitrine-theme.js') ?>"></script>
+</head>
+<body class="vitrine auth-page">
+  <header class="vitrine-topbar">
+    <div class="sidebar-brand vitrine-brand">
+      <span class="logo-mark" aria-hidden="true"></span>
+      <span class="brand-name">ЛК ДЛТК</span>
+    </div>
+  </header>
+  <main class="auth-layout">
+    <form id="workspace-login" class="modal modal-sm auth-card" method="post" action="<?= $path('/login') ?>" aria-labelledby="login-title">
+      <header class="modal-head">
+        <h1 id="login-title" class="modal-title">Вход в систему</h1>
+      </header>
+      <div class="modal-body auth-fields">
+        <label class="field">
+          <span class="field-label">Логин</span>
+          <input class="field-input" name="login" autocomplete="username" autofocus required maxlength="80">
+        </label>
+        <label class="field">
+          <span class="field-label">Пароль</span>
+          <input class="field-input" name="password" type="password" autocomplete="current-password" required maxlength="256">
+        </label>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn btn-primary" type="submit">Войти</button>
+      </footer>
+    </form>
+  </main>
+</body>
+</html>
