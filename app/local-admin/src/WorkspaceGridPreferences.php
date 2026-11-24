@@ -75,7 +75,7 @@ function workspace_read_color_preset(int $userId): ?array {
     $legacy=wquery("SELECT JSON_UNQUOTE(JSON_EXTRACT(p.settings,'$.preset'))
         FROM user_view_preferences p JOIN table_definitions t ON t.id=p.table_id
         WHERE p.user_id=? AND t.slug='vyvoz'",[$userId])->fetchColumn();
-    return in_array($legacy,['base','saturated','acid'],true) ? ['value'=>$legacy,'version'=>0] : null;
+    return in_array($legacy,['base','saturated','acid','night'],true) ? ['value'=>$legacy,'version'=>0] : null;
 }
 
 function workspace_prune_preference_columns(array $settings,array $columns): array {
@@ -100,7 +100,7 @@ function workspace_validate_preferences(mixed $settings, array $columns): void {
             if (!in_array($column, $columns, true)) throw new ApiError('invalid_preferences', 'В настройках есть неизвестные столбцы.');
         }
     }
-    $choices = ['preset'=>['base','saturated','acid'], 'lines'=>['base','dark','black'], 'layoutWidth'=>['full','compact']];
+    $choices = ['preset'=>['base','saturated','acid','night'], 'lines'=>['base','dark','black'], 'layoutWidth'=>['full','compact']];
     foreach ($choices as $key => $values) {
         if (isset($settings[$key]) && !in_array($settings[$key], $values, true)) {
             throw new ApiError('invalid_preferences', 'Неизвестный вариант отображения.');
@@ -157,7 +157,7 @@ function workspace_preferences(array $grid, ?array $body = null): array {
         $colorPreset=workspace_read_color_preset($userId);
         if (array_key_exists('preset',$submitted)) {
             $chosen=$submitted['preset'];
-            if (!in_array($chosen,['base','saturated','acid'],true)) {
+            if (!in_array($chosen,['base','saturated','acid','night'],true)) {
                 throw new ApiError('invalid_preferences','Неизвестный цветовой пресет.');
             }
             $colorPreset=['value'=>$chosen,'version'=>($colorPreset['version']??0)+1];

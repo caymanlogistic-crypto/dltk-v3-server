@@ -18,7 +18,7 @@ $path = static fn(string $value): string => $escape(app_url_path($value));
   <script defer src="<?= $path('/assets/workspace-paths.js') ?>"></script>
   <script defer src="<?= $path('/assets/vitrine-notifications.js') ?>"></script>
   <script defer src="<?= $path('/assets/workspace-auth.js') ?>"></script>
-</head>
+<script src="<?= htmlspecialchars(app_url_path('/assets/vitrine-theme.js'),ENT_QUOTES,'UTF-8') ?>"></script></head>
 <body class="vitrine auth-page">
   <header class="vitrine-topbar">
     <div class="sidebar-brand vitrine-brand">

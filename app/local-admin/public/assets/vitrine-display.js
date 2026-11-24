@@ -130,6 +130,7 @@
   const presets = [
     {id:'base',name:'Базовый',note:'Текущая мягкая палитра',colors:base},
     {id:'saturated',name:'Насыщенный',note:'Те же девять цветовых групп, более насыщенные',colors:['#E6ABAD','#EDBC8B','#EDE19A','#B2D1A0','#94CFC3','#A9C8E6','#B8AFE0','#DCAACD','#C9C9C9']},
+    {id:'night',name:'Ночной',note:'Тёмный интерфейс и приглушённые цвета ячеек',colors:['#532D34','#573925','#544922','#294A38','#23494A','#2B3E5B','#443751','#50364B','#3B414B']},
     {id:'acid',name:'Кислотный',note:'Яркие базовые RGB-цвета, как в примере',colors:['#FF0000','#FF8000','#FFFF00','#00FF00','#00FFFF','#0000FF','#8000FF','#FF00FF','#C0C0C0']}
   ];
   const validPreset = value => presets.some(p=>p.id===value);
@@ -176,6 +177,7 @@
     return index < 0 ? '' : presets.find(p => p.id === state.preset).colors[index];
   }
   function ink(fill) {
+    if (state.preset==='night') return '#EEEAE2';
     if (!/^#[0-9a-f]{6}$/i.test(fill || '')) return '#131210';
     const rgb = [1,3,5].map(i => { const x = parseInt(fill.slice(i,i+2),16)/255; return x <= .04045 ? x/12.92 : ((x+.055)/1.055)**2.4; });
     const luminance = rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;
@@ -204,6 +206,7 @@
     node.style.color = shown ? ink(shown) : '';
   }
   function paintAll() {
+    window.VitrineTheme.apply(state.preset);
     if (red) table.style.setProperty('--vitrine-preset-red',color(red));
     if (gray) table.style.setProperty('--vitrine-preset-gray',color(gray));
     table.querySelectorAll('td.has-status-color,td[style*="--catalog-fill"],td[style*="--order-status-fill"]').forEach(paintCell);
@@ -244,11 +247,16 @@
       else table.style.removeProperty('--vitrine-width-'+letter);
     }
   }
+  function lineColor(preset, colorPreset) {
+    if (colorPreset!=='night') return preset.color;
+    return {base:'#434954',dark:'#5B6472',black:'#778294'}[preset.id];
+  }
   function applyLines() {
     table.dataset.linePreset=state.lines;
     const preset=linePresets.find(item=>item.id===state.lines);
     const scroll=table.parentElement;
-    if(preset.color)scroll.style.setProperty('--vitrine-grid-line',preset.color);
+    const color=lineColor(preset,state.preset);
+    if(color)scroll.style.setProperty('--vitrine-grid-line',color);
     else scroll.style.removeProperty('--vitrine-grid-line');
   }
   function commitWidth(letter,width) {
@@ -353,7 +361,7 @@
     if(focusLetter){const row=list.querySelector('[data-letter="'+focusLetter+'"]');(row.querySelector('[data-direction="'+(focusDirection||'up')+'"]:not(:disabled)')||row.querySelector('button:not(:disabled)'))?.focus({preventScroll:true});row.scrollIntoView({block:'nearest'});}
   }
   function renderColors() {
-    body.replaceChildren(el('p','display-description','Пресет меняет отображение девяти цветов во всей витрине. Назначенные цвета и значения ячеек сохраняются.'));
+    body.replaceChildren(el('p','display-description','Пресет меняет девять системных цветов. Ночной также затемняет весь интерфейс.'));
     const list=el('div','display-preset-list');
     for(const preset of presets){
       const card=el('label','display-preset radio-item'); const name=el('span','display-preset-title'); const radio=el('input');radio.type='radio';radio.name='display-preset';radio.value=preset.id;radio.setAttribute('aria-label',preset.name);radio.checked=draft.preset===preset.id;radio.addEventListener('change',()=>draft.preset=preset.id);const mark=el('span','radio-mark');mark.setAttribute('aria-hidden','true');name.append(radio,mark,el('span','radio-label',preset.name));
@@ -366,8 +374,9 @@
     body.replaceChildren(el('p','display-description','Выберите контраст горизонтальных и вертикальных линий. Толщина линий и заливки ячеек сохраняются.'));
     const list=el('div','display-preset-list');
     for(const preset of linePresets){
-      const card=el('label','display-preset radio-item');const name=el('span','display-preset-title');const radio=el('input');radio.type='radio';radio.name='display-lines';radio.value=preset.id;radio.setAttribute('aria-label',preset.name);radio.checked=draft.lines===preset.id;radio.addEventListener('change',()=>draft.lines=preset.id);const mark=el('span','radio-mark');mark.setAttribute('aria-hidden','true');name.append(radio,mark,el('span','radio-label',preset.name));
-      const sample=el('span','display-line-sample');sample.setAttribute('aria-hidden','true');if(preset.color)sample.style.setProperty('--preview-line',preset.color);
+      const nameLabel=draft.preset==='night' ? {base:'Текущие',dark:'Контрастнее',black:'Максимальный контраст'}[preset.id] : preset.name;
+      const card=el('label','display-preset radio-item');const name=el('span','display-preset-title');const radio=el('input');radio.type='radio';radio.name='display-lines';radio.value=preset.id;radio.setAttribute('aria-label',nameLabel);radio.checked=draft.lines===preset.id;radio.addEventListener('change',()=>draft.lines=preset.id);const mark=el('span','radio-mark');mark.setAttribute('aria-hidden','true');name.append(radio,mark,el('span','radio-label',nameLabel));
+      const sample=el('span','display-line-sample');sample.setAttribute('aria-hidden','true');const color=lineColor(preset,draft.preset);if(color)sample.style.setProperty('--preview-line',color);
       ['А','Б','В','08:00','В пути','Данные'].forEach((text,index)=>sample.append(el('span',index<3?'display-line-heading':'',text)));
       card.append(name,sample);list.append(card);
     }

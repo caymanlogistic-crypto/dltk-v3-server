@@ -27,7 +27,7 @@
 .vitrine .vitrine-table:is([data-line-preset="dark"],[data-line-preset="black"]) :is(td,th) { border-color:var(--vitrine-grid-line); }
 .vitrine .vitrine-table[data-frozen-count="1"] [data-frozen-column="1"],
 .vitrine .vitrine-table[data-frozen-count="2"] [data-frozen-column="2"] {
-  border-inline-end:3px solid var(--vitrine-grid-line,var(--tone-b0a89c));
+  border-inline-end:3px solid var(--vitrine-frozen-line,var(--vitrine-grid-line,var(--tone-b0a89c)));
 }
 .vitrine .vitrine-display-dialog .modal-foot { gap:8px; flex-wrap:wrap; }
 .vitrine .display-actions { margin-left:auto; }
