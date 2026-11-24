@@ -77,7 +77,10 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         if ($kind==='edo-counterparties') $payload['edoParty']=workspace_edo_party_profile($values);
         if ($kind==='edo-operators') $payload['operatorCode']=workspace_edo_operator_code($values['A']??'');
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
-        if (workspace_catalog_has_palette($kind)) $payload['color'] = workspace_directory_color($values['B'] ?? '');
+        if (workspace_catalog_has_palette($kind)) {
+            $color=$values['B']??'';
+            $payload['color']=workspace_is_document_status_catalog($kind) && $color==='' ? null : workspace_directory_color($color);
+        }
         if ($kind === 'clients' && isset($values['B'])) $payload['manager'] = $values['B'];
         if ($kind==='carriers') {
             $payload['carrierDetails']=workspace_carrier_details(['B'=>$values['B']??'','edoId'=>$values['C']??'']);

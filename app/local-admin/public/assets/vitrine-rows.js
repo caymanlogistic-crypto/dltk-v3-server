@@ -241,10 +241,10 @@
       if(patch.active!==false&&patch.active!==0)choices.push(patch.name);
       cell.dataset.choices=JSON.stringify([...new Set(choices)]);
       const matchesReference=String(cell.dataset.referenceId)===String(patch.id);
-      const pickup=cell.dataset.column==='E'&&document.body.dataset.workspaceTable==='vyvoz';
-      const legacyPickup=pickup&&!Number(cell.dataset.referenceId)&&cell.textContent!==''&&
+      const coloredCatalog=['E','T','U'].includes(cell.dataset.column)&&document.body.dataset.workspaceTable==='vyvoz';
+      const legacyMatch=coloredCatalog&&!Number(cell.dataset.referenceId)&&cell.textContent!==''&&
         [patch.name,patch.beforeName,...(patch.aliases||[])].some(name=>normalizedCatalogName(name)===normalizedCatalogName(cell.textContent));
-      if(pickup&&(matchesReference||legacyPickup)){
+      if(coloredCatalog&&(matchesReference||legacyMatch)){
         if(patch.color)cell.style.setProperty('--catalog-fill',patch.color);
         else cell.style.removeProperty('--catalog-fill');
         window.VitrineDisplay?.paintCell(cell);

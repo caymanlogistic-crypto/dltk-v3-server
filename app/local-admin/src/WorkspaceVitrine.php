@@ -77,8 +77,13 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $unloadOptions=$canChooseUnload ? workspace_unload_options_by_client($unloadPoints) : [];
     if ($canChooseUnload) $boundCatalogs['K']=$unloadLink['id'];
     $dependentValues=array_map('vitrine_catalog_values',$dependentLinks);
-    $pickupColors=isset($boundCatalogs['E']) && isset($links['E'])
-        ?wquery('SELECT id,color FROM catalog_entries WHERE catalog_id=? AND color IS NOT NULL',[$links['E']['id']])->fetchAll(PDO::FETCH_KEY_PAIR):[];
+    $colorLinks=array_filter(array_intersect_key($links,$boundCatalogs),
+        static fn(array $link): bool=>vitrine_catalog_uses_cell_fill($link['kind']));
+    $colorCatalogIds=array_column($colorLinks,'id');
+    $catalogColors=$colorCatalogIds
+        ? wquery('SELECT id,color FROM catalog_entries WHERE catalog_id IN ('.implode(',',array_fill(0,count($colorCatalogIds),'?')).')
+            AND color IS NOT NULL',$colorCatalogIds)->fetchAll(PDO::FETCH_KEY_PAIR)
+        : [];
     $edits=[];if($records){$ids=array_column($records,'id');foreach(wquery('SELECT * FROM cell_versions WHERE record_id IN ('.implode(',',array_fill(0,count($ids),'?')).')',$ids)->fetchAll() as $e)$edits[(int)$e['record_id']][$e['field_key']]=$e;}
     $refs=[];if($records){$ids=array_column($records,'id');foreach(wquery('SELECT rr.record_id,rr.field_key,e.id,e.catalog_id,e.name FROM record_references rr JOIN catalog_entries e ON e.id=rr.entry_id WHERE rr.record_id IN ('.implode(',',array_fill(0,count($ids),'?')).')',$ids)->fetchAll() as $ref)$refs[(int)$ref['record_id']][$ref['field_key']]=['id'=>(int)$ref['id'],'catalogId'=>(int)$ref['catalog_id'],'name'=>$ref['name']];}
     $rows=[];foreach($records as $r){
@@ -145,8 +150,12 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         }
         $statusId=$edits[(int)$r['id']]['A']['status_id']??null;$status=$byId[$statusId]??($byName[vitrine_status_key($values['A']??'')]??null);
         if($status)$values['A']=$status['name'];$choices['A']=array_column($catalog['statuses'],'name');
-        $pickupId=$refs[(int)$r['id']]['E']['id']??($entriesByName['E'][vitrine_catalog_key($values['E']??'')]??0);
-        $rows[]=['catalogFills'=>['E'=>$pickupColors[$pickupId]??null],'references'=>$refs[(int)$r['id']]??[],'catalogBindings'=>$boundCatalogs,'recordId'=>(int)$r['id'],'rowIndex'=>(int)$r['row_num'],'values'=>$values,'originalValues'=>$baseline,'baseHash'=>hash('sha256',$r['baseline_json']),'choices'=>$choices,'kinds'=>$kinds,'compactInputs'=>$compactInputs,'singleLine'=>$singleLine,'edits'=>$rowEdits,'statusId'=>$status['id']??null,'statusColor'=>$status['color']??null,'orderStatus'=>$orderStatus];
+        $catalogFills=[];
+        foreach ($colorLinks as $column=>$link) {
+            $entryId=$refs[(int)$r['id']][$column]['id']??($entriesByName[$column][vitrine_catalog_key($values[$column]??'')]??0);
+            $catalogFills[$column]=$catalogColors[$entryId]??'';
+        }
+        $rows[]=['catalogFills'=>$catalogFills,'references'=>$refs[(int)$r['id']]??[],'catalogBindings'=>$boundCatalogs,'recordId'=>(int)$r['id'],'rowIndex'=>(int)$r['row_num'],'values'=>$values,'originalValues'=>$baseline,'baseHash'=>hash('sha256',$r['baseline_json']),'choices'=>$choices,'kinds'=>$kinds,'compactInputs'=>$compactInputs,'singleLine'=>$singleLine,'edits'=>$rowEdits,'statusId'=>$status['id']??null,'statusColor'=>$status['color']??null,'orderStatus'=>$orderStatus];
         $rows[array_key_last($rows)]+=['rowActions'=>true,'rowToken'=>$canManageRows ? workspace_table_row_token($r) : null,
             'archived'=>$archive,'readOnly'=>$archive ? [] : $readOnly,'relatedUrl'=>'/workspace?section=history&table='.rawurlencode($t['slug']).'&row='.(int)$r['row_num']];
         if ($dropoffDetails!==null) $rows[array_key_last($rows)]['dropoffDetails']=$dropoffDetails;
@@ -307,8 +316,8 @@ function vitrine_store(array $body): array {
             $dependentPatch=vitrine_update_catalog_value($t,$r,$values,$link['target'],$next,$previous,$u,$action,$request,$operation,!$clear&&empty($party)&&!in_array($key,['K','O'],true));
         }
         $catalogStyle=[];
-        if(($link['kind']??null)==='terminals-main'){
-            if(!$entry&&$value!=='')$entry=vitrine_find_catalog_entry($binding,$value,true);
+        if(vitrine_catalog_uses_cell_fill($link['kind']??'')){
+            if(!$entry&&$value!=='')$entry=vitrine_find_catalog_entry($binding,$value,$link['kind']==='terminals-main');
             $catalogStyle=['catalogFill'=>$entry['color']??null];
         }
         $derived=$dependentPatch&&workspace_can('field',$link['target'],'view',$t['id'])?['dependentCell'=>$dependentPatch]:[];

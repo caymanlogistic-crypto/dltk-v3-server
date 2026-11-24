@@ -20,8 +20,11 @@ function workspace_catalogs(): array {
     $out=[];foreach(wquery('SELECT * FROM catalogs ORDER BY id')->fetchAll() as $c){if(workspace_fleet_retired_kind($c['kind'])||!workspace_can('catalog',(string)$c['id'],'view'))continue;$c['id']=(int)$c['id'];$c['tableIds']=array_map('intval',wquery('SELECT DISTINCT table_id FROM catalog_bindings WHERE catalog_id=?',[$c['id']])->fetchAll(PDO::FETCH_COLUMN));$out[]=$c;}return $out;
 }
 function workspace_palette(): array {return [['name'=>'Красный','fill'=>'#F4D9DA'],['name'=>'Оранжевый','fill'=>'#F7E1CB'],['name'=>'Жёлтый','fill'=>'#F7F2D2'],['name'=>'Зелёный','fill'=>'#DCEAD4'],['name'=>'Бирюзовый','fill'=>'#CFE9E4'],['name'=>'Синий','fill'=>'#D8E6F4'],['name'=>'Фиолетовый','fill'=>'#DFDBF1'],['name'=>'Розовый','fill'=>'#EFD9E8'],['name'=>'Серый','fill'=>'#E7E7E7']];}
+function workspace_is_document_status_catalog(string $kind): bool {
+    return in_array($kind,['assignment-statuses','etrn-statuses'],true);
+}
 function workspace_catalog_has_palette(string $kind): bool {
-    return in_array($kind,['status','terminals-main'],true);
+    return in_array($kind,['status','terminals-main'],true) || workspace_is_document_status_catalog($kind);
 }
 function workspace_status_catalog(array $table): array {
     $id=wquery("SELECT c.id FROM catalogs c JOIN catalog_bindings b ON b.catalog_id=c.id WHERE b.table_id=? AND b.field_key='A' AND c.kind='status' LIMIT 1",[$table['id']])->fetchColumn();

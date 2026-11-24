@@ -13,7 +13,7 @@ function workspace_catalog_directory_model(): array {
         'edo-counterparties'=>['A'=>'Название','B'=>'ИНН','C'=>'КПП','D'=>'ОГРН','E'=>'Оператор ЭДО','F'=>'ID ЭДО']+workspace_edo_party_roles(),
         'margin-rules'=>['A'=>'Дата начала','B'=>'Минимум, %','C'=>'Минимум, ₽'],
         'status'=>['A'=>'Статус','B'=>'Цвет'],
-        'assignment-statuses','etrn-statuses'=>['A'=>'Статус'],
+        'assignment-statuses','etrn-statuses'=>['A'=>'Статус','B'=>'Цвет'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
         'container-types'=>['A'=>'Тип контейнера'],
         'unload-points'=>['A'=>'Клиент','B'=>'Адрес','C'=>'Контакты'],
@@ -122,9 +122,10 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             'singleLine'=>array_fill_keys(array_keys($values),true),'baseHash'=>workspace_catalog_directory_hash($id,$entryId),
             'edits'=>array_fill_keys(array_keys($values),['revision'=>(int)$entry['revision']])];
         if (workspace_catalog_has_palette($kind)) {
-            $row['orderFill']=$entry['color'];
+            if (workspace_is_document_status_catalog($kind)) $row['catalogFills']['B']=$entry['color'] ?? '';
+            else $row['orderFill']=$entry['color'];
             $row['choices']['B']=$choices;
-            $row['requiredChoices']['B']=true;
+            $row['requiredChoices']['B']=!workspace_is_document_status_catalog($kind);
         }
         foreach ($partyRoles as $column=>$_label) {
             $row['choices'][$column]=workspace_edo_party_role_choices();
@@ -343,6 +344,10 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         if ($column==='A') $payload['operatorCode']=$value=workspace_edo_operator_code($value);
         else $payload['name']=$value=workspace_catalog_validate_name($value);
     } elseif ($column === 'A') $payload['name'] = $value = workspace_catalog_validate_name($value);
+    elseif (workspace_is_document_status_catalog($kind)) {
+        $payload['color']=$value==='' ? null : workspace_directory_color($value);
+        $catalogStyle=['catalogFill'=>$payload['color']];
+    }
     elseif (workspace_catalog_has_palette($kind)) $payload['color'] = $fill = workspace_directory_color($value);
     elseif ($kind==='carriers' && in_array($column,['B','C'],true)) {
         $details=workspace_carrier_entry_details((int)$entry['id']);

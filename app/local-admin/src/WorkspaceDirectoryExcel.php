@@ -80,7 +80,7 @@ function workspace_directory_excel_entries(array $schema): array {
             'edo-operators'=>workspace_edo_operator_values($entry),
             'edo-counterparties'=>workspace_edo_party_values($entry['name'],$detail??[]),
             'margin-rules'=>workspace_margin_rule_values($entry['name'],$detail??[]),
-            'status','terminals-main','order-statuses'=>$base+['B'=>$palette[$entry['color']]??''],
+            'status','terminals-main','order-statuses','assignment-statuses','etrn-statuses'=>$base+['B'=>$palette[$entry['color']]??''],
             'dropoff-points'=>$base+($detail??workspace_dropoff_profile([])),
             'managers'=>workspace_manager_values($detail),
             'unload-points'=>workspace_unload_point_values($detail)+['C'=>workspace_unload_primary($detail)],
@@ -152,9 +152,9 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
             $payload['logist']=workspace_client_validate_manager($values['E']);
         }
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
-        if ($kind==='status' || $kind==='order-statuses' || ($kind==='terminals-main' && $values['B']!=='')) {
+        if ($kind==='status' || $kind==='order-statuses' || (workspace_catalog_has_palette($kind) && $values['B']!=='')) {
             $payload['color']=workspace_directory_color($values['B']);
-        } elseif ($kind==='terminals-main') $payload['color']=null;
+        } elseif (workspace_catalog_has_palette($kind)) $payload['color']=null;
     }
     return [$key,$payload];
 }

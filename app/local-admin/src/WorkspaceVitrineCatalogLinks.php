@@ -74,6 +74,10 @@ function vitrine_catalog_values(array $link): array {
     return is_array($map)?$map:[];
 }
 
+function vitrine_catalog_uses_cell_fill(string $kind): bool {
+    return $kind==='terminals-main' || workspace_is_document_status_catalog($kind);
+}
+
 function vitrine_find_catalog_entry(int $catalog,string $name,bool $includeArchived=false,?string $normalized=null): array|false {
     if($name==='')return false;
     $normalized??=vitrine_catalog_key($name);
