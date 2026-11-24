@@ -3,8 +3,19 @@
   const dialog = document.querySelector('.vitrine-trip-driver-dialog');
   if (!dialog) return;
   const content = dialog.querySelector('[data-trip-driver-content]');
+  const copyButton = dialog.querySelector('[data-trip-driver-copy]');
+  let clipboardText = '';
   let request;
   let origin;
+
+  copyButton.addEventListener('click', async () => {
+    if (!clipboardText) return;
+    try {
+      await navigator.clipboard.writeText(clipboardText);
+    } catch {
+      window.PlanexNotifications.show({tone:'danger',message:'Не удалось скопировать данные в буфер обмена.'});
+    }
+  });
 
   document.addEventListener('click', async event => {
     const button = event.target.closest('[data-trip-driver-button]');
@@ -23,19 +34,25 @@
       if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось открыть карточку водителя.');
       if (signal.aborted) return;
       content.replaceChildren();
+      const clipboardSections = [];
       for (const [heading,fields] of Object.entries(result.sections)) {
         const title = document.createElement('h3');
         title.textContent = heading;
         const list = document.createElement('dl');
+        const clipboardLines = [];
         for (const [label,value] of Object.entries(fields)) {
           const term = document.createElement('dt');
           term.textContent = label;
           const description = document.createElement('dd');
           description.textContent = value || '—';
           list.append(term,description);
+          if (value?.trim()) clipboardLines.push(`${label}: ${value}`);
         }
         content.append(title,list);
+        if (clipboardLines.length) clipboardSections.push([heading,...clipboardLines].join('\n'));
       }
+      clipboardText = clipboardSections.join('\n\n');
+      copyButton.disabled = !clipboardText;
     } catch (error) {
       if (signal.aborted) return;
       content.replaceChildren();
@@ -46,6 +63,8 @@
   });
   dialog.addEventListener('close', () => {
     request?.abort();
+    clipboardText = '';
+    copyButton.disabled = true;
     content.replaceChildren();
     origin?.focus({preventScroll:true});
     origin = null;

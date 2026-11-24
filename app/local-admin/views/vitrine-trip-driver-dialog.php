@@ -3,5 +3,6 @@
   <div class="modal-body" data-trip-driver-content></div>
   <form class="modal-foot" method="dialog">
     <button type="submit" class="btn btn-secondary" autofocus>Закрыть</button>
+    <button type="button" class="btn btn-primary" data-trip-driver-copy disabled>Копировать</button>
   </form>
 </dialog>
