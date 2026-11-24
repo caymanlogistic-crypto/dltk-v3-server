@@ -46,10 +46,6 @@
     const value=vehicle.querySelector('[data-trip-vehicle-value]');
     const driver=row.querySelector('td[data-column="P"]')?.textContent.trim() ?? '';
     const shortName=shortDriverName(driver);
-    const previousSuffix=vehicle.dataset.fleetDriverSuffix ?? '';
-    if (previousSuffix && vehicle.title.endsWith(previousSuffix)) {
-      vehicle.title=vehicle.title.slice(0,-previousSuffix.length);
-    }
     if (!vehicle.textContent.trim() || !shortName) {
       delete vehicle.dataset.fleetDriverSuffix;
       if (value) delete value.dataset.fleetDriverSuffix;
@@ -60,7 +56,6 @@
     vehicle.dataset.fleetDriverSuffix=suffix;
     if (value) value.dataset.fleetDriverSuffix=suffix;
     vehicle.setAttribute('aria-label',vehicle.textContent+suffix);
-    if (vehicle.title) vehicle.title+=suffix;
   }
   const initial=Array.from(body.querySelectorAll('[data-vitrine-row]'));
   for (const row of initial) {
@@ -279,7 +274,6 @@
         const key='catalogRevision'+patch.id;
         if(Number(cell.dataset[key]||0)>Number(patch.revision||0))continue;
         cell.dataset[key]=String(patch.revision||0);cell.textContent=patch.name;
-        cell.title='Щелчок — изменить. '+patch.name;
         const saved=remotePatches.get(cell.dataset.row+':'+cell.dataset.column);
         if(saved&&String(saved.referenceId??cell.dataset.referenceId)===String(patch.id))saved.value=patch.name;
       }
@@ -341,7 +335,6 @@
     fleetDocumentRequests.delete(cell);
     if (cell.textContent===value) return;
     cell.textContent=value;
-    cell.title=cell.dataset.derivedSource+'. '+(value || cell.dataset.emptyLabel+'.');
     if (value) cell.removeAttribute('aria-label');
     else cell.setAttribute('aria-label',cell.dataset.emptyLabel);
     cell.classList.remove('just-saved','just-remote','just-cleared');

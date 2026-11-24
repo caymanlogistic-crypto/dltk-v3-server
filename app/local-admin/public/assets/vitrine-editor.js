@@ -141,8 +141,7 @@
       report(error instanceof TypeError ? 'Нет связи с сервером. Отмена не выполнена.' : error.message,'danger');
     } finally { undoing = false; pendingCells.delete(cell); cell.removeAttribute('aria-busy'); }
   }
-  function updateDerivedTitle(cell,value) {
-    cell.title = cell.dataset.derivedSource + '. ' + (value || cell.dataset.emptyLabel + '.');
+  function updateDerivedLabel(cell,value) {
     if (value) cell.removeAttribute('aria-label');
     else cell.setAttribute('aria-label',cell.dataset.emptyLabel);
   }
@@ -171,7 +170,7 @@
       const changed=sibling.textContent!==value;
       sibling.textContent=value;
       if (sibling.dataset.derivedSource) {
-        updateDerivedTitle(sibling,value);
+        updateDerivedLabel(sibling,value);
         if (changed) flash(sibling);
       }
     }
@@ -187,7 +186,6 @@
           sibling.dataset.revision = String(docs.revision);
         }
         const reason = birth && result.fleetBirthEditable ? '' : docs.readOnly;
-        sibling.title = reason || 'Щелчок — изменить.';
         sibling.toggleAttribute('data-readonly-cell',Boolean(reason));
         if (reason) {
           sibling.dataset.readonlyCell = reason;
@@ -223,12 +221,9 @@
     window.VitrineDisplay?.paintCell(cell);
     if (cell.dataset.column==='P') window.VitrineRows?.updateVehicleDriver(cell.parentElement);
     if (cell.dataset.derivedSource) {
-      updateDerivedTitle(cell,result.value);
+      updateDerivedLabel(cell,result.value);
       return;
     }
-    if (!vehicleValue) cell.title = (result.edited ? 'Изменено в БД. ' : '') + 'Щелчок — изменить. ' + result.value;
-    if (cell.dataset.orderStatus) cell.title += ' · ' + (orderStatuses[cell.dataset.orderStatus]?.label || '');
-    if (cell.dataset.kind === 'time' && !cell.dataset.compactInput) cell.title = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' + result.value;
     if (cell.dataset.column==='O') window.VitrineRows?.updateVehicleDriver(cell.parentElement);
   }
   function fleetBirthRevision(cell) {

@@ -6,6 +6,12 @@ Runtime contract: [workspace] INI, APP_URL/WS_URL/DB_HOST/DB_PORT/DB_NAME/DB_USE
 
 Portable QA: all PHP and JavaScript syntax checks,66 format checks and9 HTTP integration checks passed locally using a dedicated temporary server process. The latter exercised health, distinct cookie, account login,6000-row grid,5 tables/6 roles, configured WebSocket URL, Host/Origin rejection and removed legacy route. No business values were written. Actual Linux deployment/performance remain separate acceptance steps.
 
+## Подсказки при наведении
+
+Интерфейс приложения не показывает всплывающие подсказки при наведении. Это правило действует для таблиц, справочников, диалогов и элементов управления. Для доступных имён элементов применяются видимые подписи и ARIA. Уведомления по действиям пользователя выводит PlanexNotifications.
+
+В Edge проверены вход, «Автовывоз», справочник клиентов и журнал. Имитация обновления ячейки подтвердила, что подсказка не возвращается.
+
 ## Страница входа
 
 Страница входа использует верхнюю панель Витрины, шрифт IBM Plex Sans и общие компоненты формы, полей и кнопок. Оформление учитывает последний цветовой пресет браузера. Ошибка входа выводится сверху через PlanexNotifications.

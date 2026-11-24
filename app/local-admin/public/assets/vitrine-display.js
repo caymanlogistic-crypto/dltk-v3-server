@@ -320,9 +320,7 @@
   });
   for(const header of table.querySelectorAll('thead th[data-column]')){
     const letter=header.dataset.column;
-    const grip=document.createElement('span');grip.className='display-column-resize';grip.tabIndex=document.body.dataset.vitrineCatalog ? 0 : -1;grip.setAttribute('role','separator');grip.setAttribute('aria-orientation','vertical');grip.setAttribute('aria-label','Ширина столбца '+letter);grip.setAttribute('aria-valuemin','44');grip.setAttribute('aria-valuemax','1200');grip.title=editsWidthDefaults
-      ? 'Потяните для изменения ширины по умолчанию. Двойной щелчок — исходная ширина.'
-      : 'Потяните для изменения личной ширины. Двойной щелчок — ширина по умолчанию.';
+    const grip=document.createElement('span');grip.className='display-column-resize';grip.tabIndex=document.body.dataset.vitrineCatalog ? 0 : -1;grip.setAttribute('role','separator');grip.setAttribute('aria-orientation','vertical');grip.setAttribute('aria-label','Ширина столбца '+letter);grip.setAttribute('aria-valuemin','44');grip.setAttribute('aria-valuemax','1200');
     grip.addEventListener('focus',()=>grip.setAttribute('aria-valuenow',String(Math.round(header.getBoundingClientRect().width))));
     let drag=null,frame=0;
     function preview(){frame=0;if(drag){table.style.setProperty('--vitrine-width-'+letter,drag.width+'px');grip.setAttribute('aria-valuenow',String(drag.width));}}
@@ -384,7 +382,7 @@
     draft.order.forEach((letter,index)=>{
       const column=columns.find(item=>item.letter===letter);
       const row=el('div','display-order-row'); row.dataset.letter=letter; row.setAttribute('role','listitem');
-      const handle=el('span','display-drag-handle','⠿'); handle.title='Перетащить столбец'; handle.setAttribute('aria-hidden','true');
+      const handle=el('span','display-drag-handle','⠿'); handle.setAttribute('aria-hidden','true');
       handle.addEventListener('pointerdown',event=>{
         if(event.button!==0)return;event.preventDefault();dragged=letter;handle.setPointerCapture(event.pointerId);row.classList.add('is-dragging');
       });
@@ -404,7 +402,7 @@
       });
       handle.addEventListener('pointercancel',()=>{dragged=null;list.querySelectorAll('.is-dragging,.is-drop-target').forEach(node=>node.classList.remove('is-dragging','is-drop-target'));});
       const label=el('span','display-column-name',letter+' · '+(column.label||'Без названия'));
-      const visible=el('input','display-column-visible');visible.type='checkbox';visible.checked=!draft.hidden.includes(letter);visible.setAttribute('aria-label','Показывать столбец '+letter);visible.title='Показывать столбец';
+      const visible=el('input','display-column-visible');visible.type='checkbox';visible.checked=!draft.hidden.includes(letter);visible.setAttribute('aria-label','Показывать столбец '+letter);
       row.classList.toggle('is-column-hidden',!visible.checked);
       visible.addEventListener('change',()=>{draft.hidden=visible.checked?draft.hidden.filter(item=>item!==letter):[...draft.hidden,letter];row.classList.toggle('is-column-hidden',!visible.checked);});
       const up=button('↑',()=>move(index,index-1,'up')); up.dataset.direction='up'; up.disabled=index===0; up.setAttribute('aria-label','Переместить '+letter+' вверх');
@@ -419,7 +417,7 @@
     const list=el('div','display-preset-list');
     for(const preset of presets){
       const card=el('label','display-preset radio-item'); const name=el('span','display-preset-title'); const radio=el('input');radio.type='radio';radio.name='display-preset';radio.value=preset.id;radio.setAttribute('aria-label',preset.name);radio.checked=draft.preset===preset.id;radio.addEventListener('change',()=>draft.preset=preset.id);const mark=el('span','radio-mark');mark.setAttribute('aria-hidden','true');name.append(radio,mark,el('span','radio-label',preset.name));
-      const swatches=el('span','display-swatches');preset.colors.forEach((fill,i)=>{const swatch=el('span','display-swatch');swatch.style.backgroundColor=fill;swatch.title=catalog.palette[i]?.name||'';swatches.append(swatch);});
+      const swatches=el('span','display-swatches');preset.colors.forEach((fill,i)=>{const swatch=el('span','display-swatch');swatch.style.backgroundColor=fill;swatch.setAttribute('role','img');swatch.setAttribute('aria-label',catalog.palette[i]?.name||'');swatches.append(swatch);});
       card.append(name,swatches,el('span','display-preset-note',preset.note));list.append(card);
     }
     body.append(list);

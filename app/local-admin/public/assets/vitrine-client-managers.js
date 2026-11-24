@@ -112,13 +112,11 @@
       const cell=node('td');
       const label=manager.label+(manager.active?'':' (архив)');
       const name=data.canEdit ? action(label,button=>edit(manager,button)) : node('span',label,'vitrine-client-relations-cell');
-      if (data.canEdit) name.title='Щелчок — изменить менеджера';
       cell.append(name);
       row.append(actions,cell);
       for (const value of [manager.phone,manager.email]) {
         const detail=node('td');
         detail.append(node('span',value||'—','vitrine-client-relations-cell'));
-        detail.title=value||'';
         row.append(detail);
       }
       rows.append(row);
@@ -161,7 +159,6 @@
       const cell=window.VitrineRows?.resolveCell(opener)??opener;
       for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) sibling.dataset.revision=String(data.revision);
       cell.textContent=cell.dataset.original=data.summary;
-      cell.title='Щелчок — открыть список менеджеров. '+data.summary;
       if (section===removeForm) dialog.close();
       else { render();show(list);focusList(data.createdId??savedId); }
       notice('Менеджеры клиента сохранены.','success');

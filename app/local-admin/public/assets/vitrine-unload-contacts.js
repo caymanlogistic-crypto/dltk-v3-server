@@ -106,7 +106,6 @@
         if (cell.dataset.kind!=='unload-contacts') continue;
         cell.textContent=result.summary;
         cell.dataset.original=result.summary;
-        cell.title='Щелчок — открыть контакты. '+result.summary;
         cell.classList.remove('just-saved');
         void cell.offsetWidth;
         cell.classList.add('just-saved');

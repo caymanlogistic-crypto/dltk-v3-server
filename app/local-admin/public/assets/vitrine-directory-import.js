@@ -30,7 +30,6 @@
   function updateFilename() {
     const name = fileField.files[0]?.name;
     filename.textContent = name ?? 'Файл не выбран';
-    filename.title = name ?? '';
   }
   async function request(options) {
     const response = await fetch(url,options);

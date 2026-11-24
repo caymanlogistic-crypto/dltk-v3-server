@@ -39,7 +39,7 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
     <?php require __DIR__.'/vitrine-export-button.php'; ?>
     <?php if ($canUploadExcel): ?>
     <button class="btn btn-secondary btn-icon vitrine-excel-button" type="button" data-directory-import
-            aria-label="Загрузить Excel" title="Загрузить Excel (.xlsx)">
+            aria-label="Загрузить Excel">
       <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 15V3m-4 4 4-4 4 4M4 16v4h16v-4"/>
       </svg>

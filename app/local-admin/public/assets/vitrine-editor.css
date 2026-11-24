@@ -16,11 +16,6 @@
 .vitrine td[data-derived-source]:empty::before { content:"—"; color:var(--text-muted); }
 .vitrine .vitrine-derived-icon { position:relative; display:inline-flex; align-items:center; margin-inline-start:3px; vertical-align:middle; color:var(--text-muted); }
 .vitrine .vitrine-derived-icon svg { width:12px; height:12px; }
-.vitrine .vitrine-derived-icon:is(:hover,:focus-visible)::after {
-  content:attr(data-source-label); position:absolute; z-index:1; top:100%; inset-inline-start:0;
-  padding:3px 6px; border:1px solid var(--line); border-radius:2px; white-space:nowrap;
-  background:var(--surface-strong); color:var(--text-main); font:500 11px var(--font); pointer-events:none;
-}
 .vitrine td[data-edit-cell]:is(.just-saved,.just-remote,.just-cleared) { animation:vitrine-cell-saved 700ms ease-out; }
 .vitrine td[data-edit-cell].just-cleared { --vitrine-save-flash:var(--vitrine-preset-red); }
 .vitrine td[data-edit-cell].just-remote { --vitrine-save-flash:var(--p-error); }

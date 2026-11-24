@@ -121,7 +121,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
     <nav class="vitrine-topnav" aria-label="Основная навигация">
       <div class="vitrine-nav-start">
       <?php foreach($workspaceTables as $table): ?>
-        <a class="nav-item <?= $currentTable['id']===$table['id']?'is-active':'' ?>" href="<?= htmlspecialchars(app_url_path('/vitrine?table='),ENT_QUOTES,'UTF-8') ?><?= $escape($table['slug']) ?>" title="<?= $escape($table['title']) ?>"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 10h18M10 3v18"/></svg><span class="nav-label"><?= $escape($table['title']) ?></span></a>
+        <a class="nav-item <?= $currentTable['id']===$table['id']?'is-active':'' ?>" href="<?= htmlspecialchars(app_url_path('/vitrine?table='),ENT_QUOTES,'UTF-8') ?><?= $escape($table['slug']) ?>"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 10h18M10 3v18"/></svg><span class="nav-label"><?= $escape($table['title']) ?></span></a>
       <?php endforeach; ?>
       </div>
       <details class="vitrine-folder">
@@ -140,7 +140,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <?php endif; ?>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>" id="workspace-row-history">История строки</a>
           <?php endif; ?>
-          <div class="nav-sub-item" title="<?= $escape(implode(', ',$currentUser['roles'])) ?>"><?= $escape($currentUser['login']) ?> <span data-workspace-live data-live-status aria-live="polite"></span></div>
+          <div class="nav-sub-item"><?= $escape($currentUser['login']) ?> <span data-workspace-live data-live-status aria-live="polite"></span></div>
           <button class="nav-sub-item" type="button" id="workspace-logout">Выйти</button>
         </div>
       </details>
@@ -216,9 +216,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <colgroup><col class="vitrine-row-column"><?php foreach ($columns as $column): ?><col class="vitrine-data-column<?= $columnClass($column) ?>" data-column="<?= $escape($column['letter']) ?>"><?php endforeach; ?></colgroup>
           <thead><tr><th scope="col" class="vitrine-row-number">Строка</th>
             <?php foreach ($columns as $column): ?>
-              <th scope="col" data-column="<?= $escape($column['letter']) ?>"<?= ($column['export']??true) ? '' : ' data-no-export' ?> class="<?= trim($columnClass($column)) ?>" title="<?= $escape($column['label']) ?>">
+              <th scope="col" data-column="<?= $escape($column['letter']) ?>"<?= ($column['export']??true) ? '' : ' data-no-export' ?> class="<?= trim($columnClass($column)) ?>">
                 <span class="vitrine-column-letter"><?= $escape($column['letter']) ?><?php if (isset($column['derivedSource'])): ?>
-                  <span class="vitrine-derived-icon" role="img" tabindex="0" aria-label="<?= $escape($column['derivedSource']) ?>" data-source-label="<?= $escape($column['derivedSource']) ?>">
+                  <span class="vitrine-derived-icon" role="img" tabindex="0" aria-label="<?= $escape($column['derivedSource']) ?>">
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7L12 5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19"/></svg>
                   </span><?php endif; ?></span>
                 <?php if ($canPinColumns): ?>
