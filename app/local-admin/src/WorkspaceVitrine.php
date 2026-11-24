@@ -19,6 +19,39 @@ function vitrine_requested_records(array $table, array $wanted, bool $archive, b
     return wquery("SELECT r.* FROM records r WHERE $where ORDER BY r.row_num DESC",$args)->fetchAll();
 }
 
+function vitrine_trip_driver_card(int $number,bool $archive): array {
+    $table=workspace_table();
+    if ($table['slug']!=='vyvoz' || (vitrine_catalog_links($table)['O']['kind']??null)!=='fleet-vehicles') {
+        throw new ApiError('not_found','Карточка водителя недоступна.',404);
+    }
+    workspace_require('field','O','view',$table['id']);
+    $row=vitrine_data([$number],$archive)['rows'][0]??null;
+    if (!$row || empty($row['values']['O'])) throw new ApiError('not_found','Машина в рейсе не указана.',404);
+    $name=workspace_can('field','P','view',$table['id']) ? ($row['values']['P']??'') : '';
+    $phones=workspace_can('field','Q','view',$table['id']) ? ($row['values']['Q']??'') : '';
+    $sections=['Водитель'=>['ФИО'=>$name,'Телефоны'=>$phones],'Автотранспорт'=>['Машина'=>$row['values']['O']]];
+    if (workspace_fleet_trip_documents_can_view($table['id'])) {
+        $reference=$row['references']['P']??null;
+        $drivers=workspace_fleet_catalog('fleet-drivers');
+        $driver=($reference['catalogId']??null)===$drivers ? $reference['id'] : 0;
+        if (!$driver && empty($row['edits']['O']['active']) && empty($row['edits']['P']['active'])) {
+            $driver=(int)wquery("SELECT o.entry_id FROM fleet_trip_origins o JOIN catalog_entries e ON e.id=o.entry_id
+                WHERE o.record_id=? AND o.field_key='P' AND e.catalog_id=?",[$row['recordId'],$drivers])->fetchColumn();
+        }
+        if ($driver) {
+            $documents=workspace_fleet_document_state(0,$driver,false)['values'];
+            $sections['Водитель']['Дата рождения']=$documents['P'];
+            $labels=workspace_fleet_document_labels();
+            foreach (['Паспорт'=>['J','N','O'],'Водительское удостоверение'=>['K','L','M']] as $section=>$fields) {
+                foreach ($fields as $key) $sections[$section][$labels[$key]]=$documents[$key];
+            }
+        } elseif (!empty($row['values']['R'])) {
+            $sections['Документы из рейса']=['Данные'=>$row['values']['R']];
+        }
+    }
+    return ['sections'=>$sections];
+}
+
 function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $t=workspace_table();$columns=array_values(array_filter($t['columns'],fn($f)=>workspace_can('field',$f['letter'],'view',$t['id'])));
     $isAvtovyvoz=$t['slug']==='vyvoz';
@@ -50,6 +83,9 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $documentsColumn=$links['O']['documentsTarget']??null;
     $canViewDocuments=$documentsColumn!==null && workspace_fleet_trip_documents_can_view($t['id']);
     foreach($columns as &$column){
+        if ($isAvtovyvoz && $column['letter']==='O' && ($links['O']['kind']??null)==='fleet-vehicles') {
+            $column['tripDriverCard']=true;
+        }
         if ($column['letter']===$documentsColumn) {
             $column['export']=false;
             $column['fleetDocumentsVisible']=$canViewDocuments;

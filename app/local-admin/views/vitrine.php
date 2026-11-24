@@ -77,6 +77,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-select.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-slot.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <?php if (in_array(true,array_column($columns,'tripDriverCard'),true)): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-trip-driver.js')) ?>"></script>
+  <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-grid.js'),ENT_QUOTES,'UTF-8') ?>"></script>
@@ -203,7 +206,8 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
     <?php endif; ?>
     <?php if ($canManageRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
     if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php';
-    require __DIR__.'/vitrine-clear-cell-dialog.php'; ?>
+    require __DIR__.'/vitrine-clear-cell-dialog.php';
+    if (in_array(true,array_column($columns,'tripDriverCard'),true)) require __DIR__.'/vitrine-trip-driver-dialog.php'; ?>
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
       <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">

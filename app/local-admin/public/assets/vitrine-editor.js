@@ -151,8 +151,11 @@
     const integerMask = ['weight','distance','money','cargo-value','cargo-places'].includes(cell.dataset.kind)
       ? window.VitrineCompactInput[cell.dataset.kind] : null;
     const integerDigits = integerMask?.read(result.value);
-    cell.textContent = slotRequested ? window.VitrineSlot.requestLabel
+    const displayValue = slotRequested ? window.VitrineSlot.requestLabel
       : integerDigits ? integerMask.format(integerDigits) : result.value;
+    const vehicleValue = cell.querySelector('[data-trip-vehicle-value]');
+    (vehicleValue ?? cell).textContent = displayValue;
+    if (vehicleValue) cell.querySelector('[data-trip-driver-button]').hidden = !displayValue.trim();
     cell.dataset.original = result.original ?? '';
     cell.dataset.revision = String(result.revision);
     if (result.unloadChoices) {
@@ -220,7 +223,7 @@
       updateDerivedTitle(cell,result.value);
       return;
     }
-    cell.title = (result.edited ? 'Изменено в БД. ' : '') + 'Щелчок — изменить. ' + result.value;
+    if (!vehicleValue) cell.title = (result.edited ? 'Изменено в БД. ' : '') + 'Щелчок — изменить. ' + result.value;
     if (cell.dataset.orderStatus) cell.title += ' · ' + (orderStatuses[cell.dataset.orderStatus]?.label || '');
     if (cell.dataset.kind === 'time' && !cell.dataset.compactInput) cell.title = 'Наберите 800 или 0800 → 08:00. Enter — сохранить, Esc — отменить, F2 — редактор. ' + result.value;
     if (cell.dataset.column==='O') window.VitrineRows?.updateVehicleDriver(cell.parentElement);
@@ -676,6 +679,7 @@
     (active.field.disabled && active.requestField ? active.requestField : active.field).focus();
   }, true);
   document.addEventListener('click', event => {
+    if (event.target.closest('[data-trip-driver-button]')) return;
     const cell = event.target.closest('td[data-edit-cell]');
     if (!cell) return;
     if (['unload-contacts','client-unload-points','client-managers'].includes(cell.dataset.kind)) { open(cell); return; }
@@ -821,6 +825,11 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
+    if (event.key === 'Enter' && event.altKey && cell.matches('[data-trip-driver-cell]')) {
+      event.preventDefault();
+      cell.querySelector('[data-trip-driver-button]:not([hidden])')?.click();
+      return;
+    }
     if (event.key==='Delete' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
       && !event.isComposing && !event.defaultPrevented && !event.target.closest('input,textarea,[contenteditable="true"]')
       && !document.querySelector('dialog[open]')) {

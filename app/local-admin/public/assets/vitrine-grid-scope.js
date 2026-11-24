@@ -3,7 +3,7 @@
   const catalog = document.body.dataset.vitrineCatalog;
   const tableSlug = document.body.dataset.workspaceTable || 'vyvoz';
   const pageFilters = new URLSearchParams(location.search);
-  function url(path, {rowFilters = false, ids, search = pageFilters.get('q'), fleetDocuments = false} = {}) {
+  function url(path, {rowFilters = false, ids, search = pageFilters.get('q'), fleetDocuments = false, tripDriver = false} = {}) {
     const params = new URLSearchParams(catalog ? {catalog} : {table:tableSlug});
     if (catalog === 'entries' && pageFilters.has('id')) params.set('id',pageFilters.get('id'));
     if ((catalog === 'entries' || catalog === 'clients') && pageFilters.has('client')) params.set('client',pageFilters.get('client'));
@@ -15,6 +15,7 @@
     }
     if (ids) params.set('ids', ids.join(','));
     if (fleetDocuments) params.set('fleetDocuments','1');
+    if (tripDriver) params.set('tripDriver','1');
     const endpoint = path + '?' + params;
     return window.DltkPaths?.path(endpoint) ?? endpoint;
   }
