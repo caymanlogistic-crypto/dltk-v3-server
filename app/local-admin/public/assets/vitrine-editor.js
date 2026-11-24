@@ -703,16 +703,21 @@
   });
   table?.addEventListener('focusin', event => { const cell = event.target.closest('td[data-edit-cell]'); if (cell) select(cell); });
   function reveal(cell) {
-    cell.scrollIntoView({block:'nearest',inline:'nearest'});
     const scroll = cell.closest('.vitrine-table-scroll');
     if (!scroll) return;
-    if (cell === cell.parentElement.querySelector('td[data-edit-cell]:not([hidden])')) scroll.scrollLeft = 0;
+    const frozenCount = Number(table.dataset.frozenCount || 0);
+    const frozen = cell.hasAttribute('data-frozen-column') && Number(cell.dataset.frozenColumn)<=frozenCount;
+    const previousLeft = scroll.scrollLeft;
+    cell.scrollIntoView({block:'nearest',inline:'nearest'});
+    if (frozen) scroll.scrollLeft = previousLeft;
+    else if (cell === cell.parentElement.querySelector('td[data-edit-cell]:not([hidden])')) scroll.scrollLeft = 0;
     const rect = cell.getBoundingClientRect();
     const rowHeader = cell.parentElement.querySelector('.vitrine-row-number');
+    const lastFrozen = cell.parentElement.querySelector(`[data-frozen-column="${frozenCount}"]`);
     const header = table.querySelector('thead');
-    const left = rowHeader?.getBoundingClientRect().right;
+    const left = (lastFrozen ?? rowHeader)?.getBoundingClientRect().right;
     const top = header?.getBoundingClientRect().bottom;
-    if (left !== undefined && rect.left < left) scroll.scrollLeft -= left - rect.left;
+    if (!frozen && left !== undefined && rect.left < left) scroll.scrollLeft -= left - rect.left;
     if (top !== undefined && rect.top < top) scroll.scrollTop -= top - rect.top;
   }
   function move(cell, rowOffset, columnOffset, wrap = true) {

@@ -101,6 +101,26 @@
   const defaultWidth = region.dataset.gridDefaultWidth;
   const columns = Array.from(table.querySelectorAll('thead th[data-column]')).map(node => ({letter:node.dataset.column,label:node.querySelector('.vitrine-column-label').textContent}));
   const originalOrder = columns.map(column => column.letter);
+  const freezeColumns = table.hasAttribute('data-freeze-columns');
+  const scrollContainer = table.parentElement;
+  const rowNumberHeader = table.querySelector('thead .vitrine-row-number');
+  let frozenColumns = [];
+  let frozenHeaders = [];
+  function updateFrozenWidths() {
+    const widths = frozenHeaders.map(header=>header.getBoundingClientRect().width);
+    const available = scrollContainer.clientWidth - rowNumberHeader.getBoundingClientRect().width - 64;
+    const count = widths.length===2 && widths[0]+widths[1]<=available ? 2 : (widths[0]<=available ? 1 : 0);
+    table.dataset.frozenCount = String(count);
+    table.style.setProperty('--vitrine-first-frozen-width',(widths[0]??0)+'px');
+  }
+  const frozenWidthObserver = freezeColumns ? new ResizeObserver(updateFrozenWidths) : null;
+  function markFrozenColumns(cells) {
+    for (const cell of cells) {
+      const index = frozenColumns.indexOf(cell.dataset.column);
+      if (index===-1) delete cell.dataset.frozenColumn;
+      else cell.dataset.frozenColumn=String(index+1);
+    }
+  }
   let catalog = {};
   try { catalog = JSON.parse(document.getElementById('vitrine-status-data')?.content || '{}'); } catch {}
   const palette = catalog.palette || [];
@@ -202,6 +222,15 @@
   function applyVisibility(hidden) {
     const hiddenColumns = new Set(hidden);
     table.querySelectorAll('[data-column]').forEach(node=>{node.hidden=hiddenColumns.has(node.dataset.column);});
+    if (freezeColumns) {
+      frozenHeaders = [...table.querySelectorAll('thead th[data-column]:not([hidden])')].slice(0,2);
+      frozenColumns = frozenHeaders.map(header=>header.dataset.column);
+      markFrozenColumns(table.querySelectorAll(':is(th,td)[data-column]'));
+      frozenWidthObserver.disconnect();
+      frozenWidthObserver.observe(scrollContainer);
+      frozenHeaders.forEach(header=>frozenWidthObserver.observe(header,{box:'border-box'}));
+      updateFrozenWidths();
+    }
     window.dispatchEvent(new CustomEvent('vitrine-columns-updated'));
   }
   const widthRules=document.createElement('style');
@@ -265,6 +294,7 @@
       const nodes=new Map(Array.from(row.querySelectorAll('td[data-column]')).map(node=>[node.dataset.column,node]));
       const fragment=document.createDocumentFragment();
       for(const letter of state.order){const cell=nodes.get(letter);if(!cell)continue;cell.hidden=state.hidden.includes(letter);paintCell(cell);fragment.append(cell);}
+      if (freezeColumns) markFrozenColumns(nodes.values());
       row.append(fragment);
     }
   }

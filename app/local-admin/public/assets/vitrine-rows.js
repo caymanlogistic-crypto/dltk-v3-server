@@ -181,7 +181,7 @@
     await page(Math.floor(index/pageSize));if(ticket!==navigationGeneration)return null;
     ensureVisible(index);await render();if(ticket!==navigationGeneration)return null;
     const target=cache.get(ids[index])?.querySelector('td[data-column="'+cell.dataset.column+'"]:not([hidden])');
-    if(target){window.VitrineGrid.select(target);target.focus({preventScroll:true});target.scrollIntoView({block:'nearest',inline:'nearest'});action?.(target);}
+    if(target){window.VitrineGrid.select(target);target.focus({preventScroll:true});window.VitrineGrid.reveal(target);action?.(target);}
     return target;
   }
   function go(cell,r,c){
