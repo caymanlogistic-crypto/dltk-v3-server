@@ -483,6 +483,7 @@
       if (!required && !typeEditor && !unloadEditor && !documentStatusEditor && (!dropoffEditor || Number(cell.dataset.referenceId)) && cell.textContent && !items.some(item => item.value === cell.textContent)) options.push({value:cell.textContent,label:cell.textContent + (fleetEditor ? cell.dataset.fleetDriverSuffix ?? '' : ' · вне справочника')});
       options.push(...items.filter(item => item.value !== ''));
       control = window.VitrineSelect.create(options,cell.textContent,{searchable:searchableCatalog,
+        showColorSwatches:isStatus || ['E','T','U'].includes(cell.dataset.sharedChoices),
         ...(fleetEditor ? {searchKey:fleetSearchKey,showLabels:true} : {})});
     }
     const field = control?.field || element(mask || isSingleLine ? 'input' : 'textarea', 'field-input');
@@ -559,7 +560,7 @@
       const options = [{value:'',label:'Без статуса'},...Object.values(orderStatuses).map(status=>({
         value:status.label,label:status.label,color:status.color
       }))];
-      const picker = window.VitrineSelect.create(options,orderStatuses[cell.dataset.orderStatus]?.label || '');
+      const picker = window.VitrineSelect.create(options,orderStatuses[cell.dataset.orderStatus]?.label || '',{showColorSwatches:true});
       orderField = picker.field;
       orderField.setAttribute('aria-label','Статус заказа');
       orderField.classList.add('vitrine-editor-field');
