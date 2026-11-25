@@ -63,7 +63,8 @@
   }
   function applyBuffered(){
     if(!bufferedRemote && !widthsChanged && (!sharedPreset || sharedPreset.value===state.preset))return;
-    if(inFlight||Object.keys(pendingChanges).length||document.querySelector('.vitrine-display-dialog[open]')||hasOpenEditor()||document.body.classList.contains('is-column-resizing'))return;
+    if(inFlight||Object.keys(pendingChanges).length||document.querySelector('.vitrine-display-dialog[open], [data-column-hide-dialog][open]')||hasOpenEditor()||
+        document.body.matches('.is-column-resizing,.display-column-dragging'))return;
     const incoming=bufferedRemote;bufferedRemote=null;
     const preset=validPreset(sharedPreset?.value) ? sharedPreset.value : state.preset;
     let next={...state,preset};
@@ -286,38 +287,183 @@
     state=next;applyWidths(state.widths);persist(state);
     try{localStorage.setItem(key,JSON.stringify(state));}catch{}
   }
-  let pinAnimations=[];
-  function togglePin(letter,button) {
+  function canMoveColumns() {
     if (hasOpenEditor()) {
       window.PlanexNotifications.show({tone:'warning',message:'Сначала сохраните правку ячейки или нажмите «Отмена».'});
-      return;
+      return false;
     }
-    pinAnimations.forEach(animation=>animation.cancel());
-    pinAnimations=[];
+    return true;
+  }
+  let columnAnimations=[];
+  function animateColumnChange(letters,apply,button) {
+    columnAnimations.forEach(animation=>animation.cancel());
+    columnAnimations=[];
     const previousPositions = new Map();
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const bounds=scrollContainer.getBoundingClientRect();
-      for (const cell of table.querySelectorAll('th[data-column="'+letter+'"],td[data-column="'+letter+'"]')) {
+      const selector=letters.map(letter=>':is(th,td)[data-column="'+letter+'"]:not([hidden])').join(',');
+      for (const cell of table.querySelectorAll(selector)) {
         const rect=cell.getBoundingClientRect();
-        if (rect.bottom>bounds.top && rect.top<bounds.bottom) previousPositions.set(cell,rect.left);
+        if (rect.bottom>bounds.top && rect.top<bounds.bottom && rect.right>bounds.left && rect.left<bounds.right) {
+          previousPositions.set(cell,rect.left);
+        }
       }
     }
-    state.pinned=state.pinned.includes(letter) ? state.pinned.filter(item=>item!==letter) : [...state.pinned,letter];
+    apply();
     applyColumns();
     button.focus({preventScroll:true});
     for (const [cell,left] of previousPositions) {
       const shift=left-cell.getBoundingClientRect().left;
-      if (Math.abs(shift)>1) pinAnimations.push(cell.animate(
+      if (Math.abs(shift)>1) columnAnimations.push(cell.animate(
         [{transform:'translateX('+shift+'px)'},{transform:'translateX(0)'}],
         {duration:230,easing:'ease-out'}));
     }
     persist(state);
+  }
+  function togglePin(letter,button) {
+    if (!canMoveColumns()) return;
+    animateColumnChange([letter],()=>{
+      state.pinned=state.pinned.includes(letter) ? state.pinned.filter(item=>item!==letter) : [...state.pinned,letter];
+    },button);
   }
   table.addEventListener('click',event=>{
     const button=event.target.closest('[data-column-pin]');
     if (!button) return;
     togglePin(button.closest('th').dataset.column,button);
   });
+  function moveColumn(button,target,side) {
+    const letter=button.closest('th').dataset.column;
+    const pinned=state.pinned.includes(letter);
+    if (target===letter || state.pinned.includes(target)!==pinned) return;
+    const key=pinned ? 'pinned' : 'order';
+    const order=state[key].filter(item=>item!==letter);
+    order.splice(order.indexOf(target)+(side==='after' ? 1 : 0),0,letter);
+    if (order.every((item,index)=>item===state[key][index])) return;
+    const displayed=displayOrder();
+    const indexes=[displayed.indexOf(letter),displayed.indexOf(target)];
+    const affected=displayed.slice(Math.min(...indexes),Math.max(...indexes)+1);
+    animateColumnChange(affected,()=>{state[key]=order;},button);
+  }
+  if (freezeColumns) {
+    const hideDialog=document.querySelector('[data-column-hide-dialog]');
+    let hideButton=null;
+    table.addEventListener('click',event=>{
+      const button=event.target.closest('[data-column-hide]');
+      if (!button || !canMoveColumns()) return;
+      if (state.hidden.length>=originalOrder.length-1) {
+        window.PlanexNotifications.show({tone:'warning',message:'Оставьте хотя бы один столбец видимым.'});
+        return;
+      }
+      const header=button.closest('th');
+      hideButton=button;
+      hideDialog.querySelector('[data-column-hide-label]').textContent=
+        header.dataset.column+' «'+header.querySelector('.vitrine-column-label').textContent+'»';
+      hideDialog.showModal();
+    });
+    hideDialog.addEventListener('close',()=>{
+      if (hideButton && hideDialog.returnValue==='hide') {
+        const letter=hideButton.closest('th').dataset.column;
+        const visible=displayOrder().filter(item=>!state.hidden.includes(item));
+        const index=visible.indexOf(letter);
+        const neighbor=visible[index+1] ?? visible[index-1];
+        state.hidden=[...state.hidden,letter];
+        applyColumns();
+        persist(state);
+        headersByColumn.get(neighbor)?.querySelector('[data-column-hide]').focus({preventScroll:true});
+      } else {
+        hideButton?.focus({preventScroll:true});
+      }
+      hideButton=null;
+      hideDialog.returnValue='';
+      applyBuffered();
+    });
+    let drag=null,drop=null,frame=0;
+    function showDrop(next) {
+      if (drop?.header===next?.header && drop?.side===next?.side) return;
+      drop?.header.removeAttribute('data-column-drop');
+      drop=next;
+      if (drop) drop.header.dataset.columnDrop=drop.side;
+    }
+    function updateDrop() {
+      const header=document.elementFromPoint(drag.x,drag.y)?.closest('thead th[data-column]');
+      if (!header || header===drag.header || !table.contains(header) ||
+          state.pinned.includes(header.dataset.column)!==drag.pinned) {
+        showDrop(null);
+        return;
+      }
+      const bounds=header.getBoundingClientRect();
+      showDrop({header,side:drag.x<(bounds.left+bounds.right)/2 ? 'before' : 'after'});
+    }
+    function scrollAtEdge() {
+      frame=0;
+      const rect=scrollContainer.getBoundingClientRect();
+      const start=frozenHeaders[frozenColumns.length-1] ?? rowNumberHeader;
+      const left=start.getBoundingClientRect().right;
+      if (drag.x<rect.left || drag.x>rect.right || drag.y<rect.top || drag.y>rect.bottom) return;
+      const step=drag.x>rect.right-36 ? 14 : drag.x<left+36 ? -14 : 0;
+      const previous=scrollContainer.scrollLeft;
+      scrollContainer.scrollLeft+=step;
+      if (scrollContainer.scrollLeft!==previous) {
+        updateDrop();
+        frame=requestAnimationFrame(scrollAtEdge);
+      }
+    }
+    function finishDrag(apply) {
+      if (!drag) return;
+      const {button,header,pointerId}=drag, destination=drop;
+      drag=null;
+      showDrop(null);
+      if (frame) cancelAnimationFrame(frame);
+      frame=0;
+      header.classList.remove('display-column-source');
+      document.body.classList.remove('display-column-dragging');
+      if (button.hasPointerCapture(pointerId)) button.releasePointerCapture(pointerId);
+      if (apply && destination) moveColumn(button,destination.header.dataset.column,destination.side);
+      applyBuffered();
+    }
+    table.addEventListener('pointerdown',event=>{
+      const button=event.target.closest('[data-column-drag]');
+      if (!button || event.button!==0 || drag) return;
+      event.preventDefault();
+      if (!canMoveColumns()) return;
+      const header=button.closest('th');
+      button.focus({preventScroll:true});
+      button.setPointerCapture(event.pointerId);
+      drag={button,header,pointerId:event.pointerId,pinned:state.pinned.includes(header.dataset.column),
+        startX:event.clientX,x:event.clientX,y:event.clientY,started:false};
+    });
+    table.addEventListener('pointermove',event=>{
+      if (event.pointerId!==drag?.pointerId) return;
+      drag.x=event.clientX;drag.y=event.clientY;
+      if (!drag.started) {
+        if (Math.abs(drag.x-drag.startX)<4) return;
+        drag.started=true;
+        drag.header.classList.add('display-column-source');
+        document.body.classList.add('display-column-dragging');
+      }
+      updateDrop();
+      if (!drag.pinned && !frame) frame=requestAnimationFrame(scrollAtEdge);
+    });
+    table.addEventListener('pointerup',event=>{
+      if (event.pointerId===drag?.pointerId) finishDrag(true);
+    });
+    for (const type of ['pointercancel','lostpointercapture']) table.addEventListener(type,event=>{
+      if (event.pointerId===drag?.pointerId) finishDrag(false);
+    });
+    table.addEventListener('keydown',event=>{
+      const button=event.target.closest('[data-column-drag]');
+      if (!button) return;
+      if (event.key==='Escape' && drag) { event.preventDefault(); finishDrag(false); return; }
+      if (!['ArrowLeft','ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      if (drag || !canMoveColumns()) return;
+      const letter=button.closest('th').dataset.column, pinned=state.pinned.includes(letter);
+      const group=displayOrder().filter(item=>state.pinned.includes(item)===pinned && !state.hidden.includes(item));
+      const step=event.key==='ArrowLeft' ? -1 : 1;
+      const target=group[group.indexOf(letter)+step];
+      if (target) moveColumn(button,target,step<0 ? 'before' : 'after');
+    });
+  }
   for(const header of table.querySelectorAll('thead th[data-column]')){
     const letter=header.dataset.column;
     const grip=document.createElement('span');grip.className='display-column-resize';grip.tabIndex=document.body.dataset.vitrineCatalog ? 0 : -1;grip.setAttribute('role','separator');grip.setAttribute('aria-orientation','vertical');grip.setAttribute('aria-label','Ширина столбца '+letter);grip.setAttribute('aria-valuemin','44');grip.setAttribute('aria-valuemax','1200');

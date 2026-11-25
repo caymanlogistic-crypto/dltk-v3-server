@@ -10,12 +10,14 @@
 
   copyButton.addEventListener('click', async () => {
     if (!clipboardText) return;
+    const copiedCard = request;
     try {
       await navigator.clipboard.writeText(clipboardText);
     } catch {
       window.PlanexNotifications.show({tone:'danger',message:'Не удалось скопировать данные в буфер обмена.'});
       return;
     }
+    if (dialog.open && request===copiedCard) dialog.close();
     window.PlanexNotifications.show({tone:'success',message:'Скопировано в буфер обмена.'});
   });
 

@@ -11,13 +11,22 @@
 .vitrine .vitrine-table thead th[data-column] { position:relative; }
 .vitrine .display-column-resize { position:absolute; top:0; right:0; bottom:0; width:7px; cursor:col-resize; touch-action:none; z-index:1; }
 .vitrine .display-column-resize:hover,.vitrine .display-column-resize:focus-visible { background:var(--accent-line); }
-.vitrine .display-column-pin {
+.vitrine .display-column-controls {
   position:absolute; inset-block-start:5px; inset-inline-end:8px;
-  display:grid; place-items:center; inline-size:22px; block-size:22px; padding:0;
+  display:flex; inline-size:60px; max-inline-size:calc(100% - 8px);
+}
+.vitrine .display-column-controls button {
+  display:grid; place-items:center; flex:1 1 20px; min-inline-size:0; block-size:22px; padding:0;
   border:0; border-radius:2px; background:transparent; color:var(--text-muted); cursor:pointer;
 }
-.vitrine .display-column-pin svg { inline-size:13px; block-size:13px; }
-.vitrine .display-column-pin:hover,.vitrine .display-column-pin:focus-visible { background:var(--surface-muted); color:var(--text-main); }
+.vitrine .display-column-controls svg { inline-size:13px; max-inline-size:100%; block-size:13px; }
+.vitrine .display-column-controls button:is(:hover,:focus-visible) { background:var(--surface-muted); color:var(--text-main); }
+.vitrine .display-column-controls .display-column-drag { cursor:grab; touch-action:none; }
+.vitrine [data-freeze-columns] th[data-column] .vitrine-column-letter { margin-inline-end:55px; overflow:hidden; }
+.vitrine .display-column-dragging,.vitrine .display-column-dragging * { cursor:grabbing !important; user-select:none; }
+.vitrine th.display-column-source .display-column-drag { color:var(--accent); background:var(--surface-muted); }
+.vitrine th[data-column-drop="before"] { box-shadow:inset 3px 0 var(--accent); }
+.vitrine th[data-column-drop="after"] { box-shadow:inset -3px 0 var(--accent); }
 .vitrine .display-column-pin[aria-pressed="true"] { color:var(--accent); }
 .vitrine .display-column-pin[aria-pressed="true"] svg { fill:currentColor; }
 .vitrine.is-column-resizing,.vitrine.is-column-resizing * { cursor:col-resize !important; user-select:none !important; }
