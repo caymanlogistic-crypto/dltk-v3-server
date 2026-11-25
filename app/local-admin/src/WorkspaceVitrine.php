@@ -100,7 +100,13 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $needsManifest=$requestedRows===null || !$isAvtovyvoz;
     $rowIds=$needsManifest ? workspace_manifest($t,$archive) : [];
     $pageSize=$isAvtovyvoz ? WORKSPACE_AVTOVYVOZ_PAGE_SIZE : 100;
-    $wanted=$requestedRows===null ? array_slice($rowIds,0,$pageSize)
+    $initialLimit=$pageSize;
+    if ($requestedRows===null && $isAvtovyvoz && !$archive && ($_GET['from']??null)==='login') {
+        $height=filter_var($_GET['viewport']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>1,'max_range'=>16384]]) ?: 0;
+        // Keep complete virtual pages so the first window can use the rows already in the HTML.
+        $initialLimit=$pageSize*max(1,min(4,(int)ceil($height/(32*$pageSize))));
+    }
+    $wanted=$requestedRows===null ? array_slice($rowIds,0,$initialLimit)
         : ($archive && $needsManifest ? array_values(array_intersect($requestedRows,$rowIds))
             : array_values(array_unique(array_filter($requestedRows,static fn($id)=>is_int($id)&&($archive||$id>1)))));
     $records=vitrine_requested_records($t,$wanted,$archive,$archive && !$needsManifest);

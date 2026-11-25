@@ -32,7 +32,13 @@
       if (!response.ok || typeof data.redirect !== 'string' || !data.redirect) {
         throw new Error(data.error?.message || 'Не удалось войти.');
       }
-      location.assign(window.DltkPaths?.path(data.redirect) ?? data.redirect);
+      const destination = new URL(window.DltkPaths?.path(data.redirect) ?? data.redirect, location.href);
+      const vitrine = window.DltkPaths?.path('/vitrine') ?? '/vitrine';
+      if (destination.origin === location.origin && destination.pathname === vitrine) {
+        destination.searchParams.set('from', 'login');
+        destination.searchParams.set('viewport', String(Math.ceil(window.innerHeight)));
+      }
+      location.assign(destination);
     } catch (error) {
       setPending(false);
       window.PlanexNotifications?.show({tone:'danger',message:error.message});

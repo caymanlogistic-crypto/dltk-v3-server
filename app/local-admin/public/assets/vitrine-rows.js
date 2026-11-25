@@ -62,7 +62,10 @@
     updateVehicleDriver(row);
     cache.set(Number(row.dataset.rowNumber),row);
   }
-  loaded.set(0,true);
+  for (let start=0;start<initial.length;start+=pageSize) {
+    if (!ids.slice(start,start+pageSize).every(id=>cache.has(id))) break;
+    loaded.set(start/pageSize,true);
+  }
   let height=initial[0]?.getBoundingClientRect().height||32,headHeight=table.querySelector('thead').getBoundingClientRect().height,generation=0,frame=0,first=-1,last=-1,navigation=null,navigationGeneration=0,mounts=0,lastScrollTop=scroll.scrollTop,manifestVersion=0;
   const top=document.createElement('tr'),bottom=document.createElement('tr');
   for(const spacer of [top,bottom]){spacer.dataset.virtualSpacer='';spacer.setAttribute('aria-hidden','true');const cell=document.createElement('td');cell.colSpan=table.querySelectorAll('thead th:not([hidden])').length;spacer.append(cell);}

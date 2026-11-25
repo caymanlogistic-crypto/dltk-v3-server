@@ -15,9 +15,10 @@ $path = static fn(string $value): string => $escape(app_url_path($value));
   <link rel="stylesheet" href="<?= $path('/assets/vitrine-base.css') ?>">
   <link rel="stylesheet" href="<?= $path('/assets/vitrine.css') ?>">
   <link rel="stylesheet" href="<?= $path('/assets/workspace-auth.css?v=2') ?>">
+  <link rel="stylesheet" href="<?= $path('/assets/workspace-login-transition.css') ?>">
   <script defer src="<?= $path('/assets/workspace-paths.js') ?>"></script>
   <script defer src="<?= $path('/assets/vitrine-notifications.js') ?>"></script>
-  <script defer src="<?= $path('/assets/workspace-auth.js?v=2') ?>"></script>
+  <script defer src="<?= $path('/assets/workspace-auth.js?v=3') ?>"></script>
   <script src="<?= $path('/assets/vitrine-theme.js') ?>"></script>
 </head>
 <body class="vitrine auth-page">
