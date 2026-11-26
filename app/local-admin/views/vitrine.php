@@ -24,8 +24,8 @@ $boundCatalogMenu=vitrine_bound_catalog_menu($workspaceTables);
 $canOpenStatuses = !$directory || in_array('vyvoz',array_column($workspaceTables,'slug'),true);
 $canViewClientColors = workspace_can('system','client-order-statuses','view');
 $preferences=empty($error) ? workspace_preferences($currentTable) : [];
-$canPinColumns = !$directory && $currentTable['slug']==='vyvoz';
-$loginArrival = $canPinColumns && !$rowArchive && empty($error) && ($_GET['from']??null)==='login';
+$isAvtovyvoz = !$directory && $currentTable['slug']==='vyvoz';
+$loginArrival = $isAvtovyvoz && !$rowArchive && empty($error) && ($_GET['from']??null)==='login';
 $arrivalBlocking = $loginArrival ? ' blocking="render"' : '';
 $defaultGridWidth = $currentTable['defaultGridWidth'] ?? 'full';
 $gridWidth = $preferences['settings']['layoutWidth'] ?? $defaultGridWidth;
@@ -37,7 +37,7 @@ $navFolder = '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="curr
 $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6 -6 6"/></svg>';
 ?>
 <!doctype html>
-<html lang="ru" data-color-preset="<?= ($preferences['colorPreset']['value']??null)==='night' ? 'night' : 'light' ?>">
+<html lang="ru" data-color-preset="<?= ($preferences['colorPreset']['value']??$preferences['defaultColorPreset']['value']??null)==='night' ? 'night' : 'light' ?>">
 <head><meta name="app-base-path" content="<?= htmlspecialchars(runtime_config()['APP_BASE_PATH'],ENT_QUOTES,'UTF-8') ?>">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -62,22 +62,14 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="workspace-table" content="<?= $escape($currentTable['slug']) ?>">
   <meta name="vitrine-load-error" content="<?= $escape($error ?? '') ?>">
   <title><?= $escape($currentTable['title']) ?> — ЛК ДЛТК</title>
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine/palette.css'),ENT_QUOTES,'UTF-8') ?>">
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-base.css'),ENT_QUOTES,'UTF-8') ?>">
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css'),ENT_QUOTES,'UTF-8') ?>">
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.css'),ENT_QUOTES,'UTF-8') ?>">
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-select.css'),ENT_QUOTES,'UTF-8') ?>">
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-statuses.css'),ENT_QUOTES,'UTF-8') ?>">
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.css'),ENT_QUOTES,'UTF-8') ?>">
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.css'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=unified-1'),ENT_QUOTES,'UTF-8') ?>">
   <?php if ($loginArrival): ?>
-  <link rel="stylesheet" href="<?= $escape($viewUrl('/assets/workspace-login-transition.css')) ?>">
   <link rel="expect" href="#workspace" blocking="render">
   <?php endif; ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-scope.js')) ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-paths.js'),ENT_QUOTES,'UTF-8') ?>"></script><script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-notifications.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine.js'),ENT_QUOTES,'UTF-8') ?>"></script>
-  <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.js?v=layout-defaults-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (!$directory): ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-statuses.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php endif; ?>
@@ -93,7 +85,6 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if (!$directory): ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-presence.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php endif; ?>
-  <link rel="stylesheet" href="<?= $escape($viewUrl('/assets/vitrine-catalog.css')) ?>">
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-search.js')) ?>"></script>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-table-export.js')) ?>"></script>
   <?php if ($canManageDirectory && workspace_directory_excel_supported($directory)): ?>
@@ -214,12 +205,12 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
     <?php if ($canManageRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
     if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php';
     require __DIR__.'/vitrine-clear-cell-dialog.php';
-    if ($canPinColumns) require __DIR__.'/vitrine-hide-column-dialog.php';
+    require __DIR__.'/vitrine-hide-column-dialog.php';
     if (in_array(true,array_column($columns,'tripDriverCard'),true)) require __DIR__.'/vitrine-trip-driver-dialog.php'; ?>
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
       <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
-        <table class="table vitrine-table<?= !empty($catalogGrid['unloadPoints']) ? ' vitrine-unload-points' : '' ?>"<?= $canPinColumns ? ' data-freeze-columns data-row-page-size="'.WORKSPACE_AVTOVYVOZ_PAGE_SIZE.'"'.(!$rowArchive ? ' data-open-at-last-row' : '') : '' ?>>
+        <table class="table vitrine-table<?= !empty($catalogGrid['unloadPoints']) ? ' vitrine-unload-points' : '' ?>" data-freeze-columns<?= $isAvtovyvoz ? ' data-row-page-size="'.WORKSPACE_AVTOVYVOZ_PAGE_SIZE.'"'.(!$rowArchive ? ' data-open-at-last-row' : '') : '' ?>>
           <caption class="vitrine-sr-only"><?php if ($directory): ?>Справочник «<?= $escape($currentTable['title']) ?>»<?php else: ?>Последние непустые строки листа <?= $escape($data['sheetTitle'] ?? 'ВЫВОЗ') ?>. Все исходные столбцы.<?php endif; ?></caption>
           <colgroup><col class="vitrine-row-column"><?php foreach ($columns as $column): ?><col class="vitrine-data-column<?= $columnClass($column) ?>" data-column="<?= $escape($column['letter']) ?>"><?php endforeach; ?></colgroup>
           <thead><tr><th scope="col" class="vitrine-row-number">Строка</th>
@@ -229,7 +220,6 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
                   <span class="vitrine-derived-icon" role="img" tabindex="0" aria-label="<?= $escape($column['derivedSource']) ?>">
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7L12 5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19"/></svg>
                   </span><?php endif; ?></span>
-                <?php if ($canPinColumns): ?>
                   <div class="display-column-controls">
                   <button type="button" class="display-column-hide" data-column-hide aria-label="<?= $escape('Скрыть столбец '.$column['letter'].' '.$column['label']) ?>" aria-haspopup="dialog">
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 18 18M10.6 10.7a2 2 0 0 0 2.7 2.7M9.2 5.3a10.8 10.8 0 0 1 2.8-.4c6 0 10 7.1 10 7.1a17.4 17.4 0 0 1-2.7 3.4M6.3 6.3A18.3 18.3 0 0 0 2 12s4 7.1 10 7.1c1.6 0 3-.5 4.3-1.2"/></svg>
@@ -241,7 +231,6 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5m-7-5v-1a2 2 0 0 1 1.1-1.8l1.8-.9A2 2 0 0 0 9 11.5V6H8a2 2 0 0 1 0-4h8a2 2 0 0 1 0 4h-1v5.5a2 2 0 0 0 1.1 1.8l1.8.9A2 2 0 0 1 19 16v1z"/></svg>
                   </button>
                   </div>
-                <?php endif; ?>
                 <span class="vitrine-column-label"><?= $escape($column['label']) ?></span>
               </th>
             <?php endforeach; ?>

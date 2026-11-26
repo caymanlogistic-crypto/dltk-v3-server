@@ -51,8 +51,8 @@
     const bounds = button.getBoundingClientRect();
     const x = Math.min(bounds.left,innerWidth-actions.offsetWidth-8);
     const y = bounds.bottom+actions.offsetHeight+8 <= innerHeight ? bounds.bottom : bounds.top-actions.offsetHeight;
-    actions.style.left = Math.max(8,x)+'px';
-    actions.style.top = Math.max(8,y)+'px';
+    actions.style.setProperty('--vitrine-menu-left',Math.max(8,x)+'px');
+    actions.style.setProperty('--vitrine-menu-top',Math.max(8,y)+'px');
     actions.querySelector('[role="menuitem"]:not([hidden])')?.focus({preventScroll:true});
   }
 
