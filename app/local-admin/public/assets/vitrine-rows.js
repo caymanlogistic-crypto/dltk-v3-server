@@ -4,6 +4,7 @@
   if(!table||!body||!scroll)return;
   let ids=[];try{ids=JSON.parse(document.getElementById('vitrine-row-manifest').content);}catch{}
   const drafts=Array.from(document.querySelectorAll('[data-draft-slot]'));
+  const tripDraftBody=document.querySelector('[data-trip-drafts]');
   const empty=document.getElementById('vitrine-empty');
   const directoryRowCount=document.querySelector('[data-directory-row-count]');
   const search=document.querySelector('.vitrine-catalog-search input[type="search"]');
@@ -26,6 +27,7 @@
   const remotePatches=new Map(),catalogPatches=new Map();
   const pageSize=Number(table.dataset.rowPageSize)||100,cache=new Map(),loaded=new Map(),pending=new Map();
   const compactWindow=table.hasAttribute('data-row-page-size');
+  const openAtLastRow=table.hasAttribute('data-open-at-last-row');
   const bufferBefore=compactWindow ? 6 : 20;
   const bufferAfter=compactWindow ? 12 : 20;
   const refillMargin=compactWindow ? 3 : 5;
@@ -62,13 +64,14 @@
     updateVehicleDriver(row);
     cache.set(Number(row.dataset.rowNumber),row);
   }
-  for (let start=0;start<initial.length;start+=pageSize) {
+  const initialStart=positions.get(initial[0]?.dataset.rowNumber) ?? 0;
+  for (let start=initialStart;start<initialStart+initial.length;start+=pageSize) {
     if (!ids.slice(start,start+pageSize).every(id=>cache.has(id))) break;
     loaded.set(start/pageSize,true);
   }
   let height=initial[0]?.getBoundingClientRect().height||32,headHeight=table.querySelector('thead').getBoundingClientRect().height,generation=0,frame=0,first=-1,last=-1,navigation=null,navigationGeneration=0,mounts=0,lastScrollTop=scroll.scrollTop,manifestVersion=0;
-  const top=document.createElement('tr'),bottom=document.createElement('tr');
-  for(const spacer of [top,bottom]){spacer.dataset.virtualSpacer='';spacer.setAttribute('aria-hidden','true');const cell=document.createElement('td');cell.colSpan=table.querySelectorAll('thead th:not([hidden])').length;spacer.append(cell);}
+  const top=document.createElement('tr'),bottom=document.createElement('tr'),tail=document.createElement('tr');
+  for(const spacer of [top,bottom,tail]){spacer.dataset.virtualSpacer='';spacer.setAttribute('aria-hidden','true');const cell=document.createElement('td');cell.colSpan=table.querySelectorAll('thead th:not([hidden])').length;spacer.append(cell);}
   setCounts();
   table.setAttribute('aria-colcount',String(table.querySelectorAll('thead th').length));
   function report(error){window.PlanexNotifications.show({tone:'danger',message:error.message||'Не удалось загрузить строки. Повторите прокрутку.'});}
@@ -135,11 +138,23 @@
     })().finally(()=>{if(pending.get(number)===task)pending.delete(number);});
     pending.set(number,task);return task;
   }
+  let focusLastRow=openAtLastRow && initial.length>0;
   function stamp(spacer,size){spacer.hidden=size===0;spacer.firstElementChild.style.setProperty('--spacer-height',size+'px');}
+  const availableHeight=()=>scroll.clientHeight-headHeight;
+  // Extra space lets the final row reach the middle even in a one-row table.
+  const endPadding=()=>openAtLastRow ? Math.max(0,(availableHeight()-height)/2) : 0;
+  const startPadding=()=>openAtLastRow ? Math.max(0,availableHeight()/2-(ids.length-.5)*height) : 0;
+  const rowOffset=index=>startPadding()+index*height;
+  const viewportIndex=()=>Math.max(0,Math.min(ids.length-1,Math.floor((scroll.scrollTop-startPadding())/height)));
+  function stampEnd(end) {
+    const padding=endPadding();
+    stamp(bottom,(ids.length-end)*height+(tripDraftBody ? 0 : padding));
+    if(tripDraftBody)stamp(tail,Math.max(0,padding-drafts.length*height));
+  }
   async function render(forceIndex=null){
     if(window.VitrineGrid?.editing())return;
-    if(!ids.length){body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');return;}
-    const visible=Math.max(1,Math.ceil((scroll.clientHeight-headHeight)/height)),viewportStart=forceIndex??Math.floor(scroll.scrollTop/height),viewportEnd=Math.min(ids.length,viewportStart+visible+1);
+    if(!ids.length){body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);stamp(tail,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');return;}
+    const visible=Math.max(1,Math.ceil(availableHeight()/height)),viewportStart=forceIndex??viewportIndex(),viewportEnd=Math.min(ids.length,viewportStart+visible+1);
     if(first>=0&&(first===0||viewportStart>=first+refillMargin)&&(last===ids.length||viewportEnd<=last-refillMargin))return;
     const start=Math.max(0,Math.min(ids.length-1,viewportStart-bufferBefore));
     const end=Math.min(ids.length,compactWindow ? viewportEnd+bufferAfter : start+visible+bufferBefore+bufferAfter);
@@ -155,7 +170,7 @@
       const mountStarted=performance.now();
       window.VitrineDisplay?.prepareRows(rows.filter(row=>!row.isConnected));
       rows.forEach((row,index)=>row.setAttribute('aria-rowindex',String(start+index+2)));
-      stamp(top,start*height);stamp(bottom,(ids.length-end)*height);
+      stamp(top,rowOffset(start));stampEnd(end);
       if(top.parentElement!==body)body.prepend(top);
       if(bottom.parentElement!==body)body.append(bottom);
       const keep=new Set(rows);
@@ -164,6 +179,14 @@
       for(const row of rows){if(cursor===row)cursor=cursor.nextSibling;else body.insertBefore(row,cursor||bottom);}
       first=start;last=end;
       window.dispatchEvent(new CustomEvent('vitrine-rows-updated'));
+      if(focusLastRow){
+        focusLastRow=false;
+        const cell=cache.get(ids.at(-1))?.querySelector('td[data-edit-cell]:not([hidden])');
+        if(cell?.isConnected && (!document.activeElement || document.activeElement===document.body)){
+          window.VitrineGrid?.select(cell);
+          cell.focus({preventScroll:true});
+        }
+      }
       table.dataset.windowMounts=String(++mounts);table.dataset.lastMountScriptMs=(performance.now()-mountStarted).toFixed(2);
       prune();
       const upward=scroll.scrollTop<lastScrollTop;lastScrollTop=scroll.scrollTop;
@@ -183,12 +206,12 @@
   window.addEventListener('vitrine-editor-closed',queue);
   window.addEventListener('vitrine-statuses-updated',()=>loaded.clear());
   window.addEventListener('vitrine-cell-selected',()=>{navigation=null;});
-  window.addEventListener('vitrine-columns-updated',()=>{for(const spacer of [top,bottom])spacer.firstElementChild.colSpan=visibleColumns().length+1;first=-1;queue();});
+  window.addEventListener('vitrine-columns-updated',()=>{for(const spacer of [top,bottom,tail])spacer.firstElementChild.colSpan=visibleColumns().length+1;first=-1;queue();});
   function visibleColumns(){return Array.from(table.querySelectorAll('thead th[data-column]:not([hidden])')).map(node=>node.dataset.column);}
   function ensureVisible(index){
-    const available=scroll.clientHeight-headHeight;
-    if(index*height<scroll.scrollTop)scroll.scrollTop=index*height;
-    else if((index+1)*height>scroll.scrollTop+available)scroll.scrollTop=Math.max(0,(index+1)*height-available);
+    const available=availableHeight(),offset=rowOffset(index);
+    if(offset<scroll.scrollTop)scroll.scrollTop=offset;
+    else if(offset+height>scroll.scrollTop+available)scroll.scrollTop=Math.max(0,offset+height-available);
   }
   async function activate(cell,action){
     if(draftIndex(cell)>=0){
@@ -301,8 +324,8 @@
         const next=[...new Set(result.rowIds)];
         const searchChanged=query!==appliedSearch;
         if(!searchChanged && next.join(',')===ids.join(','))continue;
-        const anchorIndex=Math.max(0,Math.min(ids.length-1,Math.floor(scroll.scrollTop/height)));
-        const anchor=ids[anchorIndex],offset=scroll.scrollTop-anchorIndex*height;
+        const anchorIndex=Math.max(0,Math.min(ids.length-1,viewportIndex()));
+        const anchor=ids[anchorIndex],offset=scroll.scrollTop-rowOffset(anchorIndex);
         const chosen=table.querySelector('td.is-current-cell'),chosenRow=chosen?.dataset.row,chosenColumn=chosen?.dataset.column;
         ids=next;positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         manifestVersion++;generation++;navigationGeneration++;navigation=null;pending.clear();loaded.clear();first=last=-1;
@@ -316,7 +339,7 @@
         }
         setCounts();
         const newAnchor=searchChanged?0:positions.get(String(anchor))??Math.min(anchorIndex,Math.max(ids.length-1,0));
-        scroll.scrollTop=searchChanged?0:Math.max(0,newAnchor*height+offset);
+        scroll.scrollTop=searchChanged?0:Math.max(0,rowOffset(newAnchor)+offset);
         await render(newAnchor);
         if(chosenRow&&!chosen?.closest('[data-draft-slot]')&&!positions.has(chosenRow)){
           const candidate=body.querySelector('td[data-column="'+chosenColumn+'"]:not([hidden])')||table.querySelector('tbody td[data-edit-cell]:not([hidden])');
@@ -392,5 +415,14 @@
     edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?ids.length+drafts.length-1:0):rowIndex(cell),end?columns.length-1:0);},
     get total(){return ids.length;}
   });
+  if(tripDraftBody)tripDraftBody.append(tail);
+  if(openAtLastRow && initial.length){
+    stamp(top,rowOffset(initialStart));
+    stampEnd(ids.length);
+    body.prepend(top);
+    body.append(bottom);
+    scroll.scrollTop=Math.max(0,rowOffset(ids.length-1)+(height-availableHeight())/2);
+    lastScrollTop=scroll.scrollTop;
+  }
   render();
 })();

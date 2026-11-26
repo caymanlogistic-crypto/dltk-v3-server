@@ -229,31 +229,48 @@
   function fleetBirthRevision(cell) {
     return Number(cell.parentElement.querySelector('td[data-column="J"]')?.dataset.revision || 0);
   }
+  const tripDraftRequests=new WeakMap();
   async function writeCell(cell, value, reset = false, paste = null, editAction = null, orderStatus = undefined, dropoffDetails = undefined, fleetGroup = undefined, birthRevision = undefined) {
-    if (cell.closest('[data-draft-slot]')) return window.VitrineDirectoryDrafts.write(cell,value,fleetGroup);
+    const draft=cell.closest('[data-trip-draft]');
+    if (!draft && cell.closest('[data-draft-slot]')) return window.VitrineDirectoryDrafts.write(cell,value,fleetGroup);
     if (!fleetGroup && fleetGroups.length && cell.dataset.column==='P') {
       fleetGroup={P:value};
       birthRevision=fleetBirthRevision(cell);
     }
+    const payload={row:Number(cell.dataset.row),column:cell.dataset.column,value,
+      revision:Number(cell.dataset.revision || 0),baseHash:cell.dataset.base,reset,editAction:editAction||(reset?'reset':paste?'paste':'edit'),
+      ...(paste ? {paste} : {}),orderStatus,dropoffDetails,fleetGroup,birthRevision};
+    const signature=draft ? JSON.stringify(payload) : null;
+    const previous=tripDraftRequests.get(cell);
+    const requestId=previous?.signature===signature ? previous.requestId : crypto.randomUUID();
+    if(draft)tripDraftRequests.set(cell,{signature,requestId});
     const response = await fetch(window.VitrineGridScope.url('/api/vitrine/cell'), {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
-      body:JSON.stringify({row:Number(cell.dataset.row),column:cell.dataset.column,value,
-        revision:Number(cell.dataset.revision || 0),baseHash:cell.dataset.base,reset,requestId:crypto.randomUUID(),editAction:editAction||(reset?'reset':paste?'paste':'edit'),...(paste ? {paste} : {}),orderStatus,dropoffDetails,fleetGroup,birthRevision})
+      body:JSON.stringify({...payload,requestId})
     });
     const result = await response.json();
     if (!response.ok || result.error) {
       throw Object.assign(new Error(result.error?.message || 'Не удалось сохранить ячейку.'),{code:result.error?.code});
     }
     if (typeof result.value !== 'string' || !Number.isInteger(result.revision) || typeof result.baseHash !== 'string') throw new Error('Неполный ответ сервера. Обновите страницу.');
+    if(draft)tripDraftRequests.delete(cell);
     if (result.dependentCell) window.VitrineRows?.patch(result.dependentCell);
     for (const patch of result.dependentCells ?? []) window.VitrineRows?.patch(patch);
     for (const patch of result.unloadCells ?? []) window.VitrineRows?.patch(patch);
     if (typeof result.fleetDocumentValue==='string') {
-      window.VitrineRows?.applyFleetDocuments(cell.dataset.row,result.fleetDocumentValue,editAction==='clear');
+      window.VitrineRows?.applyFleetDocuments(result.createdRow ?? cell.dataset.row,result.fleetDocumentValue,editAction==='clear');
     }
     if (result.reauthenticate) location.assign(window.DltkPaths?.path('/login') ?? '/login');
     return result;
+  }
+  async function showCreatedTrip(cell,row) {
+    try {
+      await window.VitrineRows.refreshManifest();
+      await window.VitrineRows.activate({dataset:{row:String(row),column:cell.dataset.column}},flash);
+    } catch(error) {
+      report(error.message || 'Рейс сохранён. Обновите таблицу.','danger');
+    }
   }
   function flash(cell, remote = false, cleared = false) {
     cell.classList.remove('just-saved','just-remote','just-cleared'); void cell.offsetWidth;
@@ -337,6 +354,12 @@
     try {
       const result = await writeCell(cell, value, reset, reset ? null : editor.paste,null,
         !reset && editor.orderField ? (orderLabels[editor.orderField.value] || '') : undefined,editor.dropoff?.values(),editor.fleetDriver?.values(),editor.fleetDriver?.birthRevision);
+      if(result.createdRow){
+        editor.saving=false;
+        close();
+        await showCreatedTrip(cell,result.createdRow);
+        return;
+      }
       applyResult(cell,result);
       if (!reset && editor.paste && !result.draft) rememberPaste(before,result);
       editor.saving = false;
@@ -928,13 +951,19 @@
     if (active) { report('Сначала сохраните правку или нажмите «Отмена»'); return; }
     pendingCells.add(target); target.setAttribute('aria-busy','true');
     const before = snapshot(target);
+    let created=false;
     try {
       const result = await writeCell(target,value,false,paste);
+      if(result.createdRow){
+        created=true;
+        await showCreatedTrip(target,result.createdRow);
+        return;
+      }
       applyResult(target,result);
       if (result.draftSaved) await window.VitrineDirectoryDrafts.finish(target);
       if (!result.draft) { flash(target); rememberPaste(before,result); }
     } catch(error) { report(error instanceof TypeError ? 'Нет связи с сервером. Вставка не выполнена.' : error.message,'danger'); }
-    finally { pendingCells.delete(target); target.removeAttribute('aria-busy'); target.focus({preventScroll:true}); }
+    finally { pendingCells.delete(target); target.removeAttribute('aria-busy'); if(!created)target.focus({preventScroll:true}); }
   });
   document.querySelector('.vitrine-table-scroll')?.addEventListener('scroll', position);
   window.addEventListener('resize', fitEditor);
