@@ -61,7 +61,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     $flightStatuses = $directory === 'flight-statuses';
     $orderStatuses = $directory === 'client-order-statuses' || $flightStatuses;
     $canEditStatuses = false;
-    $entries = $employees ? workspace_employee_records(active: !$archive) : ($orderStatuses ? [] : workspace_employee_roles($archive));
+    $entries = $employees ? workspace_employee_visible_records(active: !$archive) : ($orderStatuses ? [] : workspace_employee_roles($archive));
     $palette = workspace_palette();
     if ($orderStatuses) {
         $colorOptions = workspace_directory_palette_options();

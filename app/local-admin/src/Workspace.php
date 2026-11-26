@@ -163,7 +163,7 @@ function workspace_api(string $path): never {
         json_response(['events'=>$events,'cursor'=>$cursor]);
     }
     if($path==='/api/workspace/history'&&$method==='GET'){
-        $where=['1=1'];$args=[];
+        $where=[workspace_employee_history_filter()];$args=[];
         if(!empty($_GET['table'])&&$_GET['table']!=='all'){$t=workspace_table((string)$_GET['table']);$where[]='h.table_id=?';$args[]=$t['id'];}
         foreach(['row'=>'h.row_num','user'=>'h.actor_id'] as $key=>$field)if(isset($_GET[$key])&&$_GET[$key]!==''){$where[]="$field=?";$args[]=(int)$_GET[$key];}
         if(!empty($_GET['before'])){$where[]='h.id<?';$args[]=(int)$_GET['before'];}

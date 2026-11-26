@@ -11,7 +11,7 @@ function workspace_access_excel_entries(string $kind): array {
             }
         }
     } else {
-        foreach (workspace_employee_records() as $employee) {
+        foreach (workspace_employee_visible_records() as $employee) {
             $entries[$employee['id']]=$employee+['revision'=>$employee['authVersion'],
                 'normalized'=>$employee['login'],'values'=>workspace_employee_grid_values($employee)];
         }
