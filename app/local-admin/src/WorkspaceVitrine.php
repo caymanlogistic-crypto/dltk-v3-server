@@ -16,7 +16,8 @@ function vitrine_requested_records(array $table, array $wanted, bool $archive, b
             WHERE r.table_id=? AND r.archived=1 AND $visible ORDER BY r.row_num DESC LIMIT 1 OFFSET $archiveOffset),0)";
         $args[]=$table['id'];
     }
-    return wquery("SELECT r.* FROM records r WHERE $where ORDER BY r.row_num DESC",$args)->fetchAll();
+    $order=!$archive && $table['slug']==='vyvoz' ? 'ASC' : 'DESC';
+    return wquery("SELECT r.* FROM records r WHERE $where ORDER BY r.row_num $order",$args)->fetchAll();
 }
 
 function vitrine_trip_driver_card(int $number,bool $archive): array {
@@ -106,7 +107,10 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         // Keep complete virtual pages so the first window can use the rows already in the HTML.
         $initialLimit=$pageSize*max(1,min(4,(int)ceil($height/(32*$pageSize))));
     }
-    $wanted=$requestedRows===null ? array_slice($rowIds,0,$initialLimit)
+    // Start on a virtual page boundary so the latest rows can be reused by the browser.
+    $initialStart=$isAvtovyvoz && !$archive
+        ? intdiv(max(0,count($rowIds)-$initialLimit),$pageSize)*$pageSize : 0;
+    $wanted=$requestedRows===null ? array_slice($rowIds,$initialStart,$isAvtovyvoz && !$archive ? null : $initialLimit)
         : ($archive && $needsManifest ? array_values(array_intersect($requestedRows,$rowIds))
             : array_values(array_unique(array_filter($requestedRows,static fn($id)=>is_int($id)&&($archive||$id>1)))));
     $records=vitrine_requested_records($t,$wanted,$archive,$archive && !$needsManifest);

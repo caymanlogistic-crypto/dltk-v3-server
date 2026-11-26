@@ -115,7 +115,8 @@ function workspace_manifest(array $t, bool $archive=false): array {
         : "AND (metadata_zlib IS NULL OR REGEXP_LIKE(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(values_json,?)),''),'[^[:space:] ]')
             OR EXISTS (SELECT 1 FROM cell_versions v WHERE v.record_id=r.id AND v.field_key=? AND v.revision>0 AND v.value=''))";
     $args=$archive ? [$t['id'],1] : [$t['id'],0,'$.'.$t['carrier_column'],$t['carrier_column']];
-    return array_map('intval',wquery("SELECT row_num FROM records r WHERE table_id=? AND archived=? $filter ORDER BY row_num DESC LIMIT ".WORKSPACE_MANIFEST_LIMIT,$args)->fetchAll(PDO::FETCH_COLUMN));
+    $ids=array_map('intval',wquery("SELECT row_num FROM records r WHERE table_id=? AND archived=? $filter ORDER BY row_num DESC LIMIT ".WORKSPACE_MANIFEST_LIMIT,$args)->fetchAll(PDO::FETCH_COLUMN));
+    return !$archive && $t['slug']==='vyvoz' ? array_reverse($ids) : $ids;
 }
 function workspace_begin(): void {
     workspace_db()->beginTransaction();
