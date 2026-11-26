@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 function workspace_employee_grid_readonly(string $column, ?string $scope, array $employee): ?string {
     if ($scope === null || !workspace_employee_can_edit($scope,$employee)) return 'Запись доступна только для просмотра.';
+    if ($column === 'F') return 'Статус меняется через меню строки.';
     if ($column === 'C') return 'Пароль меняется в карточке сотрудника.';
     if (!$employee['active']) return 'Сотрудник в архиве. Для изменения откройте карточку.';
     if ($column === 'E' && $employee['id'] === workspace_current_user()['id']) return 'Свою роль изменить нельзя.';

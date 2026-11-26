@@ -99,6 +99,7 @@ function workspace_directory_excel_header(array $labels,array $sheet,string $kin
     if (in_array('Клиент',$labels,true) && in_array('Менеджер',$labels,true)) $allowed[]='Точки выгрузки';
     if ($kind==='fleet-vehicles') $allowed[]='Тип транспорта';
     $required=array_diff($labels,['Пароль','Доп. телефон']);
+    if ($kind==='employees') unset($required['F']);
     if ($kind==='carriers') unset($required['D']);
     if ($kind==='edo-counterparties') unset($required['E']);
     if (count($header)!==count(array_unique($header)) || array_diff($header,$allowed) ||
@@ -163,6 +164,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
     $kind=$schema['kind'];
     [$positions,$header,$exportedContacts]=workspace_directory_excel_header($schema['labels'],$sheet,$kind);
     unset($sheet[1]);
+    $preserveEmployeeStatus=$kind==='employees' && isset($positions[$schema['labels']['F']]);
     $keys=[];
     foreach ($entries as $id=>$entry) $keys[$entry['normalized']][]=(int)$id;
     $aliases=in_array($kind,['clients','terminals-main'],true) ? workspace_client_catalog_aliases($schema['id']) : [];
@@ -182,6 +184,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             if ($kind==='employees') {
                 if (!in_array($values['C'],['','Скрыт'],true)) directory_xlsx_error('Пароли сотрудников задаются только в карточке.');
                 $values['C']='Скрыт';
+                unset($values['F']);
             }
             $idText=trim($cells[$positions['ID записи']??0]??'');
             $version=trim($cells[$positions['Версия записи']??0]??'');
@@ -214,7 +217,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
                 $count=(int)($old['detail']['contact_count']??0);
                 if ($values['C']===workspace_unload_contact_summary($primary,$count)) $values['C']=$primary;
             }
-            if ($old && $old['active'] && $values===$old['values']) {
+            if ($old && ($old['active'] || $preserveEmployeeStatus) && $values===$old['values']) {
                 if (isset($seen[$id])) directory_xlsx_error('Повтор записи.');
                 $seen[$id]=true;
                 $operations[]=['id'=>$id,'unchanged'=>true];
@@ -222,6 +225,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
                 continue;
             }
             [$key,$payload]=workspace_directory_excel_payload($schema,$values,$old);
+            if ($preserveEmployeeStatus && $old) $payload['active']=$old['active'];
             $otherOwners=array_diff($keys[$key]??[],[$id]);
             $aliasOwner=(int)($aliases[$key]??0);
             if (($id && isset($seen[$id])) || isset($names[$key]) || $otherOwners || ($aliasOwner && $aliasOwner!==$id)) {
@@ -231,7 +235,7 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
             $names[$key]=true;
             if ($old) $payload+=['id'=>$id,'revision'=>(int)$old['revision']];
             $operations[]=['line'=>$line,'id'=>$id,'values'=>$values,'payload'=>$payload];
-            $counts[!$old?'added':($old['active']?'updated':'restored')]++;
+            $counts[!$old?'added':($old['active'] || $preserveEmployeeStatus ? 'updated' : 'restored')]++;
         } catch (ApiError $error) {
             throw new ApiError($error->publicCode,'Строка '.$line.'. '.$error->publicMessage,$error->httpStatus);
         }
