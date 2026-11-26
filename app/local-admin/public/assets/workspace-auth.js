@@ -7,6 +7,17 @@
   const spinner = button.querySelector('.auth-submit-spinner');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
 
+  const password = form.querySelector('#workspace-password');
+  const passwordToggle = form.querySelector('.auth-password-toggle');
+
+  function setPasswordVisible(visible) {
+    password.type = visible ? 'text' : 'password';
+    passwordToggle.setAttribute('aria-label', visible ? 'Скрыть пароль' : 'Показать пароль');
+  }
+
+  passwordToggle.addEventListener('click', () => setPasswordVisible(password.type === 'password'));
+  passwordToggle.hidden = false;
+
   function setPending(pending) {
     button.disabled = pending;
     button.setAttribute('aria-busy', String(pending));
@@ -14,7 +25,10 @@
   }
 
   window.addEventListener('pageshow', event => {
-    if (event.persisted) setPending(false);
+    if (event.persisted) {
+      setPending(false);
+      setPasswordVisible(false);
+    }
   });
 
   form.addEventListener('submit', async event => {
