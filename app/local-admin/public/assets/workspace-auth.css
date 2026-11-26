@@ -28,6 +28,45 @@
   gap:12px;
 }
 
+.auth-password {
+  position:relative;
+}
+
+.auth-password .field-input {
+  padding-inline-end:44px;
+}
+
+.auth-password input::-ms-reveal {
+  display:none;
+}
+
+.auth-password-toggle {
+  position:absolute;
+  inset-block:0;
+  inset-inline-end:2px;
+  inline-size:40px;
+  border:0;
+  border-radius:4px;
+  background:transparent;
+  color:inherit;
+  cursor:pointer;
+}
+
+.auth-password-toggle:focus-visible {
+  outline:2px solid currentColor;
+  outline-offset:-4px;
+}
+
+.auth-password-toggle svg {
+  inline-size:20px;
+  block-size:20px;
+  vertical-align:middle;
+}
+
+.auth-password input[type="password"] + .auth-password-toggle .auth-password-slash {
+  display:none;
+}
+
 .auth-submit[aria-busy="true"] {
   opacity:1;
 }
