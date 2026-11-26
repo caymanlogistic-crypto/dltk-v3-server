@@ -12,10 +12,7 @@ $path = static fn(string $value): string => $escape(app_url_path($value));
   <meta name="app-base-path" content="<?= $escape(runtime_config()['APP_BASE_PATH']) ?>">
   <meta name="csrf-token" content="<?= $escape(csrf_token()) ?>">
   <title>Вход — ЛК ДЛТК</title>
-  <link rel="stylesheet" href="<?= $path('/assets/vitrine-base.css') ?>">
-  <link rel="stylesheet" href="<?= $path('/assets/vitrine.css') ?>">
-  <link rel="stylesheet" href="<?= $path('/assets/workspace-auth.css?v=7') ?>">
-  <link rel="stylesheet" href="<?= $path('/assets/workspace-login-transition.css') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=unified-1'),ENT_QUOTES,'UTF-8') ?>">
   <script defer src="<?= $path('/assets/workspace-paths.js') ?>"></script>
   <script defer src="<?= $path('/assets/vitrine-notifications.js') ?>"></script>
   <script defer src="<?= $path('/assets/workspace-auth.js?v=4') ?>"></script>

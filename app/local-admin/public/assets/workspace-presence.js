@@ -52,15 +52,15 @@
       const flash = pasteFlashes.get(key);
       if(flash && !group.persistent && node.dataset.flashToken !== flash.token){
         node.classList.remove('is-paste-flash');void node.offsetWidth;
-        node.style.animationDuration=flash.duration+'ms';node.classList.add('is-paste-flash');node.dataset.flashToken=flash.token;
+        node.style.setProperty('--vitrine-author-duration',flash.duration+'ms');node.classList.add('is-paste-flash');node.dataset.flashToken=flash.token;
       }else if(group.persistent)node.classList.remove('is-paste-flash');
-      node.style.maxWidth = Math.min(240,bounds.width)+'px';
+      node.style.setProperty('--vitrine-author-width',Math.min(240,bounds.width)+'px');
       // The badge's right and bottom edges coincide exactly with the cell's right/top.
       const badgeRect = node.getBoundingClientRect();
       const left = rect.right-badgeRect.width;
-      node.style.left = left+'px';
-      node.style.top = (rect.top-badgeRect.height)+'px';
-      node.style.clipPath = 'inset(0 '+Math.max(0,rect.right-bounds.right)+'px 0 '+Math.max(0,leftEdge-left)+'px)';
+      node.style.setProperty('--vitrine-author-left',left+'px');
+      node.style.setProperty('--vitrine-author-top',(rect.top-badgeRect.height)+'px');
+      node.style.setProperty('--vitrine-author-clip','inset(0 '+Math.max(0,rect.right-bounds.right)+'px 0 '+Math.max(0,leftEdge-left)+'px)');
     }
   }
   function schedule() {if(!frame)frame=requestAnimationFrame(render);}

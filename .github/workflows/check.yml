@@ -2,6 +2,8 @@ name: Check and deploy server project
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -35,12 +37,14 @@ jobs:
           php tests/runtime_config_check.php
           .ci-venv/bin/python -m unittest discover -s tests -p 'test_server_*.py'
       - name: Package exact Git source
+        if: github.event_name != 'pull_request'
         run: |
           mkdir -p artifacts
           git archive --format=tar.gz --output=artifacts/dltk-v3-${GITHUB_SHA}.tar.gz HEAD
           cd artifacts
           sha256sum dltk-v3-${GITHUB_SHA}.tar.gz > dltk-v3-${GITHUB_SHA}.sha256
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: dltk-v3-release-${{ github.sha }}
           path: artifacts/dltk-v3-*

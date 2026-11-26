@@ -2,13 +2,14 @@
 (() => {
   const {tableSlug,url}=window.VitrineGridScope;
   const userId=document.body.dataset.workspaceUser||'anonymous';
-  const key='dltk-v3.vitrine.display.v2.'+userId+'.'+tableSlug;
-  const legacyPresetKey='dltk-v3.vitrine.display.v2.'+userId+'.vyvoz';
   let serverPreferences={};try{serverPreferences=JSON.parse(document.getElementById('workspace-preferences')?.content||'{}');}catch{}
-  let sharedPreset=serverPreferences.colorPreset;
-  let widthDefaults=serverPreferences.widthDefaults;
-  let widthsChanged=false;
-  const editsWidthDefaults=serverPreferences.editsWidthDefaults===true;
+  let personalPreset=serverPreferences.colorPreset;
+  let defaultPreset=serverPreferences.defaultColorPreset;
+  const activePreset=()=>personalPreset?.value||defaultPreset?.value||'base';
+  let layoutDefaults=serverPreferences.layoutDefaults;
+  let defaultsChanged=false;
+  let layoutOverrides=serverPreferences.layoutOverrides||{};
+  const editsDefaults=serverPreferences.editsLayoutDefaults===true;
   let preferenceVersion=Number(serverPreferences.version||0),saveTimer=0,inFlight=false,pendingChanges={},lastLocalSnapshot=null,bufferedRemote=null;
   const csrf=document.querySelector('meta[name=csrf-token]')?.content||'';
   const copy=value=>JSON.parse(JSON.stringify(value));
@@ -31,9 +32,8 @@
     try{
       const response=await fetch(url('/api/workspace/preferences'),{method:'POST',credentials:'same-origin',keepalive,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({changes,columnOrderVersion:serverPreferences.columnOrderVersion})});
       const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось сохранить личные настройки.');
-      receiveColorPreset(result.colorPreset);
-      receiveWidthDefaults(result.widthDefaults);
       queueRemote(result);
+      receiveColorPreset(result.colorPreset,result.defaultColorPreset);
     }catch(error){
       pendingChanges=mergeChanges(mergeChanges({},changes),pendingChanges);
       window.PlanexNotifications.show({tone:'danger',message:error.message});
@@ -44,49 +44,50 @@
   function queueRemote(result){
     if(!result.settings||Number(result.version)<preferenceVersion)return;
     if(!bufferedRemote||Number(result.version)>=Number(bufferedRemote.version))bufferedRemote=result;
+    receiveLayoutDefaults(result.layoutDefaults);
     applyBuffered();
   }
-  function receiveColorPreset(incoming) {
-    if (incoming && validPreset(incoming.value) && Number(incoming.version)>=Number(sharedPreset?.version??-1)) {
-      sharedPreset=incoming;
-      applyBuffered();
-    }
+  function receiveColorPreset(personal,incomingDefault) {
+    if (personal && validPreset(personal.value) && Number(personal.version)>=Number(personalPreset?.version??-1)) personalPreset=personal;
+    if (incomingDefault && validPreset(incomingDefault.value) && Number(incomingDefault.version)>=Number(defaultPreset?.version??-1)) defaultPreset=incomingDefault;
+    applyBuffered();
   }
-  function receiveWidthDefaults(incoming) {
-    if(!incoming || Number(incoming.version)<=Number(widthDefaults?.version??-1))return;
-    widthDefaults=incoming;
-    widthsChanged=true;
+  function receiveLayoutDefaults(incoming) {
+    if(!incoming || Number(incoming.version)<=Number(layoutDefaults?.version??-1))return;
+    layoutDefaults=incoming;
+    defaultsChanged=true;
     applyBuffered();
   }
   function hasOpenEditor() {
     return document.querySelector('.vitrine-editor:not(dialog):not([hidden]), dialog.vitrine-editor[open], .vitrine-time-inline:not([hidden])')!==null;
   }
   function applyBuffered(){
-    if(!bufferedRemote && !widthsChanged && (!sharedPreset || sharedPreset.value===state.preset))return;
+    if(!bufferedRemote && !defaultsChanged && activePreset()===state.preset)return;
     if(inFlight||Object.keys(pendingChanges).length||document.querySelector('.vitrine-display-dialog[open], [data-column-hide-dialog][open]')||hasOpenEditor()||
         document.body.matches('.is-column-resizing,.display-column-dragging'))return;
     const incoming=bufferedRemote;bufferedRemote=null;
-    const preset=validPreset(sharedPreset?.value) ? sharedPreset.value : state.preset;
-    let next={...state,preset};
+    const preset=activePreset();
     if(incoming && Number(incoming.version)>=preferenceVersion){
-      preferenceVersion=Number(incoming.version);const saved=incoming.settings;
-      next={order:validOrder(saved.order),hidden:validHidden(saved.hidden),pinned:validPinned(saved.pinned),widths:validWidths(saved.widths),preset,lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
+      preferenceVersion=Number(incoming.version);
+      layoutOverrides=incoming.layoutOverrides||{};
     }
-    if(widthsChanged && editsWidthDefaults)next.widths=validWidths(widthDefaults.widths);
-    const settingsChanged=JSON.stringify(state)!==JSON.stringify(next);
-    if(settingsChanged){
+    const next=resolveLayout(preset);
+    if(JSON.stringify(state)!==JSON.stringify(next)||defaultsChanged){
       state=next;applyWidths(state.widths);applyLines();applyLayoutWidth();applyColumns();paintAll();
-    }else if(widthsChanged)applyWidths(state.widths);
-    widthsChanged=false;
-    lastLocalSnapshot=copy(state);try{localStorage.setItem(key,JSON.stringify(state));}catch{}
+    }
+    defaultsChanged=false;
+    lastLocalSnapshot=copy(state);
   }
   window.addEventListener('workspace:event',event=>{
     const item=event.detail,data=item?.data;
-    if(item?.event==='grid.widths.changed' && data?.widthDefaultsKey===serverPreferences.widthDefaultsKey){
-      receiveWidthDefaults(data.widthDefaults);return;
+    if(item?.event==='grid.layout.changed' && data?.layoutDefaultsKey===serverPreferences.layoutDefaultsKey){
+      receiveLayoutDefaults(data.layoutDefaults);return;
+    }
+    if(item?.event==='grid.color_default.changed'){
+      receiveColorPreset(null,data?.defaultColorPreset);return;
     }
     if(item?.event!=='preferences.changed'||!data||(data.userId&&String(data.userId)!==userId))return;
-    receiveColorPreset(data.colorPreset);
+    receiveColorPreset(data.colorPreset,data.defaultColorPreset);
     if(data.tableSlug===tableSlug)queueRemote(data);
   });
   window.addEventListener('pagehide',()=>flushPreferences(true));
@@ -95,7 +96,7 @@
   setInterval(applyBuffered,500);
   const table = document.querySelector('.vitrine-table');
   if (!table) {
-    window.VitrineDisplay = Object.freeze({paint:(node,fill)=>{node.style.backgroundColor=fill;},paintCell:()=>{}});
+    window.VitrineDisplay = Object.freeze({paint:(node,fill)=>{node.dataset.displayColor=fill;node.style.setProperty('--vitrine-swatch-fill',fill);},paintCell:()=>{}});
     return;
   }
   const region = table.closest('.vitrine-grid-region');
@@ -107,21 +108,24 @@
   const rowNumberHeader = table.querySelector('thead .vitrine-row-number');
   const headersByColumn = new Map([...table.querySelectorAll('thead th[data-column]')].map(header=>[header.dataset.column,header]));
   let frozenColumns = [];
+  let frozenOffsets = new Map();
   let frozenHeaders = [];
   function updateFrozenWidths(force=false) {
     let offset = rowNumberHeader.getBoundingClientRect().width;
     const limit = scrollContainer.clientWidth - 64;
     const next = [];
+    const offsets = new Map();
     for (const header of frozenHeaders) {
       const width = header.getBoundingClientRect().width;
       if (offset+width > limit) break;
       const letter = header.dataset.column;
       next.push(letter);
-      table.style.setProperty('--vitrine-offset-'+letter,offset+'px');
+      offsets.set(letter,offset);
       offset += width;
     }
-    if (!force && next.join(',')===frozenColumns.join(',')) return;
+    if (!force && next.length===frozenColumns.length && next.every(letter=>frozenOffsets.get(letter)===offsets.get(letter))) return;
     frozenColumns=next;
+    frozenOffsets=offsets;
     table.dataset.frozenCount=String(next.length);
     markFrozenColumns(table.querySelectorAll(':is(th,td)[data-column]'));
   }
@@ -130,7 +134,10 @@
     for (const cell of cells) {
       const index = frozenColumns.indexOf(cell.dataset.column);
       if (index===-1) delete cell.dataset.frozenColumn;
-      else cell.dataset.frozenColumn=String(index+1);
+      else {
+        cell.dataset.frozenColumn=String(index+1);
+        cell.style.setProperty('--vitrine-frozen-offset',frozenOffsets.get(cell.dataset.column)+'px');
+      }
       cell.toggleAttribute('data-frozen-edge',index!==-1 && index===frozenColumns.length-1);
     }
   }
@@ -175,18 +182,14 @@
     if(value && typeof value==='object') for(const letter of originalOrder) if(Number.isFinite(value[letter])) widths[letter]=Math.max(44,Math.min(1200,Math.round(value[letter])));
     return widths;
   }
-  let state = {order:[...originalOrder],hidden:[],pinned:[],widths:{},preset:'base',lines:'base',layoutWidth:defaultWidth};
-  try {
-    const savedOnServer=serverPreferences.settings && Object.keys(serverPreferences.settings).length>0;
-    const saved = savedOnServer ? serverPreferences.settings : JSON.parse(localStorage.getItem(key) || 'null');
-    const legacyLocalOrder=!savedOnServer && serverPreferences.columnOrderVersion!==undefined;
-    if (saved) state = {order:validOrder(legacyLocalOrder ? null : saved.order),hidden:validHidden(saved.hidden),pinned:validPinned(saved.pinned),widths:validWidths(saved.widths),preset:'base',lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
-  } catch {}
-  try {
-    const fallback=JSON.parse(localStorage.getItem(legacyPresetKey)||'null')?.preset;
-    if (validPreset(fallback)) state.preset=fallback;
-  } catch {}
-  if (validPreset(sharedPreset?.value)) state.preset=sharedPreset.value;
+  function resolveLayout(preset) {
+    const defaults=layoutDefaults?.settings||{};
+    const saved={...defaults,...layoutOverrides};
+    return {order:validOrder(saved.order),hidden:validHidden(saved.hidden),pinned:validPinned(saved.pinned),
+      widths:validWidths(editsDefaults ? defaults.widths : layoutOverrides.widths),
+      preset,lines:linePresets.some(p=>p.id===saved.lines)?saved.lines:'base',layoutWidth:validWidthMode(saved.layoutWidth)};
+  }
+  let state=resolveLayout(activePreset());
   lastLocalSnapshot=copy(state);
   function color(fill) {
     const index = base.indexOf(String(fill).toUpperCase());
@@ -218,8 +221,8 @@
   function paint(node,fill) {
     const shown = color(fill);
     node.dataset.displayColor = fill;
-    node.style.backgroundColor = shown;
-    node.style.color = shown ? ink(shown) : '';
+    node.style.setProperty('--vitrine-swatch-fill',shown);
+    node.style.setProperty('--vitrine-swatch-ink',shown ? ink(shown) : '');
   }
   function paintAll() {
     window.VitrineTheme.apply(state.preset);
@@ -258,16 +261,16 @@
     }
     window.dispatchEvent(new CustomEvent('vitrine-columns-updated'));
   }
-  const widthRules=document.createElement('style');
-  widthRules.textContent=columns.map(column=>'.vitrine .vitrine-table [data-column="'+column.letter+'"] { --column-width:var(--vitrine-width-'+column.letter+','+(headersByColumn.get(column.letter).classList.contains('vitrine-time-column')?'var(--time-column-width,64px)':'var(--vitrine-default-width-'+column.letter+',190px)')+'); --vitrine-frozen-offset:var(--vitrine-offset-'+column.letter+'); width:var(--column-width); min-width:var(--column-width); max-width:var(--column-width); }').join('\n');
-  document.head.append(widthRules);
+  let columnWidths={};
+  function applyCellWidth(node) {
+    const width=columnWidths[node.dataset.column];
+    if (width!==undefined) node.style.setProperty('--vitrine-cell-width',width+'px');
+    else node.style.removeProperty('--vitrine-cell-width');
+  }
   function applyWidths(widths) {
-    const defaults=editsWidthDefaults ? {} : validWidths(widthDefaults?.widths);
-    for(const letter of originalOrder){
-      const width=widths[letter]??defaults[letter];
-      if(width!==undefined)table.style.setProperty('--vitrine-width-'+letter,width+'px');
-      else table.style.removeProperty('--vitrine-width-'+letter);
-    }
+    const defaults=editsDefaults ? {} : validWidths(layoutDefaults?.settings?.widths);
+    columnWidths={...defaults,...widths};
+    table.querySelectorAll('[data-column]').forEach(applyCellWidth);
   }
   function lineColor(preset, colorPreset) {
     if (colorPreset!=='night') return preset.color;
@@ -285,7 +288,6 @@
     const next={...state,widths:{...state.widths}};
     if(width===null)delete next.widths[letter];else next.widths[letter]=width;
     state=next;applyWidths(state.widths);persist(state);
-    try{localStorage.setItem(key,JSON.stringify(state));}catch{}
   }
   function canMoveColumns() {
     if (hasOpenEditor()) {
@@ -296,7 +298,7 @@
   }
   let columnAnimations=[];
   function animateColumnChange(letters,apply,button) {
-    columnAnimations.forEach(animation=>animation.cancel());
+    columnAnimations.forEach(cell=>cell.classList.remove('vitrine-column-moving'));
     columnAnimations=[];
     const previousPositions = new Map();
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -314,12 +316,17 @@
     button.focus({preventScroll:true});
     for (const [cell,left] of previousPositions) {
       const shift=left-cell.getBoundingClientRect().left;
-      if (Math.abs(shift)>1) columnAnimations.push(cell.animate(
-        [{transform:'translateX('+shift+'px)'},{transform:'translateX(0)'}],
-        {duration:230,easing:'ease-out'}));
+      if (Math.abs(shift)>1) {
+        cell.style.setProperty('--vitrine-column-shift',shift+'px');
+        cell.classList.add('vitrine-column-moving');
+        columnAnimations.push(cell);
+      }
     }
     persist(state);
   }
+  table.addEventListener('animationend',event=>{
+    if (event.animationName==='vitrine-column-move') event.target.classList.remove('vitrine-column-moving');
+  });
   function togglePin(letter,button) {
     if (!canMoveColumns()) return;
     animateColumnChange([letter],()=>{
@@ -469,7 +476,7 @@
     const grip=document.createElement('span');grip.className='display-column-resize';grip.tabIndex=document.body.dataset.vitrineCatalog ? 0 : -1;grip.setAttribute('role','separator');grip.setAttribute('aria-orientation','vertical');grip.setAttribute('aria-label','Ширина столбца '+letter);grip.setAttribute('aria-valuemin','44');grip.setAttribute('aria-valuemax','1200');
     grip.addEventListener('focus',()=>grip.setAttribute('aria-valuenow',String(Math.round(header.getBoundingClientRect().width))));
     let drag=null,frame=0;
-    function preview(){frame=0;if(drag){table.style.setProperty('--vitrine-width-'+letter,drag.width+'px');grip.setAttribute('aria-valuenow',String(drag.width));}}
+    function preview(){frame=0;if(drag){columnWidths[letter]=drag.width;table.querySelectorAll('[data-column="'+letter+'"]').forEach(applyCellWidth);grip.setAttribute('aria-valuenow',String(drag.width));}}
     function finish(event,cancel=false){
       if(!drag)return;
       if(frame){cancelAnimationFrame(frame);frame=0;}
@@ -499,7 +506,7 @@
     for(const row of rows){
       const nodes=new Map(Array.from(row.querySelectorAll('td[data-column]')).map(node=>[node.dataset.column,node]));
       const fragment=document.createDocumentFragment();
-      for(const letter of order){const cell=nodes.get(letter);if(!cell)continue;cell.hidden=state.hidden.includes(letter);paintCell(cell);fragment.append(cell);}
+      for(const letter of order){const cell=nodes.get(letter);if(!cell)continue;cell.hidden=state.hidden.includes(letter);applyCellWidth(cell);paintCell(cell);fragment.append(cell);}
       if (freezeColumns) markFrozenColumns(nodes.values());
       row.append(fragment);
     }
@@ -563,7 +570,7 @@
     const list=el('div','display-preset-list');
     for(const preset of presets){
       const card=el('label','display-preset radio-item'); const name=el('span','display-preset-title'); const radio=el('input');radio.type='radio';radio.name='display-preset';radio.value=preset.id;radio.setAttribute('aria-label',preset.name);radio.checked=draft.preset===preset.id;radio.addEventListener('change',()=>draft.preset=preset.id);const mark=el('span','radio-mark');mark.setAttribute('aria-hidden','true');name.append(radio,mark,el('span','radio-label',preset.name));
-      const swatches=el('span','display-swatches');preset.colors.forEach((fill,i)=>{const swatch=el('span','display-swatch');swatch.style.backgroundColor=fill;swatch.setAttribute('role','img');swatch.setAttribute('aria-label',catalog.palette[i]?.name||'');swatches.append(swatch);});
+      const swatches=el('span','display-swatches');preset.colors.forEach((fill,i)=>{const swatch=el('span','display-swatch');swatch.style.setProperty('--vitrine-swatch-fill',fill);swatch.setAttribute('role','img');swatch.setAttribute('aria-label',catalog.palette[i]?.name||'');swatches.append(swatch);});
       card.append(name,swatches,el('span','display-preset-note',preset.note));list.append(card);
     }
     body.append(list);
@@ -601,7 +608,6 @@
   }
   function save() {
     if(draft.hidden.length>=originalOrder.length){window.PlanexNotifications.show({tone:'danger',message:'Оставьте видимым хотя бы один столбец.'});return;}
-    try { localStorage.setItem(key,JSON.stringify(draft)); } catch {}
     state=draft;
     applyWidths(state.widths);
     applyLines();applyLayoutWidth();

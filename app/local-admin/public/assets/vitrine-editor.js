@@ -73,7 +73,10 @@
     const panel = active.panel;
     if (active.inline) {
       const rect = active.cell.getBoundingClientRect();
-      Object.assign(panel.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'});
+      panel.style.setProperty('--vitrine-editor-left',rect.left+'px');
+      panel.style.setProperty('--vitrine-editor-top',rect.top+'px');
+      panel.style.setProperty('--vitrine-editor-width',rect.width+'px');
+      panel.style.setProperty('--vitrine-editor-height',rect.height+'px');
       return;
     }
     positionPanel(panel,active.cell);
@@ -82,29 +85,28 @@
     const rect = cell.getBoundingClientRect();
     const width = panel.offsetWidth;
     const height = panel.offsetHeight;
-    panel.style.left = Math.max(10, Math.min(rect.left, window.innerWidth - width - 10)) + 'px';
+    panel.style.setProperty('--vitrine-editor-left',Math.max(10,Math.min(rect.left,window.innerWidth-width-10))+'px');
     let top = rect.bottom + 4;
     if (top + height > window.innerHeight - 10) top = Math.max(10, rect.top - height - 4);
-    panel.style.top = Math.max(10, Math.min(top, window.innerHeight - height - 10)) + 'px';
+    panel.style.setProperty('--vitrine-editor-top',Math.max(10,Math.min(top,window.innerHeight-height-10))+'px');
   }
   function fitEditor() {
     if (!active) return;
     const {panel,field} = active;
     if (field.tagName === 'TEXTAREA') {
-      const measure = element('span');
-      measure.style.cssText = 'position:fixed;visibility:hidden;white-space:pre;pointer-events:none';
-      measure.style.font = getComputedStyle(field).font;
+      const measure = element('span','vitrine-text-measure');
+      measure.style.setProperty('--vitrine-measure-font',getComputedStyle(field).font);
       measure.textContent = field.value;
       document.body.append(measure);
       const desiredWidth = Math.max(380,measure.getBoundingClientRect().width + 50);
       measure.remove();
-      panel.style.width = Math.min(desiredWidth,900,window.innerWidth - 20) + 'px';
-      field.style.height = 'auto';
-      field.style.maxHeight = 'none';
+      panel.style.setProperty('--vitrine-editor-width',Math.min(desiredWidth,900,window.innerWidth-20)+'px');
+      field.style.removeProperty('--vitrine-editor-field-height');
+      field.setAttribute('data-fit-editor','');
       const chromeHeight = panel.offsetHeight - field.offsetHeight;
       const availableHeight = Math.max(60,window.innerHeight - chromeHeight - 20);
-      field.style.minHeight = Math.min(94,availableHeight) + 'px';
-      field.style.height = Math.min(field.scrollHeight + 2,availableHeight) + 'px';
+      field.style.setProperty('--vitrine-editor-field-min-height',Math.min(94,availableHeight)+'px');
+      field.style.setProperty('--vitrine-editor-field-height',Math.min(field.scrollHeight+2,availableHeight)+'px');
     }
     position();
   }
