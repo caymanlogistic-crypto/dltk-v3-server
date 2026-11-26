@@ -68,7 +68,7 @@
   block-size:16px;
 }
 
-.auth-password input[type="password"] + .auth-password-toggle .auth-password-slash {
+.auth-password input[type="text"] + .auth-password-toggle .auth-password-slash {
   display:none;
 }
 
