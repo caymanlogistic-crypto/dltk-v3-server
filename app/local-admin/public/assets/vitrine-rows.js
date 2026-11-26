@@ -4,6 +4,7 @@
   if(!table||!body||!scroll)return;
   let ids=[];try{ids=JSON.parse(document.getElementById('vitrine-row-manifest').content);}catch{}
   const drafts=Array.from(document.querySelectorAll('[data-draft-slot]'));
+  const tripDraftBody=document.querySelector('[data-trip-drafts]');
   const empty=document.getElementById('vitrine-empty');
   const directoryRowCount=document.querySelector('[data-directory-row-count]');
   const search=document.querySelector('.vitrine-catalog-search input[type="search"]');
@@ -69,8 +70,8 @@
     loaded.set(start/pageSize,true);
   }
   let height=initial[0]?.getBoundingClientRect().height||32,headHeight=table.querySelector('thead').getBoundingClientRect().height,generation=0,frame=0,first=-1,last=-1,navigation=null,navigationGeneration=0,mounts=0,lastScrollTop=scroll.scrollTop,manifestVersion=0;
-  const top=document.createElement('tr'),bottom=document.createElement('tr');
-  for(const spacer of [top,bottom]){spacer.dataset.virtualSpacer='';spacer.setAttribute('aria-hidden','true');const cell=document.createElement('td');cell.colSpan=table.querySelectorAll('thead th:not([hidden])').length;spacer.append(cell);}
+  const top=document.createElement('tr'),bottom=document.createElement('tr'),tail=document.createElement('tr');
+  for(const spacer of [top,bottom,tail]){spacer.dataset.virtualSpacer='';spacer.setAttribute('aria-hidden','true');const cell=document.createElement('td');cell.colSpan=table.querySelectorAll('thead th:not([hidden])').length;spacer.append(cell);}
   setCounts();
   table.setAttribute('aria-colcount',String(table.querySelectorAll('thead th').length));
   function report(error){window.PlanexNotifications.show({tone:'danger',message:error.message||'Не удалось загрузить строки. Повторите прокрутку.'});}
@@ -144,10 +145,15 @@
   const endPadding=()=>openAtLastRow ? Math.max(0,(availableHeight()-height)/2) : 0;
   const startPadding=()=>openAtLastRow ? Math.max(0,availableHeight()/2-(ids.length-.5)*height) : 0;
   const rowOffset=index=>startPadding()+index*height;
-  const viewportIndex=()=>Math.max(0,Math.floor((scroll.scrollTop-startPadding())/height));
+  const viewportIndex=()=>Math.max(0,Math.min(ids.length-1,Math.floor((scroll.scrollTop-startPadding())/height)));
+  function stampEnd(end) {
+    const padding=endPadding();
+    stamp(bottom,(ids.length-end)*height+(tripDraftBody ? 0 : padding));
+    if(tripDraftBody)stamp(tail,Math.max(0,padding-drafts.length*height));
+  }
   async function render(forceIndex=null){
     if(window.VitrineGrid?.editing())return;
-    if(!ids.length){body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');return;}
+    if(!ids.length){body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);stamp(tail,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');return;}
     const visible=Math.max(1,Math.ceil(availableHeight()/height)),viewportStart=forceIndex??viewportIndex(),viewportEnd=Math.min(ids.length,viewportStart+visible+1);
     if(first>=0&&(first===0||viewportStart>=first+refillMargin)&&(last===ids.length||viewportEnd<=last-refillMargin))return;
     const start=Math.max(0,Math.min(ids.length-1,viewportStart-bufferBefore));
@@ -164,7 +170,7 @@
       const mountStarted=performance.now();
       window.VitrineDisplay?.prepareRows(rows.filter(row=>!row.isConnected));
       rows.forEach((row,index)=>row.setAttribute('aria-rowindex',String(start+index+2)));
-      stamp(top,rowOffset(start));stamp(bottom,(ids.length-end)*height+endPadding());
+      stamp(top,rowOffset(start));stampEnd(end);
       if(top.parentElement!==body)body.prepend(top);
       if(bottom.parentElement!==body)body.append(bottom);
       const keep=new Set(rows);
@@ -200,7 +206,7 @@
   window.addEventListener('vitrine-editor-closed',queue);
   window.addEventListener('vitrine-statuses-updated',()=>loaded.clear());
   window.addEventListener('vitrine-cell-selected',()=>{navigation=null;});
-  window.addEventListener('vitrine-columns-updated',()=>{for(const spacer of [top,bottom])spacer.firstElementChild.colSpan=visibleColumns().length+1;first=-1;queue();});
+  window.addEventListener('vitrine-columns-updated',()=>{for(const spacer of [top,bottom,tail])spacer.firstElementChild.colSpan=visibleColumns().length+1;first=-1;queue();});
   function visibleColumns(){return Array.from(table.querySelectorAll('thead th[data-column]:not([hidden])')).map(node=>node.dataset.column);}
   function ensureVisible(index){
     const available=availableHeight(),offset=rowOffset(index);
@@ -409,12 +415,13 @@
     edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?ids.length+drafts.length-1:0):rowIndex(cell),end?columns.length-1:0);},
     get total(){return ids.length;}
   });
+  if(tripDraftBody)tripDraftBody.append(tail);
   if(openAtLastRow && initial.length){
     stamp(top,rowOffset(initialStart));
-    stamp(bottom,endPadding());
+    stampEnd(ids.length);
     body.prepend(top);
     body.append(bottom);
-    scroll.scrollTop=scroll.scrollHeight;
+    scroll.scrollTop=Math.max(0,rowOffset(ids.length-1)+(height-availableHeight())/2);
     lastScrollTop=scroll.scrollTop;
   }
   render();

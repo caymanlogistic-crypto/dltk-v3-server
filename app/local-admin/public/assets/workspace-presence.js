@@ -77,11 +77,11 @@
     pasteFlashes.set(key,flash);schedule();
   });
   window.addEventListener('vitrine-editor-opened',event=>{
-    window.WorkspaceLive?.setEditing({tableSlug:slug,row:event.detail.row,column:event.detail.column});
+    if(event.detail.row>0)window.WorkspaceLive?.setEditing({tableSlug:slug,row:event.detail.row,column:event.detail.column});
   });
   window.addEventListener('vitrine-editor-closed',()=>window.WorkspaceLive?.setEditing(null));
   for(const name of ['vitrine-rows-updated','vitrine-columns-updated','resize'])window.addEventListener(name,schedule);
   scroll.addEventListener('scroll',schedule,{passive:true});
   const current = window.VitrineGrid?.editingCell();
-  if(current)window.WorkspaceLive?.setEditing({tableSlug:slug,row:Number(current.dataset.row),column:current.dataset.column});
+  if(Number(current?.dataset.row)>0)window.WorkspaceLive?.setEditing({tableSlug:slug,row:Number(current.dataset.row),column:current.dataset.column});
 })();

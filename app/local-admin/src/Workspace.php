@@ -118,6 +118,13 @@ function workspace_manifest(array $t, bool $archive=false): array {
     $ids=array_map('intval',wquery("SELECT row_num FROM records r WHERE table_id=? AND archived=? $filter ORDER BY row_num DESC LIMIT ".WORKSPACE_MANIFEST_LIMIT,$args)->fetchAll(PDO::FETCH_COLUMN));
     return !$archive && $t['slug']==='vyvoz' ? array_reverse($ids) : $ids;
 }
+function workspace_create_record(array $table): int {
+    $row=(int)wquery('SELECT COALESCE(MAX(row_num),1)+1 FROM records WHERE table_id=?',[$table['id']])->fetchColumn();
+    $values=array_fill_keys(array_column($table['columns'],'letter'),'');
+    wquery('INSERT INTO records(table_id,row_num,values_json,baseline_json) VALUES(?,?,?,?)',[$table['id'],$row,wjson($values),wjson($values)]);
+    workspace_audit(['tableId'=>$table['id'],'recordId'=>(int)workspace_db()->lastInsertId(),'row'=>$row,'action'=>'create','category'=>'row','after'=>$values]);
+    return $row;
+}
 function workspace_begin(): void {
     workspace_db()->beginTransaction();
     // One short writer lock gives outbox IDs commit order. No locks while the user types.
@@ -188,7 +195,7 @@ function workspace_api(string $path): never {
     }
     if($path==='/api/workspace/row'&&$method==='POST'){
         $b=wbody();$t=workspace_table();workspace_require('table',(string)$t['id'],'edit',$t['id']);workspace_begin();try{
-            if(($b['action']??'')==='create'){$num=(int)wquery('SELECT COALESCE(MAX(row_num),1)+1 FROM records WHERE table_id=?',[$t['id']])->fetchColumn();$v=[];foreach($t['columns'] as $f)$v[$f['letter']]='';wquery('INSERT INTO records(table_id,row_num,values_json,baseline_json) VALUES(?,?,?,?)',[$t['id'],$num,wjson($v),wjson($v)]);$rid=(int)workspace_db()->lastInsertId();workspace_audit(['tableId'=>$t['id'],'recordId'=>$rid,'row'=>$num,'action'=>'create','category'=>'row','after'=>$v]);}
+            if(($b['action']??'')==='create'){$num=workspace_create_record($t);}
             else{$num=(int)($b['row']??0);$r=wquery('SELECT * FROM records WHERE table_id=? AND row_num=? FOR UPDATE',[$t['id'],$num])->fetch();if(!$r)throw new ApiError('not_found','Строка не найдена.',404);$archived=($b['action']??'')==='archive';if(!in_array($b['action']??'',['archive','restore'],true))throw new ApiError('invalid_action','Неизвестное действие.');wquery('UPDATE records SET archived=? WHERE id=?',[(int)$archived,$r['id']]);workspace_audit(['tableId'=>$t['id'],'recordId'=>(int)$r['id'],'row'=>$num,'action'=>$archived?'archive':'restore','category'=>'row','before'=>['archived'=>(bool)$r['archived']],'after'=>['archived'=>$archived]]);}
             workspace_event('row.changed',['tableSlug'=>$t['slug'],'row'=>$num]);workspace_db()->commit();json_response(['row'=>$num]);
         }catch(Throwable $e){if(workspace_db()->inTransaction())workspace_db()->rollBack();throw $e;}
