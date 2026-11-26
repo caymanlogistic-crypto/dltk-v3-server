@@ -248,8 +248,10 @@ function vitrine_save_cell(): never {
     }
     if (!empty($result['fleetDocumentsChanged']) && workspace_fleet_trip_documents_can_view($data['table']['id'])) {
         header('Cache-Control: no-store');
-        $documents=workspace_fleet_trip_documents_values([$current['recordId']]);
-        $result['fleetDocumentValue']=$documents[$current['recordId']]??($current['originalValues']['R']??'');
+        $recordId=isset($result['createdRow']) ? (int)wquery('SELECT id FROM records WHERE table_id=? AND row_num=?',
+            [$data['table']['id'],$result['createdRow']])->fetchColumn() : $current['recordId'];
+        $documents=workspace_fleet_trip_documents_values([$recordId]);
+        $result['fleetDocumentValue']=$documents[$recordId]??($current['originalValues']['R']??'');
     }
     $statusColor = null; $resultStatusId = null;
     if ($body['column']==='A') foreach ($data['statuses'] as $status) if (vitrine_status_key($status['name'])===vitrine_status_key($result['value'])) { $statusColor=$status['color']; $resultStatusId=$status['id']; }

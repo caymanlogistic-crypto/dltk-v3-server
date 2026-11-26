@@ -31,6 +31,7 @@ $defaultGridWidth = $currentTable['defaultGridWidth'] ?? 'full';
 $gridWidth = $preferences['settings']['layoutWidth'] ?? $defaultGridWidth;
 $columns = $data['columns'] ?? [];
 $rows = $data['rows'] ?? [];
+$tripDraft = $data['tripDraft'] ?? null;
 $columnClass = static fn(array $column): string => mb_strtolower(trim($column['label'])) === 'время' ? ' vitrine-time-column' : '';
 $navFolder = '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2H5a2 2 0 0 1 -2 -2V6a2 2 0 0 1 2 -2z"/></svg>';
 $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6 -6 6"/></svg>';
@@ -218,7 +219,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
       <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
-        <table class="table vitrine-table<?= !empty($catalogGrid['unloadPoints']) ? ' vitrine-unload-points' : '' ?>"<?= $canPinColumns ? ' data-freeze-columns data-row-page-size="'.WORKSPACE_AVTOVYVOZ_PAGE_SIZE.'"' : '' ?>>
+        <table class="table vitrine-table<?= !empty($catalogGrid['unloadPoints']) ? ' vitrine-unload-points' : '' ?>"<?= $canPinColumns ? ' data-freeze-columns data-row-page-size="'.WORKSPACE_AVTOVYVOZ_PAGE_SIZE.'"'.(!$rowArchive ? ' data-open-at-last-row' : '') : '' ?>>
           <caption class="vitrine-sr-only"><?php if ($directory): ?>Справочник «<?= $escape($currentTable['title']) ?>»<?php else: ?>Последние непустые строки листа <?= $escape($data['sheetTitle'] ?? 'ВЫВОЗ') ?>. Все исходные столбцы.<?php endif; ?></caption>
           <colgroup><col class="vitrine-row-column"><?php foreach ($columns as $column): ?><col class="vitrine-data-column<?= $columnClass($column) ?>" data-column="<?= $escape($column['letter']) ?>"><?php endforeach; ?></colgroup>
           <thead><tr><th scope="col" class="vitrine-row-number">Строка</th>
@@ -248,9 +249,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <tbody id="vitrine-rows">
           <?php require __DIR__.'/vitrine-rows.php'; ?>
           </tbody>
-          <?php if ($showDraftRows) require __DIR__.'/vitrine-directory-drafts.php'; ?>
+          <?php if ($showDraftRows || $tripDraft) require __DIR__.'/vitrine-drafts.php'; ?>
         </table>
-        <div class="vitrine-message vitrine-empty" id="vitrine-empty" <?= count($rows) || ($showDraftRows && $catalogGrid['search'] === '') ? 'hidden' : '' ?> role="status"><?= ($catalogGrid ? $catalogGrid['search'] !== '' : count($rows) > 0) ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.' ?></div>
+        <div class="vitrine-message vitrine-empty" id="vitrine-empty" <?= count($rows) || $tripDraft || ($showDraftRows && $catalogGrid['search'] === '') ? 'hidden' : '' ?> role="status"><?= ($catalogGrid ? $catalogGrid['search'] !== '' : count($rows) > 0) ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.' ?></div>
       </div>
     </section>
     </div>
