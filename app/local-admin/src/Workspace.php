@@ -171,7 +171,7 @@ function workspace_api(string $path): never {
         json_response(['events'=>$events,'cursor'=>$cursor]);
     }
     if($path==='/api/workspace/history'&&$method==='GET'){
-        $where=['1=1'];$args=[];
+        $where=[workspace_employee_history_filter()];$args=[];
         if(!empty($_GET['table'])&&$_GET['table']!=='all'){$t=workspace_table((string)$_GET['table']);$where[]='h.table_id=?';$args[]=$t['id'];}
         foreach(['row'=>'h.row_num','user'=>'h.actor_id'] as $key=>$field)if(isset($_GET[$key])&&$_GET[$key]!==''){$where[]="$field=?";$args[]=(int)$_GET[$key];}
         if(!empty($_GET['before'])){$where[]='h.id<?';$args[]=(int)$_GET['before'];}
@@ -189,6 +189,11 @@ function workspace_api(string $path): never {
         json_response(['events'=>$events,'nextCursor'=>$more&&$rows?(int)end($rows)['id']:null]);
     }
     if($path==='/api/workspace/users')workspace_employees_endpoint($method);
+    if($path==='/api/workspace/employee-roster'){
+        require_once __DIR__.'/Vitrine.php';
+        require_once __DIR__.'/WorkspaceEmployeeRoster.php';
+        workspace_employee_roster_endpoint($method);
+    }
     if($path==='/api/workspace/catalogs')workspace_catalogs_endpoint($method);
     if($path==='/api/workspace/reports'&&$method==='GET'){
         $tables=workspace_tables();json_response(['tables'=>$tables,'totals'=>['tables'=>count($tables),'rows'=>array_sum(array_column($tables,'rowCount')),'changes'=>(int)wquery('SELECT COUNT(*) FROM change_history')->fetchColumn()],'byUser'=>wquery("SELECT actor_name AS name,COUNT(*) AS count FROM change_history GROUP BY actor_name ORDER BY count DESC")->fetchAll(),'byTable'=>wquery('SELECT t.title,COUNT(h.id) AS count FROM table_definitions t LEFT JOIN change_history h ON h.table_id=t.id GROUP BY t.id ORDER BY t.id')->fetchAll()]);

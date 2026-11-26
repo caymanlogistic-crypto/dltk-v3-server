@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+const WORKSPACE_PRIVATE_EMPLOYEE_ROLES = ['superadmin', 'admin', 'directory_analytics'];
+
 function workspace_employee_role_names(): array {
     return [
         'superadmin'=>'Суперадмин', 'admin'=>'Админ', 'manager'=>'Менеджер',
@@ -59,15 +61,39 @@ function workspace_employee_editor_scope(): ?string {
     return in_array('admin',$codes,true) ? 'admin' : null;
 }
 
+function workspace_employee_is_private(array $employee): bool {
+    return (bool)array_intersect(WORKSPACE_PRIVATE_EMPLOYEE_ROLES,array_column($employee['roles'],'code'));
+}
+
+function workspace_employee_viewer_is_superadmin(): bool {
+    return (bool)wquery("SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id
+        WHERE ur.user_id=? AND r.code='superadmin'",[workspace_current_user()['id']])->fetchColumn();
+}
+
+function workspace_employee_visible_records(?bool $active = null): array {
+    workspace_require('system','users','view');
+    $employees = workspace_employee_records(active:$active);
+    if (workspace_employee_viewer_is_superadmin()) return $employees;
+    return array_values(array_filter($employees,static fn(array $employee): bool => !workspace_employee_is_private($employee)));
+}
+
 function workspace_employee_can_edit(string $scope, array $employee): bool {
-    $codes = array_column($employee['roles'],'code');
-    if (in_array('superadmin',$codes,true)) return $scope === 'superadmin';
-    return $scope === 'superadmin' || !in_array('admin',$codes,true) || $employee['id'] === workspace_current_user()['id'];
+    return $scope === 'superadmin' || ($scope === 'admin' && !workspace_employee_is_private($employee));
+}
+
+function workspace_employee_history_filter(): string {
+    if (workspace_employee_viewer_is_superadmin()) return '1=1';
+    return "NOT (h.category='management' AND COALESCE(h.column_label,'')='Сотрудник' AND (
+        COALESCE(JSON_UNQUOTE(JSON_EXTRACT(h.after_value,'$.privateAccount')),'false')='true'
+        OR EXISTS (SELECT 1 FROM roles r WHERE r.code IN ('superadmin','admin','directory_analytics')
+            AND (JSON_CONTAINS(h.before_value,CAST(r.id AS JSON),'$.roleIds')
+                OR JSON_CONTAINS(h.after_value,CAST(r.id AS JSON),'$.roleIds')))
+    ))";
 }
 
 function workspace_employee_role_options(string $scope): array {
     return array_values(array_filter(workspace_employee_roles(), static fn(array $role): bool =>
-        $scope === 'superadmin' || !in_array($role['code'],['superadmin','admin'],true)
+        $scope === 'superadmin' || !in_array($role['code'],WORKSPACE_PRIVATE_EMPLOYEE_ROLES,true)
     ));
 }
 
@@ -83,8 +109,9 @@ function workspace_employee_form_data(array $employee): array {
 
 function workspace_employees_endpoint(string $method): never {
     if ($method === 'GET' && !isset($_GET['id'])) {
-        $users = array_map(static fn(int $id): ?array => workspace_user($id),
-            wquery('SELECT id FROM users ORDER BY id')->fetchAll(PDO::FETCH_COLUMN));
+        $ids = array_column(workspace_employee_visible_records(),'id');
+        sort($ids,SORT_NUMERIC);
+        $users = array_map('workspace_user',$ids);
         json_response(['users'=>$users, 'roles'=>wquery('SELECT id,name FROM roles ORDER BY id')->fetchAll()]);
     }
 
@@ -108,8 +135,9 @@ function workspace_employee_profile_value(string $field, mixed $value): string {
     }
     if ($field === 'login') {
         $value = strtolower($value);
-        if (!preg_match('/^[a-z0-9_.-]{2,60}$/D',$value)) {
-            throw new ApiError('invalid_user','Укажите логин из 2–60 латинских букв, цифр, точек, дефисов или подчёркиваний.');
+        if (!preg_match('/^[a-z0-9_.-]{2,60}$/D',$value) &&
+            (strlen($value)>60 || !filter_var($value,FILTER_VALIDATE_EMAIL))) {
+            throw new ApiError('invalid_user','Укажите email до 60 символов или логин из 2–60 латинских букв, цифр, точек, дефисов или подчёркиваний.');
         }
     }
     if ($field === 'email' && $value !== '' && (strlen($value)>254 || !filter_var($value,FILTER_VALIDATE_EMAIL))) {
@@ -130,7 +158,7 @@ function workspace_employee_save(array $input, bool $cellEdit = false, ?string $
     }
 }
 
-function workspace_employee_write(array $input, bool $cellEdit = false, ?string $deleteReason=null): array {
+function workspace_employee_write(array $input, bool $cellEdit = false, ?string $deleteReason=null, bool $privateRoster=false): array {
     $profile = [];
     foreach (['name','login','email'] as $field) {
         if (isset($input[$field])) $profile[$field] = workspace_employee_profile_value($field,$input[$field]);
@@ -139,7 +167,9 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
         throw new ApiError('invalid_user','Укажите ФИО и логин.');
     }
     $password = $input['password'] ?? '';
-    if (!is_string($password) || ($password !== '' && (mb_strlen($password)<8 || strlen($password)>72 || str_contains($password,"\0")))) {
+    $rosterPin = $privateRoster && is_string($password) && preg_match('/^[0-9]{6}$/D',$password);
+    if (!is_string($password) || ($password !== '' &&
+        ((!$rosterPin && mb_strlen($password)<8) || strlen($password)>72 || str_contains($password,"\0")))) {
         throw new ApiError('invalid_password','Пароль должен содержать от 8 символов и занимать до 72 байт.');
     }
     $id = $input['id'] ?? null;
@@ -210,7 +240,8 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
             $deletion=['deleted'=>true,'reason'=>$deleteReason];
         }
         workspace_audit(['category'=>'management','label'=>'Сотрудник','before'=>$old ? $audit($old) : null,
-            'after'=>$audit($after)+['emailChanged'=>$email !== ($old['email'] ?? ''), 'passwordChanged'=>$passwordHash !== null]+$deletion,
+            'after'=>$audit($after)+['emailChanged'=>$email !== ($old['email'] ?? ''), 'passwordChanged'=>$passwordHash !== null,
+                'privateAccount'=>workspace_employee_is_private($after) || ($old && workspace_employee_is_private($old))]+$deletion,
             'action'=>$deleteReason!==null ? 'delete' : ($old ? 'edit' : 'create')]);
         workspace_event('users.changed',['id'=>$id]);
         return $cellEdit ? $after : workspace_employee_form_data($after);
