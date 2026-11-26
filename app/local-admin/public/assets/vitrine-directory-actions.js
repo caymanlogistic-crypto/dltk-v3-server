@@ -3,6 +3,11 @@
   const actions = document.querySelector('[data-directory-row-actions]');
   if (!actions) return;
   const remove = actions.querySelector('[data-directory-delete]');
+  const employeeCard = actions.querySelector('[data-employee-card]');
+  const employeeLabels = {
+    archive:{menu:'Приостановить',heading:'Приостановить учётную запись',success:'Учётная запись приостановлена.'},
+    restore:{menu:'Активировать',heading:'Активировать учётную запись',success:'Учётная запись активирована.'},
+  };
   const archiveToggle = actions.querySelector('[data-directory-archive-toggle]');
   const related = actions.querySelector('[data-directory-related]');
   const archive = actions.hasAttribute('data-archive');
@@ -38,7 +43,9 @@
     trigger = button;
     returnFocus = cell;
     if (archiveToggle) {
-      archiveToggle.textContent = archiveActionFor(cell.parentElement)==='restore' ? 'Восстановить строку' : 'Переместить в архив';
+      const action = archiveActionFor(cell.parentElement);
+      archiveToggle.textContent = (employeeCard && employeeLabels[action].menu) ||
+        (action==='restore' ? 'Восстановить строку' : 'Переместить в архив');
     }
     if (related) {
       const href = cell.parentElement.dataset.relatedUrl;
@@ -275,12 +282,13 @@
       const result = action === 'delete' ? await request('check_delete',row) : {name:label};
       if (window.VitrineGrid.editing()) return;
       target = {action,row};
-      const heading = {restore:'Восстановить запись',archive:'Архивировать запись',delete:'Удалить запись'}[action];
+      const labels = employeeCard && employeeLabels[action];
+      const heading = labels?.heading ?? {restore:'Восстановить запись',archive:'Архивировать запись',delete:'Удалить запись'}[action];
       deleteDialog.querySelector('#directory-delete-title').textContent = heading;
       deleteDialog.querySelector('[type="submit"]').textContent =
-        {restore:'Восстановить',archive:'В архив',delete:'Удалить'}[action];
+        labels?.menu ?? {restore:'Восстановить',archive:'В архив',delete:'Удалить'}[action];
       deleteDialog.querySelector('[data-directory-delete-text]').textContent =
-        {restore:'Восстановить',archive:'Перенести в архив',delete:'Удалить'}[action]+' «'+result.name+'»?';
+        (labels?.menu ?? {restore:'Восстановить',archive:'Перенести в архив',delete:'Удалить'}[action])+' «'+result.name+'»?';
       if (reason) {
         reasonField.hidden = reason.disabled = action !== 'delete';
         reason.required = action === 'delete';
@@ -295,12 +303,18 @@
       pending = false;
     }
   }
+  employeeCard?.addEventListener('click',()=>{
+    const cell = returnFocus;
+    closeMenu(true);
+    if (cell) window.dispatchEvent(new CustomEvent('vitrine-employee-card',{detail:cell.dataset}));
+  });
   archiveToggle?.addEventListener('click',()=>confirmRow());
   remove?.addEventListener('click',()=>confirmRow('delete'));
   reason?.addEventListener('input',()=>{confirm.disabled=!reason.value.trim();});
   if (deleteDialog) bindForm(deleteDialog, async fields => {
     const payload=reason && !reason.disabled ? {...target.row,reason:fields.get('reason').trim()} : target.row;
     await request(target.action,payload);
-    refresh({restore:'Запись восстановлена.',archive:'Запись перенесена в архив.',delete:'Запись удалена.'}[target.action]);
+    const labels = employeeCard && employeeLabels[target.action];
+    refresh(labels?.success ?? {restore:'Запись восстановлена.',archive:'Запись перенесена в архив.',delete:'Запись удалена.'}[target.action]);
   });
 })();

@@ -6,15 +6,18 @@
   let timer;
   const visibility = document.querySelector('[data-directory-visibility]');
   if (visibility) {
-    const modes = new Map([['Активные',''],['Архив','1']]);
+    const employees = visibility.hasAttribute('data-employee-visibility');
+    const modes = employees
+      ? new Map([['Все',''],['Активные','active'],['Приостановленные','1']])
+      : new Map([['Активные',''],['Архив','1']]);
     if (visibility.dataset.allLabel) modes.set(visibility.dataset.allLabel,'all');
-    const initial = [...modes].find(([,mode])=>mode===visibility.dataset.directoryVisibility)?.[0] ?? 'Активные';
+    const initial = [...modes].find(([,mode])=>mode===visibility.dataset.directoryVisibility)?.[0] ?? modes.keys().next().value;
     const selector = window.VitrineSelect.create([...modes.keys()].map(label=>({value:label,label})),initial);
     selector.field.setAttribute('aria-label',visibility.dataset.filterLabel);
     visibility.append(selector.element);
     selector.field.addEventListener('change',()=>{
       const current = selector.resolveValue();
-      if (current===initial) return;
+      if (!modes.has(current) || current===initial) return;
       if (window.VitrineGrid.editing() || document.querySelector('dialog[open]')) {
         selector.field.value = initial;
         window.PlanexNotifications.show({tone:'info',message:'Завершите редактирование перед сменой фильтра.'});

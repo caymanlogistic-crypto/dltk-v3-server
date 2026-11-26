@@ -6,7 +6,7 @@ $archive = $catalogGrid['archive'];
 $canUploadExcel = $catalogGrid['canEdit'] && !$archive && workspace_directory_excel_supported($directory);
 $staffDirectory = ($currentTable['catalogKind'] ?? '') === 'managers';
 $visibilityLabel = $staffDirectory ? 'Все сотрудники' : ($directory === 'clients' ? 'Все клиенты' : null);
-$visibilityAria = $staffDirectory ? 'Фильтр сотрудников' : ($directory === 'clients' ? 'Фильтр клиентов' : 'Фильтр записей');
+$visibilityAria = $employeePage ? 'Фильтр по статусу учётной записи' : ($staffDirectory ? 'Фильтр сотрудников' : ($directory === 'clients' ? 'Фильтр клиентов' : 'Фильтр записей'));
 $searchPlaceholder = match ($directory) {
     'clients'=>'Клиент или менеджер',
     'employees'=>'ФИО, логин, email или роль',
@@ -26,7 +26,7 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
     <input type="hidden" name="catalog" value="<?= $escape($directory) ?>">
     <?php if ($directory === 'entries'): ?><input type="hidden" name="id" value="<?= (int)$catalogGrid['id'] ?>"><?php endif; ?>
     <?php if ($directory === 'flight-statuses'): ?><input type="hidden" name="table" value="<?= $escape($managementTable) ?>"><?php endif; ?>
-    <?php if ($archive): ?><input type="hidden" name="archive" value="1"><?php endif; ?>
+    <?php if ($archive || !empty($catalogGrid['activeOnly'])): ?><input type="hidden" name="archive" value="<?= $archive ? '1' : 'active' ?>"><?php endif; ?>
     <?php if (!empty($catalogGrid['showAll'])): ?><input type="hidden" name="archive" value="all"><?php endif; ?>
     <?php if (!empty($catalogGrid['clientFilter'])): ?><input type="hidden" name="client" value="<?= (int)$catalogGrid['clientFilter']['id'] ?>"><?php endif; ?>
     <?php require __DIR__.'/vitrine-archive-filter.php'; ?>
@@ -54,11 +54,6 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
   <?php if (!empty($catalogGrid['unkeyedCount'])): ?>
   <button class="btn" type="button" data-directory-details data-unkeyed>Строки без названия (<?= (int)$catalogGrid['unkeyedCount'] ?>)</button>
   <?php endif; ?>
-  <?php endif; ?>
-  <?php if ($employeeScope): ?>
-  <div class="vitrine-catalog-actions">
-    <button class="btn btn-secondary" type="button" id="employee-edit" disabled>Изменить сотрудника</button>
-  </div>
   <?php endif; ?>
 </section>
 <?php if ($canUploadExcel) require __DIR__.'/vitrine-directory-import.php'; ?>

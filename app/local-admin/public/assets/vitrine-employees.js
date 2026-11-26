@@ -6,30 +6,22 @@
   const fields = form.elements;
   const errorLine = form.querySelector('[data-employee-error]');
   const submit = form.querySelector('[type=submit]');
-  const edit = document.getElementById('employee-edit');
-  const table = document.querySelector('.vitrine-table');
   const roles = JSON.parse(dialog.dataset.roles);
   const viewerId = Number(document.body.dataset.workspaceUser);
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const feedbackKey = 'dltk-v3.employees-feedback';
   const path = url => window.DltkPaths?.path(url) ?? url;
   const notice = (message,tone) => window.PlanexNotifications.show({message,tone});
-  const selected = () => table.querySelector('#vitrine-rows .is-current-cell');
   let employee, roleField, editColumn, saving = false, loading = false;
   const directoryUrl = new URL(location.href);
   const focusRow = directoryUrl.searchParams.get('focusRow');
   const focusColumn = directoryUrl.searchParams.get('focusColumn');
-  if (/^[0-9]+$/.test(focusRow || '') && /^[A-E]$/.test(focusColumn || '')) {
+  if (/^[0-9]+$/.test(focusRow || '') && /^[A-F]$/.test(focusColumn || '')) {
     window.VitrineRows.activate({dataset:{row:focusRow,column:focusColumn}});
     directoryUrl.searchParams.delete('focusRow');
     directoryUrl.searchParams.delete('focusColumn');
     history.replaceState(history.state,'',directoryUrl);
   }
-
-  const updateEdit = () => { edit.disabled = loading || !selected(); };
-  window.addEventListener('vitrine-cell-selected',updateEdit);
-  window.addEventListener('vitrine-rows-updated',updateEdit);
-  updateEdit();
 
   try {
     const message = sessionStorage.getItem(feedbackKey);
@@ -81,18 +73,16 @@
     dialog.showModal();
   }
 
-  edit.addEventListener('click', async () => {
-    const cell = selected();
-    if (!cell || loading) return;
-    const {row:id,column} = cell.dataset;
-    loading = true; updateEdit();
+  window.addEventListener('vitrine-employee-card', async ({detail:{row:id,column}}) => {
+    if (loading) return;
+    loading = true;
     try {
       const result = await request('?id='+encodeURIComponent(id));
       open(result.employee,column);
     } catch (error) {
       notice(error.message,'danger');
     } finally {
-      loading = false; updateEdit();
+      loading = false;
     }
   });
   form.querySelector('[data-close]').addEventListener('click',()=>{ if (!saving) dialog.close(); });
@@ -124,7 +114,9 @@
         return;
       }
       try { sessionStorage.setItem(feedbackKey,employee ? 'Сотрудник обновлён.' : 'Сотрудник добавлен.'); } catch {}
-      const destination = new URL(path('/vitrine?catalog=employees'+(payload.active?'':'&archive=1')),location.href);
+      const destination = new URL(location.href);
+      const filter = destination.searchParams.get('archive');
+      if (filter === '1' && payload.active || filter === 'active' && !payload.active) destination.searchParams.delete('archive');
       if (employee && editColumn) {
         destination.searchParams.set('focusRow',String(employee.id));
         destination.searchParams.set('focusColumn',editColumn);

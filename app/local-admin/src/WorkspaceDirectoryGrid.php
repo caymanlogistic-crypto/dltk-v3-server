@@ -42,7 +42,7 @@ function workspace_directory_grid_model(string $directory): array {
     }
     $employees = $directory === 'employees';
     workspace_require('system',$employees ? 'users' : 'roles','view');
-    $labels = $employees ? ['A'=>'ФИО','B'=>'Логин','C'=>'Пароль','D'=>'Email','E'=>'Роль'] : ['A'=>'Роль'];
+    $labels = $employees ? ['A'=>'ФИО','B'=>'Логин','C'=>'Пароль','D'=>'Email','E'=>'Роль','F'=>'Статус'] : ['A'=>'Роль'];
     $columns = [];
     foreach ($labels as $letter => $label) $columns[] = ['letter'=>$letter,'label'=>$label];
     return [
@@ -56,12 +56,14 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     if ($directory === 'clients') return workspace_client_grid_data($requestedRows);
     $model = workspace_directory_grid_model($directory);
     $employees = $directory === 'employees';
-    $archive = ($_GET['archive'] ?? null) === '1';
+    $visibility = $_GET['archive'] ?? '';
+    $archive = $visibility === '1';
+    $employeeActive = match ($visibility) { '1'=>false, 'active'=>true, default=>null };
     $search = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']),0,160) : '';
     $flightStatuses = $directory === 'flight-statuses';
     $orderStatuses = $directory === 'client-order-statuses' || $flightStatuses;
     $canEditStatuses = false;
-    $entries = $employees ? workspace_employee_visible_records(active: !$archive) : ($orderStatuses ? [] : workspace_employee_roles($archive));
+    $entries = $employees ? workspace_employee_visible_records(active: $employeeActive) : ($orderStatuses ? [] : workspace_employee_roles($archive));
     $palette = workspace_palette();
     if ($orderStatuses) {
         $colorOptions = workspace_directory_palette_options();
@@ -99,6 +101,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     $requested = $requestedRows !== null ? array_fill_keys($requestedRows,true) : null;
     foreach ($entries as $entry) {
         $values = $employees ? workspace_employee_grid_values($entry) : ['A'=>$entry['name']];
+        if ($employees) $values['F'] = $entry['active'] ? 'АКТИВНАЯ' : 'ПРИОСТАНОВЛЕНА';
         if ($orderStatuses) $values['B']=$colorNames[$entry['color']] ?? '';
         if ($search !== '' && mb_stripos(implode(' ',array_diff_key($values,['C'=>true])),$search) === false) continue;
         $id = $entry['id'];
@@ -111,7 +114,9 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         ];
         if ($employees) {
             $row['baseHash'] = workspace_employee_revision($entry);
-            $row['singleLine'] = ['A'=>true,'B'=>true,'D'=>true];
+            $row['archived'] = !$entry['active'];
+            $row['employeeStatus'] = $entry['active'] ? 'active' : 'suspended';
+            $row['singleLine'] = ['A'=>true,'B'=>true,'D'=>true,'F'=>true];
             foreach (array_keys($values) as $column) {
                 $row['readOnly'][$column] = workspace_employee_grid_readonly($column,$scope,$entry);
                 $row['edits'][$column] = ['revision'=>$entry['authVersion']];
@@ -134,7 +139,8 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     }
     return [
         'table'=>$model, 'columns'=>$model['columns'], 'rows'=>$rows, 'rowIds'=>$rowIds,
-        'palette'=>$palette, 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,'draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)],
+        'palette'=>$palette, 'catalogGrid'=>['archive'=>$archive,'activeOnly'=>$employees && $employeeActive === true,
+            'search'=>$search,'canEdit'=>$canEdit,'draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)],
     ];
 }
 

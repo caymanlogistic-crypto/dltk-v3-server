@@ -18,6 +18,10 @@
 .vitrine .vitrine-import-warning { padding:8px 10px; border-inline-start:2px solid var(--warning-border); background:var(--warning-field); }
 .vitrine .vitrine-catalog-search { max-inline-size:100%; }
 .vitrine .vitrine-directory-visibility { inline-size:150px; max-inline-size:100%; }
+.vitrine [data-employee-visibility] { inline-size:185px; }
+.vitrine td[data-employee-status] { font-weight:700; }
+.vitrine td[data-employee-status="active"] { color:var(--p-success); }
+.vitrine td[data-employee-status="suspended"] { color:var(--p-error); }
 .vitrine .vitrine-catalog-search input[type="search"] { box-sizing:border-box; block-size:var(--control-h); inline-size:245px; max-inline-size:100%; }
 .vitrine.vitrine-catalog-page .vitrine-table {
   --vitrine-default-width-A:360px;
