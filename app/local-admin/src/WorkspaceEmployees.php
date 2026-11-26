@@ -167,7 +167,7 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
         throw new ApiError('invalid_user','Укажите ФИО и логин.');
     }
     $password = $input['password'] ?? '';
-    $rosterPin = $privateRoster && PHP_SAPI === 'cli' && is_string($password) && preg_match('/^[0-9]{6}$/D',$password);
+    $rosterPin = $privateRoster && is_string($password) && preg_match('/^[0-9]{6}$/D',$password);
     if (!is_string($password) || ($password !== '' &&
         ((!$rosterPin && mb_strlen($password)<8) || strlen($password)>72 || str_contains($password,"\0")))) {
         throw new ApiError('invalid_password','Пароль должен содержать от 8 символов и занимать до 72 байт.');
