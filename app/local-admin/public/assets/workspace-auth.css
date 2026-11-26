@@ -25,6 +25,12 @@
   transform:none;
 }
 
+.auth-card .modal-title {
+  font:700 18px var(--font);
+  letter-spacing:normal;
+  color:var(--accent);
+}
+
 .auth-fields {
   display:grid;
   gap:12px;
