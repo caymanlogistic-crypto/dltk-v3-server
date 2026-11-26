@@ -14,7 +14,7 @@ $path = static fn(string $value): string => $escape(app_url_path($value));
   <title>Вход — ЛК ДЛТК</title>
   <link rel="stylesheet" href="<?= $path('/assets/vitrine-base.css') ?>">
   <link rel="stylesheet" href="<?= $path('/assets/vitrine.css') ?>">
-  <link rel="stylesheet" href="<?= $path('/assets/workspace-auth.css?v=3') ?>">
+  <link rel="stylesheet" href="<?= $path('/assets/workspace-auth.css?v=4') ?>">
   <link rel="stylesheet" href="<?= $path('/assets/workspace-login-transition.css') ?>">
   <script defer src="<?= $path('/assets/workspace-paths.js') ?>"></script>
   <script defer src="<?= $path('/assets/vitrine-notifications.js') ?>"></script>

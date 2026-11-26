@@ -1,7 +1,8 @@
-.vitrine.auth-page {
+:root body.vitrine.auth-page {
   display:grid;
   grid-template-rows:auto minmax(min-content,1fr);
   overflow:auto;
+  background:white;
 }
 
 .auth-page > .vitrine-topbar {
@@ -43,12 +44,17 @@
 .auth-password-toggle {
   position:absolute;
   inset-block:0;
-  inset-inline-end:2px;
+  inset-inline-end:1px;
   inline-size:40px;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  padding:0;
+  padding-inline-end:6px;
   border:0;
   border-radius:4px;
   background:transparent;
-  color:inherit;
+  color:var(--accent);
   cursor:pointer;
 }
 
@@ -58,12 +64,11 @@
 }
 
 .auth-password-toggle svg {
-  inline-size:20px;
-  block-size:20px;
-  vertical-align:middle;
+  inline-size:16px;
+  block-size:16px;
 }
 
-.auth-password input[type="password"] + .auth-password-toggle .auth-password-slash {
+.auth-password input[type="text"] + .auth-password-toggle .auth-password-slash {
   display:none;
 }
 
