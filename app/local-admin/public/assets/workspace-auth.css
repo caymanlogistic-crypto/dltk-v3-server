@@ -29,6 +29,19 @@
   gap:12px;
 }
 
+.auth-fields .field-input {
+  background:white;
+  color:#131210;
+}
+
+.auth-fields .field-input:is(:autofill, :-webkit-autofill) {
+  /* The browser controls the autofill background. Paint an inset surface over it. */
+  box-shadow:inset 0 0 0 100px white;
+  -webkit-text-fill-color:#131210;
+  caret-color:#131210;
+  transition-property:border-color;
+}
+
 .auth-password {
   position:relative;
 }
