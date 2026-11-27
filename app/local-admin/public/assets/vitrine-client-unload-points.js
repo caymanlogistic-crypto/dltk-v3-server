@@ -94,7 +94,7 @@
     keyboard.focusFirst(add.hidden ? close : add);
   }
   function render() {
-    dialog.querySelector('h2').textContent='Точки выгрузки · '+data.name;
+    dialog.querySelector('h2').textContent='Точки выгрузки: '+data.name;
     add.hidden=!data.canEdit;
     rows.replaceChildren();
     for (const point of data.points) {

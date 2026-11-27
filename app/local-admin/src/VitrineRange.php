@@ -13,7 +13,7 @@ function vitrine_save_range(?string $directory, array $body): array {
     foreach ($cells as $cell) {
         if (!is_array($cell) || !is_int($cell['row']??null) || $cell['row']===0 ||
             ($cell['row']<0 && (!$paste || $directory!==null || $cell['row'] < -WORKSPACE_AVTOVYVOZ_DRAFT_ROWS)) ||
-            !is_string($cell['column']??null) || !preg_match('/^[A-Z]{1,3}$/D',$cell['column']) ||
+            !is_string($cell['column']??null) || !preg_match('/^(?:[A-Z]{1,3}|U2)$/D',$cell['column']) ||
             !is_string($cell['value']??null) || mb_strlen($cell['value'])>20000 ||
             !is_int($cell['revision']??null) || $cell['revision']<0 ||
             !is_string($cell['baseHash']??null) || !preg_match('/^[0-9a-f]{64}$/D',$cell['baseHash'])) {
@@ -82,6 +82,9 @@ function vitrine_save_range(?string $directory, array $body): array {
             if (!$paste && !$clear && $directory===null && $column==='B' && isset($cells[$index]['orderStatus'])) {
                 $cell['orderStatus'] = $cells[$index]['orderStatus'];
             }
+            if (!$paste && !$clear && $directory===null && isset($cells[$index]['fieldColorStatus'])) {
+                $cell['fieldColorStatus']=$cells[$index]['fieldColorStatus'];
+            }
             try {
                 if ($directory === null) {
                     $cell['row'] = $newRows[$row] ?? $row;
@@ -107,11 +110,11 @@ function vitrine_save_range(?string $directory, array $body): array {
                         $cell['revision'] = $version['after'];
                         $cell['baseHash'] = $version['hash'];
                     }
-                    $result = match ($directory) {
+                    $result = workspace_order_status_directory($directory)!==null
+                        ? workspace_client_order_status_grid_edit($cell,false,$directory) : match ($directory) {
                         'entries' => workspace_catalog_directory_edit($cell),
                         'clients' => workspace_client_grid_edit($cell),
                         'employees' => workspace_employee_grid_edit($cell),
-                        'client-order-statuses' => workspace_client_order_status_grid_edit($cell),
                         'flight-statuses' => workspace_flight_status_grid_edit($cell),
                         default => throw new ApiError('readonly','Запись доступна только для просмотра.',403),
                     };

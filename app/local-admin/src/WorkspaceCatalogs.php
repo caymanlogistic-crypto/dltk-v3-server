@@ -12,6 +12,7 @@ require_once __DIR__.'/WorkspaceCarrierFleet.php';
 require_once __DIR__.'/WorkspaceEdoOperators.php';
 require_once __DIR__.'/WorkspaceEdoCounterparties.php';
 require_once __DIR__.'/WorkspaceMarginRules.php';
+require_once __DIR__.'/WorkspaceContainerTypeRules.php';
 
 function vitrine_catalog_key(string $name): string {
     return mb_strtolower(trim(preg_replace('/\s+/u',' ',$name)));
@@ -22,7 +23,7 @@ function workspace_catalogs(): array {
 }
 function workspace_palette(): array {return [['name'=>'Красный','fill'=>'#F4D9DA'],['name'=>'Оранжевый','fill'=>'#F7E1CB'],['name'=>'Жёлтый','fill'=>'#F7F2D2'],['name'=>'Зелёный','fill'=>'#DCEAD4'],['name'=>'Бирюзовый','fill'=>'#CFE9E4'],['name'=>'Синий','fill'=>'#D8E6F4'],['name'=>'Фиолетовый','fill'=>'#DFDBF1'],['name'=>'Розовый','fill'=>'#EFD9E8'],['name'=>'Серый','fill'=>'#E7E7E7']];}
 function workspace_is_document_status_catalog(string $kind): bool {
-    return in_array($kind,['assignment-statuses','etrn-statuses'],true);
+    return in_array($kind,['assignment-statuses','etrn-statuses','etrn-signing-statuses'],true);
 }
 function workspace_catalog_has_palette(string $kind): bool {
     return in_array($kind,['status','terminals-main'],true) || workspace_is_document_status_catalog($kind);
@@ -74,6 +75,8 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
         if (!is_array($b['dropoffProfile'])) throw new ApiError('invalid_dropoff','Проверьте данные точки сдачи.');
         $dropoffProfile=workspace_dropoff_profile($b['dropoffProfile']);
     }
+    $containerRule=$catalog['kind']==='container-types' && array_key_exists('containerRule',$b)
+        ? workspace_container_type_validate_rule($b['containerRule']) : null;
     try{
         $old=isset($b['id'])?wquery('SELECT * FROM catalog_entries WHERE id=? AND catalog_id=? FOR UPDATE',[(int)$b['id'],$cid])->fetch():null;
         if(isset($b['id'])&&!$old)throw new ApiError('not_found','Запись не найдена.',404);
@@ -123,7 +126,10 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
         $ruleChanged=$marginRule!==null && $marginRule!==$beforeRule;
         $beforeDropoff=$dropoffProfile!==null && $old ? workspace_dropoff_profiles($cid)[(int)$old['id']]??[] : [];
         $dropoffChanged=$dropoffProfile!==null && $beforeDropoff!==$dropoffProfile;
-        if($deleteReason===null&&$old&&$old['name']===$name&&$old['normalized']===$norm&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged&&!$dropoffChanged&&!$carrierChanged&&!$ruleChanged&&!$partyChanged){return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
+        $beforeContainer=$containerRule!==null && $old ? workspace_container_type_profile($old['name'],
+            workspace_client_catalog_metadata('container_type_rule_'.$old['id'])) : null;
+        $containerChanged=$containerRule!==null && $containerRule!=$beforeContainer;
+        if($deleteReason===null&&$old&&$old['name']===$name&&$old['normalized']===$norm&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged&&!$dropoffChanged&&!$carrierChanged&&!$ruleChanged&&!$partyChanged&&!$containerChanged){return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
         if($old){wquery('UPDATE catalog_entries SET name=?,normalized=?,color=?,active=?,revision=? WHERE id=?',[$name,$norm,$color,(int)$active,$revision,$old['id']]);$id=(int)$old['id'];}
         else{wquery('INSERT INTO catalog_entries(catalog_id,name,normalized,color,active) VALUES(?,?,?,?,?)',[$cid,$name,$norm,$color,(int)$active]);$id=(int)workspace_db()->lastInsertId();}
         if($managerChanged)workspace_client_set_manager($cid,$id,$manager);
@@ -162,6 +168,12 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
             if ($before!==null) $before['profile']=$beforeDropoff;
             $after['profile']=$dropoffProfile;
         }
+        if ($containerChanged) {
+            wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+                ['container_type_rule_'.$id,wjson($containerRule)]);
+            if ($before!==null) $before['containerRule']=$beforeContainer;
+            $after['containerRule']=$containerRule;
+        }
         if($hasManager){
             if($before!==null)$before['manager']=$beforeManager;
             $after['manager']=$manager;
@@ -180,7 +192,13 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
             if ($tableId) $audit['tableId']=(int)$tableId;
         }
         workspace_audit($audit+['before'=>$before,'after'=>$after,'action'=>$action]);
-        workspace_event('catalog.changed',['catalogId'=>$cid,'id'=>$id,'name'=>$name,'beforeName'=>$old['name']??null,'kind'=>$catalog['kind'],'color'=>$color,'active'=>$active,'revision'=>$revision,'bindings'=>wquery('SELECT b.table_id AS tableId,t.slug AS tableSlug,b.field_key AS fieldKey FROM catalog_bindings b JOIN table_definitions t ON t.id=b.table_id WHERE b.catalog_id=?',[$cid])->fetchAll()]);return ['id'=>$id,'revision'=>$revision];
+        $event=['catalogId'=>$cid,'id'=>$id,'name'=>$name,'beforeName'=>$old['name']??null,'kind'=>$catalog['kind'],'color'=>$color,'active'=>$active,'revision'=>$revision,'bindings'=>wquery('SELECT b.table_id AS tableId,t.slug AS tableSlug,b.field_key AS fieldKey FROM catalog_bindings b JOIN table_definitions t ON t.id=b.table_id WHERE b.catalog_id=?',[$cid])->fetchAll()];
+        if ($catalog['kind']==='container-types') {
+            $event['containerRule']=$containerRule??workspace_container_type_profile($name,workspace_client_catalog_metadata('container_type_rule_'.$id));
+            $event['color']=$event['containerRule']['typeColor'];
+        }
+        workspace_event('catalog.changed',$event);
+        return ['id'=>$id,'revision'=>$revision];
     }catch(Throwable $e){if($e instanceof PDOException&&$e->getCode()==='23000')throw new ApiError('duplicate_catalog',$partyCatalog ? 'Контрагент с такими реквизитами уже есть.' : ($catalog['kind']==='edo-operators' ? 'Этот код уже есть в справочнике операторов ЭДО.' : ($catalog['kind']==='margin-rules' ? 'На эту дату уже есть правило маржи.' : 'Такое название уже есть в справочнике.')),409);throw $e;}
 }
 

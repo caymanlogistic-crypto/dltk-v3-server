@@ -3,6 +3,9 @@ declare(strict_types=1);
 require dirname(__DIR__).'/app/local-admin/src/VitrineClipboard.php';
 require dirname(__DIR__).'/app/local-admin/src/WorkspaceFleet.php';
 require dirname(__DIR__).'/app/local-admin/src/WorkspaceFleetDetails.php';
+require dirname(__DIR__).'/app/local-admin/src/bootstrap.php';
+require dirname(__DIR__).'/app/local-admin/src/WorkspaceTripFormula.php';
+require dirname(__DIR__).'/app/local-admin/src/WorkspaceCatalogs.php';
 $checks = 0;
 function verify(bool $condition, string $name): void {
     global $checks;
@@ -24,6 +27,13 @@ verify(vitrine_clipboard_kind(['effectiveFormat'=>['numberFormat'=>['type'=>'TIM
 verify(vitrine_clipboard_kind([], 'B') === 'text', 'Unknown empty cell uses text');
 verify(vitrine_clipboard_kind(['effectiveValue'=>['errorValue'=>['type'=>'N_A']]], 'Y') === 'text', 'Formula error is not a numeric format contract');
 verify(vitrine_clipboard_kind(sample('anything'), 'A') === 'status', 'A belongs to the explicit local status catalog');
+
+$containerRule=['typeColor'=>null,'threshold'=>24000,'warningColor'=>null];
+foreach (['24001','24 001',"24\u{00A0}001","24\u{202F}001"] as $threshold) {
+    $updatedRule=workspace_container_type_input(['C'=>$threshold],$containerRule);
+    verify($updatedRule['threshold']===24001,'Container threshold preserves every digit');
+}
+verify(workspace_container_type_input(['C'=>''],$containerRule)['threshold']===null,'Container threshold can be cleared');
 
 foreach (['29.02.2024', '2024-02-29', '17.11.2026'] as $value) verify(vitrine_clipboard_accepts($value, 'date'), 'Valid date '.$value);
 foreach (['29.02.2025', '31.04.2026', '2026-13-01', '17.11', '45200'] as $value) verify(!vitrine_clipboard_accepts($value, 'date'), 'Invalid date '.$value);
@@ -124,4 +134,26 @@ verify(workspace_fleet_plate_format('1234ів7',true)==='1234 ІВ-7','Belarusia
 verify(workspace_fleet_trailer_profile_key("АІ-7\n1234")==='AI12347'
     && workspace_fleet_plate_format('АІ-7 1234',true)==='АІ 1234-7','Belarusian type 3 keeps its region after reading both lines');
 verify(workspace_fleet_trailer_profile_key('ABCD')==='','Trailer requires letters, digits and region');
-echo 'PASS '.$checks." clipboard format checks\n";
+foreach ([
+    '=(30+40)+3*9333'=>'28069',
+    '=1000+2*5-3'=>'1007',
+    '=2999/3+1/3'=>'1000',
+    '=2,5*(400-(-400))'=>'2000',
+    '=5000/(−10+5)'=>'-1000',
+    '=1/123456789*123456789*1000'=>'1000',
+] as $formula=>$result) {
+    verify(WorkspaceTripFormula::evaluate($formula)===$result,'Exact trip formula '.$formula);
+}
+foreach ([
+    '='=>'invalid_formula',
+    '=2(2000)'=>'invalid_formula',
+    '=sum(2,3)'=>'invalid_formula',
+    '=2000/(1-1)'=>'formula_division',
+    '=1999/2'=>'formula_fraction',
+    '=10000000000000000*1000'=>'formula_overflow',
+] as $formula=>$code) {
+    $caught=null;
+    try { WorkspaceTripFormula::evaluate($formula); } catch (ApiError $error) { $caught=$error->publicCode; }
+    verify($caught===$code,'Trip formula validation '.$formula);
+}
+echo 'PASS '.$checks." clipboard format and arithmetic checks\n";

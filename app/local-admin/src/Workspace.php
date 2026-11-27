@@ -101,6 +101,7 @@ function workspace_table(?string $slug=null): array {
     $t['id']=(int)$t['id'];workspace_require('table',(string)$t['id'],'view',$t['id']);$t['columns']=json_decode($t['columns_json'],true);
     $t['title']=workspace_table_display_title($t['slug'],$t['title']);
     if ($t['slug']==='vyvoz') {
+        $t['defaultHiddenColumns']=['AN'];
         $cargoLabels=['J'=>'Вес (брутто)','AI'=>'Вес груза (нетто)','AK'=>'Характеристики'];
         foreach ($t['columns'] as &$column) {
             $column['label']=$cargoLabels[$column['letter']]??$column['label'];

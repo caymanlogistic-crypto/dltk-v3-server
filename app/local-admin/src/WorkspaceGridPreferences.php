@@ -78,11 +78,14 @@ function workspace_layout_overrides(array $grid, array $preferences): array {
 function workspace_read_layout_defaults(array $grid, string $key): array {
     $saved=wquery('SELECT value FROM workspace_meta WHERE `key`=?',[$key])->fetchColumn();
     $orderVersion=$grid['columnOrderVersion']??null;
+    $columns=array_column($grid['columns'],'letter');
+    $baseline=isset($grid['defaultHiddenColumns'])
+        ? ['hidden'=>array_values(array_intersect($grid['defaultHiddenColumns'],$columns))]
+        : [];
     if ($saved!==false) {
         $defaults=json_decode($saved,true);
         if (($defaults['columnOrderVersion']??null)!==$orderVersion) unset($defaults['settings']['order']);
-        $defaults['settings']=workspace_prune_preference_columns(
-            $defaults['settings'],array_column($grid['columns'],'letter'));
+        $defaults['settings']=workspace_prune_preference_columns($defaults['settings'],$columns)+$baseline;
         return $defaults;
     }
 
@@ -95,7 +98,7 @@ function workspace_read_layout_defaults(array $grid, string $key): array {
     }
     $widths=workspace_read_width_defaults($grid);
     if ($widths['version'] || $widths['widths']) $settings['widths']=$widths['widths'];
-    return ['settings'=>workspace_prune_preference_columns($settings,array_column($grid['columns'],'letter')),
+    return ['settings'=>workspace_prune_preference_columns($settings,$columns)+$baseline,
         'version'=>0,'columnOrderVersion'=>$orderVersion];
 }
 
@@ -128,6 +131,13 @@ function workspace_prune_preference_columns(array $settings,array $columns): arr
         if (isset($settings[$key]) && is_array($settings[$key])) {
             $settings[$key]=array_values(array_filter($settings[$key],
                 static fn($column): bool=>in_array($column,$columns,true)));
+        }
+    }
+    if (in_array('U2',$columns,true) && !empty($settings['order']) && !in_array('U2',$settings['order'],true)) {
+        $prior=array_search('U',$settings['order'],true);
+        $next=array_search('V',$settings['order'],true);
+        if ($prior!==false || $next!==false) {
+            array_splice($settings['order'],$prior!==false ? $prior+1 : $next,0,['U2']);
         }
     }
     if (isset($settings['widths']) && is_array($settings['widths'])) {
@@ -197,7 +207,7 @@ function workspace_preferences(array $grid, ?array $body = null): array {
         if ($staleOrder) unset($submitted['order']);
         $settings=workspace_merge_preferences($patch!==null ? $prior : [],$submitted);
         if ($patch===null) {
-            foreach (['order','pinned'] as $key) {
+            foreach (['order','pinned',...($editsDefaults && isset($grid['defaultHiddenColumns']) ? ['hidden'] : [])] as $key) {
                 if (!array_key_exists($key,$settings) && array_key_exists($key,$prior)) $settings[$key]=$prior[$key];
             }
         }

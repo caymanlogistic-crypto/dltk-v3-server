@@ -14,7 +14,7 @@
     frame = 0;
     const groups = new Map();
     for (const editor of editors) {
-      if (editor.tableSlug !== slug || Number(editor.userId) === userId || !Number.isInteger(editor.row) || !/^[A-Z]{1,3}$/.test(editor.column)) continue;
+      if (editor.tableSlug !== slug || Number(editor.userId) === userId || !Number.isInteger(editor.row) || !/^(?:[A-Z]{1,3}|U2)$/.test(editor.column)) continue;
       const key = editor.row + ':' + editor.column;
       if (!groups.has(key)) groups.set(key,{row:editor.row,column:editor.column,users:new Map()});
       groups.get(key).users.set(editor.userId,String(editor.userName || 'Пользователь ' + editor.userId));

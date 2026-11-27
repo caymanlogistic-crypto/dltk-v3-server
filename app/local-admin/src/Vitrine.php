@@ -133,7 +133,11 @@ function vitrine_validate_paste(array $body, array $data, array $target, ?array 
             throw new ApiError('invalid_reference','Выберите терминал постановки из справочника.');
         }
     }
-    $normalized = $compact ? vitrine_compact_input($body['value'],$kind) : null;
+    if ($compact && workspace_trip_supports_formula($data['table']['slug'],$column) && str_starts_with(ltrim($value),'=')) {
+        $value=WorkspaceTripFormula::evaluate($value);
+        vitrine_require_compact_integer_range($value,$kind);
+    }
+    $normalized = $compact ? vitrine_compact_input($value,$kind) : null;
     if ($normalized !== null) vitrine_require_compact_integer_range($normalized,$kind);
     $accepted = $compact ? $normalized !== null
         : vitrine_clipboard_accepts($body['value'],$kind,$target['choices'][$body['column']]??[]);
@@ -161,7 +165,7 @@ function vitrine_copy_diagnostics(array $body): never {
     if (!is_array($ids) || !$ids || count($ids)>100 ||
         array_filter($ids,static fn($id)=>!is_int($id) || $id<1) ||
         !is_array($columns) || !$columns || count($columns)>100 ||
-        array_filter($columns,static fn($column)=>!is_string($column) || !preg_match('/^[A-Z]{1,3}$/D',$column))) {
+        array_filter($columns,static fn($column)=>!is_string($column) || !preg_match('/^(?:[A-Z]{1,3}|U2)$/D',$column))) {
         throw new ApiError('invalid_clipboard','Некорректный диапазон.');
     }
     header('Cache-Control: no-store');
@@ -191,7 +195,7 @@ function vitrine_paste_check(): never {
     if ($directory === 'entries') workspace_catalog_directory_cell(true);
     if ($directory === 'clients') workspace_client_grid_endpoint(true);
     if ($directory === 'employees') workspace_employee_grid_endpoint(true);
-    if ($directory === 'client-order-statuses') workspace_client_order_status_grid_endpoint(true);
+    if ($directory !== null && workspace_order_status_directory($directory)!==null) workspace_client_order_status_grid_endpoint(true,$directory);
     if ($directory === 'flight-statuses') workspace_flight_status_grid_endpoint(true);
     if ($directory !== null) throw new ApiError('readonly','Запись доступна только для просмотра.',403);
     if ($_SERVER['REQUEST_METHOD']!=='POST') throw new ApiError('method','Метод не поддерживается.',405);
@@ -222,7 +226,7 @@ function vitrine_save_cell(): never {
     if ($directory === 'entries') workspace_catalog_directory_cell();
     if ($directory === 'clients') workspace_client_grid_endpoint();
     if ($directory === 'employees') workspace_employee_grid_endpoint();
-    if ($directory === 'client-order-statuses') workspace_client_order_status_grid_endpoint();
+    if ($directory !== null && workspace_order_status_directory($directory)!==null) workspace_client_order_status_grid_endpoint(false,$directory);
     if ($directory === 'flight-statuses') workspace_flight_status_grid_endpoint();
     if ($directory !== null) throw new ApiError('readonly','Запись доступна только для просмотра.',403);
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method','Метод не поддерживается.',405);
@@ -243,15 +247,37 @@ function vitrine_table_cell(mixed $body, ?array $data=null, ?array $pasteSourceR
     if ($current === null) throw new ApiError('row_not_visible','Строка больше не входит в текущую выборку. Обновите страницу.',409);
     $clear=($body['editAction']??null)==='clear';
     if ($clear && ($body['value']!=='' || $body['reset'] || isset($body['paste']) ||
-        array_key_exists('dropoffDetails',$body) || array_key_exists('orderStatus',$body))) {
+        array_key_exists('dropoffDetails',$body) || array_key_exists('orderStatus',$body) || array_key_exists('fieldColorStatus',$body))) {
         throw new ApiError('invalid_edit','Проверьте запрос на очистку ячейки.');
     }
     vitrine_require_manual_field($data['table'],$body['column']);
+    $fieldColorEdit=[];
+    if (array_key_exists('fieldColorStatus',$body)) {
+        if (!is_string($body['fieldColorStatus']) || !workspace_trip_field_status_can($data['table'],$body['column'],'view')) {
+            throw new ApiError('invalid_order_status','Статус поля недоступен.',403);
+        }
+        $fieldColorEdit=['fieldColorStatus'=>$body['fieldColorStatus']];
+    }
+    if (array_key_exists('fieldColorOnly',$body)) {
+        if ($body['fieldColorOnly']!==true || !$fieldColorEdit || $body['row']<=0 || $body['reset'] || $clear ||
+            isset($body['paste']) || array_key_exists('dropoffDetails',$body)) {
+            throw new ApiError('invalid_order_status','Проверьте данные статуса поля.');
+        }
+        $result=vitrine_store(['action'=>'save','row'=>$body['row'],'column'=>$body['column'],'revision'=>$body['revision'],
+            'original'=>$current['originalValues'][$body['column']]??'','requestId'=>$body['requestId']??null,
+            'currentValue'=>$current['values'][$body['column']]??'','fieldColorOnly'=>true]+$fieldColorEdit);
+        return $result+['original'=>$current['originalValues'][$body['column']]??'','baseHash'=>$current['baseHash'],'conflict'=>false];
+    }
     $compactKind = $current['compactInputs'][$body['column']] ?? null;
     $submittedValue=$body['value'];
+    $formulaField=workspace_trip_supports_formula($data['table']['slug'],$body['column']);
+    $formula=$formulaField && !$body['reset'] && !$clear && str_starts_with(ltrim($submittedValue),'=')
+        ? trim($submittedValue) : null;
+    $numericInput=$formula===null ? $submittedValue : WorkspaceTripFormula::evaluate($formula);
+    if ($formula!==null && $compactKind!==null) vitrine_require_compact_integer_range($numericInput,$compactKind);
     $compactInteger=$compactKind!==null && vitrine_compact_integer_bounds($compactKind)!==null;
     if (!$clear && !$body['reset'] && $compactKind !== null) {
-        $normalized = vitrine_compact_input($body['value'],$compactKind);
+        $normalized = vitrine_compact_input($numericInput,$compactKind);
         if ($normalized === null && (($compactKind==='container' || $compactInteger)
             || $body['value'] !== ($current['values'][$body['column']] ?? ''))) {
             $message = match ($compactKind) {
@@ -289,7 +315,7 @@ function vitrine_table_cell(mixed $body, ?array $data=null, ?array $pasteSourceR
     }
     $pasteData = [];
     if (!$body['reset']) {
-        if (isset($body['paste'])) $pasteData = vitrine_validate_paste(array_replace($body,['value'=>$submittedValue]),$data,$current,$pasteSourceRows);
+        if (isset($body['paste'])) $pasteData = vitrine_validate_paste(array_replace($body,['value'=>$formula===null ? $submittedValue : $body['value']]),$data,$current,$pasteSourceRows);
         else vitrine_validate_single_line($body['value'],$current,$body['column']);
     }
     $statusId = null;
@@ -309,6 +335,7 @@ function vitrine_table_cell(mixed $body, ?array $data=null, ?array $pasteSourceR
         $orderEdit=['orderStatus'=>$code];
     }
     $comparison = $pasteData + ($rangeEdit ? ['rangeEdit'=>true] : []);
+    if ($formulaField) $comparison['tripFormula']=$formula;
     if (!$clear && $body['column']==='M' && !empty($current['catalogBindings']['M']) && !array_key_exists('dropoffDetails',$body)) {
         throw new ApiError('invalid_dropoff','Откройте поле «Сдача» и выберите точку из справочника.');
     }
@@ -320,7 +347,7 @@ function vitrine_table_cell(mixed $body, ?array $data=null, ?array $pasteSourceR
     }
     if ($compactInteger) $comparison['comparisonOriginal']=$body['reset']
         ? $original : (vitrine_compact_input($original,$compactKind)??$original);
-    $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'','compactKind'=>$compactKind]+$orderEdit+$comparison);
+    $result = vitrine_store(['action'=>'save','source'=>$data['sourceKey'],'sheet'=>$data['sheetKey'],'row'=>$body['row'],'column'=>$body['column'],'value'=>$body['value'],'revision'=>$body['revision'],'reset'=>$body['reset'],'original'=>$original,'baseHash'=>$body['baseHash'],'statusId'=>$statusId,'requestId'=>$body['requestId']??null,'editAction'=>$body['editAction']??($body['reset']?'reset':(isset($body['paste'])?'paste':'edit')),'currentValue'=>$current['values'][$body['column']]??'','compactKind'=>$compactKind]+$orderEdit+$fieldColorEdit+$comparison);
     $result['value']=vitrine_compact_display($result['value'],$compactKind);
     if (($current['kinds'][$body['column']] ?? '') === 'slot') {
         $result['value'] = vitrine_slot_input($result['value']) ?? $result['value'];
@@ -349,6 +376,9 @@ function render_vitrine(): void {
     $embeddedCatalog = isset($_GET['quickCatalog']);
     if ($embeddedCatalog) {
         vitrine_quick_catalog_validate_directory($_GET['quickCatalog'],$directory);
+        if ($_GET['quickCatalog']==='K' && !isset($_GET['client'])) {
+            throw new ApiError('invalid_unload_client','Откройте точки выгрузки для выбранного клиента.');
+        }
         app_frame_headers(true);
     }
     if ($directory==='entries' && is_scalar($_GET['id']??null)) {

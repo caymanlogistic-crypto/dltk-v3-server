@@ -1,5 +1,7 @@
 <?php
 declare(strict_types=1);
+
+require_once __DIR__.'/WorkspaceTripFormula.php';
 require_once __DIR__.'/WorkspaceVitrineCatalogLinks.php';
 require_once __DIR__.'/WorkspaceTripDates.php';
 
@@ -78,6 +80,13 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         static fn(array $column): bool=>mb_strtolower(trim($column['label']))==='релиз'),'letter'),true);
     $links=vitrine_catalog_links($t);
     $orderStatusEnabled=isset($links['B']) && workspace_client_order_status_can_view($t);
+    $fieldColorLists=[];
+    foreach (workspace_trip_field_status_directories() as $column=>$details) {
+        if (workspace_trip_field_status_can($t,$column,'view')) {
+            $fieldColorLists[$column]=['label'=>$details['label'],
+                'statuses'=>workspace_active_client_order_statuses(false,$details['directory'])];
+        }
+    }
     $derivedByColumn=vitrine_derived_catalog_columns($links);
     $showMargin=isset($compactInputs['Z']) && workspace_trip_margin_enabled($t);
     if ($showMargin) {
@@ -134,14 +143,14 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     [$boundChoices,$boundCatalogs,$entriesByName]=vitrine_catalog_options($t,$links);
     $partyColumns=array_keys(workspace_edo_party_links());
     $sharedCatalogs=$isAvtovyvoz ? array_intersect_key($boundCatalogs,
-        array_fill_keys(['B','E','I','M','S','T','U'],true), array_fill_keys(array_column($columns,'letter'),true)) : [];
+        array_fill_keys(['B','E','I','M','S','T','U','U2'],true), array_fill_keys(array_column($columns,'letter'),true)) : [];
     $sharedChoices=[];
     foreach ($sharedCatalogs as $column=>$_) $sharedChoices[$column]=$column;
     if (isset($boundCatalogs['O'])) $sharedChoices['O']='vehicles';
     foreach ($partyColumns as $field) {
         if (isset($boundCatalogs[$field])) $sharedChoices[$field]=$field;
     }
-    foreach (['T','U',...$partyColumns] as $column) {
+    foreach (['T','U','U2',...$partyColumns] as $column) {
         if (isset($links[$column]) && !isset($boundCatalogs[$column])) {
             $readOnly[$column]='Нет доступа к справочнику.';
         }
@@ -170,6 +179,17 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         : [];
     $sharedOptions=['vehicles'=>$boundChoices['O']??[]]
         +array_intersect_key($boundChoices,$sharedCatalogs+array_fill_keys($partyColumns,true));
+    $containerTypeRules=null;
+    if (isset($sharedOptions['I'],$boundCatalogs['I'])) {
+        $catalogId=(int)$boundCatalogs['I'];
+        $names=$entriesByName['I']??[];
+        $rules=workspace_container_type_rules($catalogId);
+        $containerTypeRules=['catalogId'=>$catalogId,'names'=>(object)$names,'rules'=>(object)$rules];
+        $sharedOptions['I']=array_map(static function(string $name) use ($names,$rules): array {
+            $entryId=$names[vitrine_catalog_key($name)]??0;
+            return ['value'=>$name,'label'=>$name,'color'=>$rules[$entryId]['typeColor']??null];
+        },$sharedOptions['I']);
+    }
     foreach (array_intersect_key($sharedOptions,$colorLinks) as $column=>$labels) {
         $sharedOptions[$column]=array_map(static function(string $label) use ($entriesByName,$catalogColors,$column): array {
             $entryId=$entriesByName[$column][vitrine_catalog_key($label)]??0;
@@ -186,16 +206,23 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     }
     $rows=[];foreach($records as $r){
         $values=json_decode($r['values_json'],true);$baseline=json_decode($r['baseline_json'],true);$raw=$r['metadata_zlib']?blob_json($r['metadata_zlib']):[];$kinds=[];$choices=[];
+        $tripFormulas=$isAvtovyvoz ? array_intersect_key($values['tripFormulas']??[],$compactInputs) : [];
+        unset($values['tripFormulas']);
         $tripDate=$isAvtovyvoz && !$archive && isset($compactInputs['F']) ? workspace_trip_date_key($values['F']??null) : null;
         $tripAmounts=$showMargin ? array_intersect_key($values,['X'=>true,'Y'=>true]) : [];
         $tripOriginals=$showMargin ? array_intersect_key($baseline,['X'=>true,'Y'=>true]) : [];
         $dropoffDetails=$dropoffCatalog ? ($values['dropoffDetails']??[]) : null;
         $orderStatus=$orderStatusEnabled ? (string)($values['clientOrderStatus']??'') : null;
-        unset($values['clientOrderStatus'],$values['dropoffDetails']);
-        foreach($columns as $f){$key=$f['letter'];$cell=$raw[(string)column_number($key)]??[];$kinds[$key]=$key==='A'?'status':(mb_strtolower(trim($f['label']))==='время'?'time':vitrine_clipboard_kind($cell,$key));
+        $fieldColorStatuses=array_intersect_key($values['fieldColorStatuses']??[],$fieldColorLists);
+        $fieldColorFills=[];
+        foreach ($fieldColorStatuses as $column=>$code) {
+            $fieldColorFills[$column]=$fieldColorLists[$column]['statuses'][$code]['color']??'';
+        }
+        unset($values['clientOrderStatus'],$values['dropoffDetails'],$values['fieldColorStatuses']);
+        foreach($columns as $f){$key=$f['letter'];$cell=vitrine_cell_metadata($raw,$key);$kinds[$key]=$key==='A'?'status':(mb_strtolower(trim($f['label']))==='время'?'time':vitrine_clipboard_kind($cell,$key));
             if(!$raw){$kinds[$key]=match(mb_strtolower($f['label'])){'дата'=>'date','время'=>'time',default=>$key==='A'?'status':'text'};}
             if (isset($compactInputs[$key])) $kinds[$key]=$compactInputs[$key];
-            if (in_array($key,['E','I','K','M','O','T','U',...$partyColumns],true) && isset($links[$key])) $kinds[$key]='text';
+            if (in_array($key,['E','I','K','M','O','T','U','U2',...$partyColumns],true) && isset($links[$key])) $kinds[$key]='text';
             if (isset($slots[$key])) $kinds[$key]='slot';
             if (isset($singleLine[$key])) $kinds[$key]='text';
             if ($t['slug']==='vyvoz' && $key==='AK') $kinds[$key]='text';
@@ -260,7 +287,9 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
             $entryId=$refs[(int)$r['id']][$column]['id']??($entriesByName[$column][vitrine_catalog_key($values[$column]??'')]??0);
             $catalogFills[$column]=$catalogColors[$entryId]??'';
         }
-        $rows[]=['catalogFills'=>$catalogFills,'references'=>$refs[(int)$r['id']]??[],'catalogBindings'=>$boundCatalogs,'recordId'=>(int)$r['id'],'rowIndex'=>(int)$r['row_num'],'values'=>$values,'originalValues'=>$baseline,'baseHash'=>hash('sha256',$r['baseline_json']),'choices'=>$choices,'kinds'=>$kinds,'compactInputs'=>$compactInputs,'singleLine'=>$singleLine,'edits'=>$rowEdits,'statusId'=>$status['id']??null,'statusColor'=>$status['color']??null,'orderStatus'=>$orderStatus,'tripDate'=>$tripDate];
+        $rows[]=['catalogFills'=>$catalogFills,'references'=>$refs[(int)$r['id']]??[],'catalogBindings'=>$boundCatalogs,'recordId'=>(int)$r['id'],'rowIndex'=>(int)$r['row_num'],'values'=>$values,'originalValues'=>$baseline,'baseHash'=>hash('sha256',$r['baseline_json']),'choices'=>$choices,'kinds'=>$kinds,'compactInputs'=>$compactInputs,'singleLine'=>$singleLine,'edits'=>$rowEdits,'statusId'=>$status['id']??null,'statusColor'=>$status['color']??null,'orderStatus'=>$orderStatus,'tripDate'=>$tripDate,
+            'fieldColorStatuses'=>$fieldColorStatuses,'fieldColorFills'=>$fieldColorFills];
+        if ($tripFormulas) $rows[array_key_last($rows)]['tripFormulas']=$tripFormulas;
         if ($r['id']===0) {
             $tripDraft=array_pop($rows)+['readOnly'=>$readOnly,'sharedChoices'=>$sharedChoices];
             if ($requestedRows!==null) {
@@ -278,7 +307,8 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         $rows[array_key_last($rows)]['sharedChoices']=$sharedChoices;
     }
     return ['rowIds'=>$rowIds,'tripDateGroups'=>$manifest['tripDateGroups']??[],'columns'=>$columns,'rows'=>$rows,'tripDraft'=>$tripDraft,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette'],'sharedOptions'=>$sharedOptions,'sharedOptionCatalogs'=>$sharedCatalogs,'dropoffOptions'=>$dropoffOptions,'dropoffEnabled'=>(bool)$dropoffCatalog,
-        'unloadOptions'=>$unloadOptions,'unloadClients'=>$entriesByName['B']??[]];
+        'unloadOptions'=>$unloadOptions,'unloadClients'=>$entriesByName['B']??[],'containerTypeRules'=>$containerTypeRules,
+        'fieldColorLists'=>$fieldColorLists];
 }
 
 function vitrine_store(array $body): array {
@@ -307,8 +337,26 @@ function vitrine_store(array $body): array {
         if($revision!==$body['revision'])throw new ApiError('revision_conflict','Коллега уже изменил эту ячейку. Ваш ввод сохранён; откройте актуальное значение перед повторным сохранением.',409);
         $values=json_decode($r['values_json'],true);$key=$body['column'];$before=$body['currentValue']??($old?$old['value']:workspace_string($values[$key]??''));
         if($key==='A'&&!empty($old['status_id'])){$latestName=wquery('SELECT name FROM catalog_entries WHERE id=?',[$old['status_id']])->fetchColumn();if($latestName!==false)$before=$latestName;}
+        if (!empty($body['fieldColorOnly'])) {
+            $result=workspace_save_trip_field_color_only($body,$t,$r,$u,$request,$old,$values);
+            wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);
+            return $result;
+        }
         $value=$body['reset']?$body['original']:$body['value'];
         $clear=($body['editAction']??null)==='clear';
+        $formulaField=array_key_exists('tripFormula',$body);
+        $previousFormula=$formulaField ? ($values['tripFormulas'][$key]??null) : null;
+        $nextFormula=$body['tripFormula']??null;
+        $formulaChanged=$previousFormula!==$nextFormula;
+        $formulaResult=$formulaField ? ['formula'=>$nextFormula] : [];
+        if ($formulaChanged) {
+            if ($nextFormula!==null) $values['tripFormulas'][$key]=$nextFormula;
+            else {
+                unset($values['tripFormulas'][$key]);
+                if (!$values['tripFormulas']) unset($values['tripFormulas']);
+            }
+        }
+        $fieldColorChange=workspace_trip_field_color_change($t,$key,$values,$body['fieldColorStatus']??null,$clear);
         if ($key==='Y' && $value!=='' && $value!==$before && workspace_trip_margin_enabled($t)) {
             workspace_margin_rule_check_expense($t['id'],$values,$value);
         }
@@ -410,7 +458,7 @@ function vitrine_store(array $body): array {
             $unloadResult['unloadChoices']=workspace_unload_row_options(
                 workspace_unload_options_by_client($points,$unloadId),$reference,$value);
         }
-        $active=$value!==($body['comparisonOriginal']??$body['original']);
+        $active=$nextFormula!==null || $value!==($body['comparisonOriginal']??$body['original']);
         $action=$body['editAction']??($body['reset']?'reset':'edit');if(!in_array($action,['edit','paste','undo','reset','clear'],true))$action='edit';
         $operation=bin2hex(random_bytes(16));
         $unloadChanged=false;
@@ -465,8 +513,8 @@ function vitrine_store(array $body): array {
         if ($phonePatch && workspace_can('field',$phonePatch['column'],'view',$t['id'])) $derived['dependentCells']=[$phonePatch];
         if ($documentsChanged) $derived['fleetDocumentsChanged']=true;
         $writeValue=$before!==$value || ($historicalUnload && workspace_string($values[$key]??'')!==$value);
-        if(!$writeValue && !$orderChanged && !$dropoffChanged){
-            $result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request]+$derived+$orderResult+$catalogStyle+$unloadResult+$dropoffResult;
+        if(!$writeValue && !$orderChanged && !$dropoffChanged && !$formulaChanged && !$fieldColorChange['changed']){
+            $result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request]+$derived+$orderResult+$catalogStyle+$unloadResult+$dropoffResult+$formulaResult+$fieldColorChange['result'];
             if($link&&$reference){
                 wquery('INSERT INTO record_references VALUES(?,?,?) ON DUPLICATE KEY UPDATE entry_id=VALUES(entry_id)',[$r['id'],$key,$reference]);
                 $result+=['referenceId'=>$reference,'catalogId'=>(int)$binding];
@@ -490,15 +538,18 @@ function vitrine_store(array $body): array {
         wquery('INSERT INTO cell_versions(record_id,field_key,value,revision,active,status_id) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE value=VALUES(value),revision=VALUES(revision),active=VALUES(active),status_id=VALUES(status_id)',[$r['id'],$key,$value,$revision,(int)$active,$statusId]);
         if($key!=='A' && ($writeValue || $reference || $historicalUnload)){wquery('DELETE FROM record_references WHERE record_id=? AND field_key=?',[$r['id'],$key]);if($reference)wquery('INSERT INTO record_references VALUES(?,?,?)',[$r['id'],$key,$reference]);}
         $label=next_label($t['columns'],$key);
+        workspace_trip_field_color_audit($fieldColorChange,$t,$r,$key,$action,$request,$operation);
         if ($orderChanged) workspace_audit(['tableId'=>$t['id'],'recordId'=>(int)$r['id'],'row'=>$body['row'],'column'=>'B','label'=>'Статус заказа','before'=>workspace_client_order_status($oldOrderStatus)['label'],'after'=>workspace_client_order_status($nextOrderStatus)['label'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
         if ($before!==$value) workspace_audit(['tableId'=>$t['id'],'recordId'=>(int)$r['id'],'row'=>$body['row'],'column'=>$key,'label'=>$label,'before'=>$before,'after'=>$value,'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
+        if ($formulaChanged) workspace_audit(['tableId'=>$t['id'],'recordId'=>(int)$r['id'],'row'=>$body['row'],'column'=>$key,
+            'label'=>$label.' · Формула','before'=>$previousFormula??'','after'=>$nextFormula??'','action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
         if ($dropoffChanged) workspace_audit(['tableId'=>$t['id'],'recordId'=>(int)$r['id'],'row'=>$body['row'],'column'=>'M',
             'label'=>'Данные сдачи по рейсу','before'=>array_diff_key($previousDropoff,['legacy'=>true]),
             'after'=>array_diff_key($nextDropoff,['legacy'=>true]),'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
         if ($key==='M' && !$clear && $value===$before && !$reference && !empty($priorPoint)) $reference=$priorPoint;
-        $status=$statusId?wquery('SELECT color FROM catalog_entries WHERE id=?',[$statusId])->fetch():null;$result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request,'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0)]+$derived+$orderResult+$catalogStyle+$unloadResult+$dropoffResult;
+        $status=$statusId?wquery('SELECT color FROM catalog_entries WHERE id=?',[$statusId])->fetch():null;$result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request,'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0)]+$derived+$orderResult+$catalogStyle+$unloadResult+$dropoffResult+$formulaResult+$fieldColorChange['result'];
         $dropoffEvent=$dropoffChanged ? ['dropoffDetails'=>array_diff_key($nextDropoff,['legacy'=>true])] : [];
-        workspace_event('cell.changed',['tableSlug'=>$t['slug'],'row'=>$body['row'],'column'=>$key,'value'=>vitrine_compact_display($value,$body['compactKind']??null),'revision'=>$revision,'edited'=>$active,'statusId'=>$statusId,'statusColor'=>$status['color']??null,'original'=>$body['original'],'baseHash'=>hash('sha256',$r['baseline_json']),'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0),'actorId'=>$u['id'],'actorName'=>$u['name'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation]+$orderResult+$catalogStyle+$dropoffEvent);
+        workspace_event('cell.changed',['tableSlug'=>$t['slug'],'row'=>$body['row'],'column'=>$key,'value'=>vitrine_compact_display($value,$body['compactKind']??null),'revision'=>$revision,'edited'=>$active,'statusId'=>$statusId,'statusColor'=>$status['color']??null,'original'=>$body['original'],'baseHash'=>hash('sha256',$r['baseline_json']),'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0),'actorId'=>$u['id'],'actorName'=>$u['name'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation]+$orderResult+$catalogStyle+$dropoffEvent+$formulaResult+$fieldColorChange['result']);
         if($created || $key===$t['carrier_column'] || ($t['slug']==='vyvoz' && $key==='F'))workspace_event('row.changed',['tableSlug'=>$t['slug'],'row'=>$body['row']]);
         wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);return $result;
     });

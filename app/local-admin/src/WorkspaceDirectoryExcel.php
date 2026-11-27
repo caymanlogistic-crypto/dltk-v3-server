@@ -16,9 +16,9 @@ function workspace_directory_excel_schema(string $directory): array {
         $id=$catalog['id'];
         $kind='status';
         workspace_require('catalog',(string)$id,'edit',$table['id']);
-    } elseif ($directory==='client-order-statuses') {
+    } elseif (workspace_order_status_directory($directory)!==null) {
         $kind='order-statuses';
-        workspace_require('system','client-order-statuses','edit');
+        workspace_order_status_require($directory,'edit');
     } elseif ($directory==='roles' || $directory==='employees') {
         $kind=$directory;
         $canEdit=$directory==='roles' ? workspace_directory_roles_editable() : workspace_employee_editor_scope()!==null;
@@ -45,7 +45,7 @@ function workspace_directory_excel_entries(array $schema): array {
     }
     if ($kind==='order-statuses') {
         $entries=[];
-        foreach (workspace_client_order_statuses(true) as $code=>$status) {
+        foreach (workspace_client_order_statuses(true,$schema['orderKey']) as $code=>$status) {
             if (!empty($status['deleted'])) continue;
             $entries[$status['id']]=array_replace($status,['code'=>$code,'name'=>$status['label'],
                 'normalized'=>vitrine_status_key($status['label'])]);
@@ -80,7 +80,7 @@ function workspace_directory_excel_entries(array $schema): array {
             'edo-operators'=>workspace_edo_operator_values($entry),
             'edo-counterparties'=>workspace_edo_party_values($entry['name'],$detail??[]),
             'margin-rules'=>workspace_margin_rule_values($entry['name'],$detail??[]),
-            'status','terminals-main','order-statuses','assignment-statuses','etrn-statuses'=>$base+['B'=>$palette[$entry['color']]??''],
+            'status','terminals-main','order-statuses','assignment-statuses','etrn-statuses','etrn-signing-statuses'=>$base+['B'=>$palette[$entry['color']]??''],
             'dropoff-points'=>$base+($detail??workspace_dropoff_profile([])),
             'managers'=>workspace_manager_values($detail),
             'unload-points'=>workspace_unload_point_values($detail)+['C'=>workspace_unload_primary($detail)],
@@ -266,8 +266,7 @@ function workspace_directory_excel_check_archive(array $schema,array $entry): vo
         return;
     }
     if ($kind==='order-statuses') {
-        $linked=(int)wquery("SELECT COUNT(*) FROM records WHERE JSON_UNQUOTE(JSON_EXTRACT(values_json,'$.clientOrderStatus'))=?
-            OR JSON_UNQUOTE(JSON_EXTRACT(baseline_json,'$.clientOrderStatus'))=?",[$entry['code'],$entry['code']])->fetchColumn();
+        $linked=workspace_order_status_usage($schema['orderKey'],$entry['code']);
         if ($linked) throw new ApiError('entry_in_use','Статус «'.$entry['name'].'» используется. Связанных заказов — '.$linked.'.',409);
         return;
     }
@@ -276,7 +275,7 @@ function workspace_directory_excel_check_archive(array $schema,array $entry): vo
 
 function workspace_directory_excel_apply(array $schema,array $entries,array $operations): array {
     ['id'=>$id,'kind'=>$kind]=$schema;
-    if ($kind==='order-statuses') return workspace_directory_excel_order_statuses($entries,$operations);
+    if ($kind==='order-statuses') return workspace_directory_excel_order_statuses($entries,$operations,$schema['orderKey']);
     $order=[];
     foreach ($operations as $operation) {
         $entry=$entries[$operation['id']]??null;
@@ -329,9 +328,9 @@ function workspace_directory_excel_apply(array $schema,array $entries,array $ope
     return $order;
 }
 
-function workspace_directory_excel_order_statuses(array $entries,array $operations): array {
-    $statuses=workspace_client_order_statuses(true);
-    $max=max(array_column($statuses,'id'));
+function workspace_directory_excel_order_statuses(array $entries,array $operations,string $directory): array {
+    $statuses=workspace_client_order_statuses(true,$directory);
+    $max=max([0,...array_column($statuses,'id')]);
     $order=[];
     foreach ($operations as $operation) {
         $entry=$entries[$operation['id']]??null;
@@ -352,9 +351,9 @@ function workspace_directory_excel_order_statuses(array $entries,array $operatio
             $order[]=(int)$after['id'];
         }
         $statuses[$code]=$after;
-        workspace_audit(['category'=>'catalog','label'=>'Статусы клиентов','before'=>$before,'after'=>$after,'action'=>$action]);
+        workspace_audit(['category'=>'catalog','label'=>workspace_order_status_directory($directory)['title'],'before'=>$before,'after'=>$after,'action'=>$action]);
     }
-    workspace_write_order_statuses($statuses);
+    workspace_write_order_statuses($statuses,$directory);
     return $order;
 }
 

@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 function vitrine_directory_requested(): ?string {
     if (!isset($_GET['catalog'])) return null;
-    if (!in_array($_GET['catalog'],['clients','employees','roles','client-order-statuses','flight-statuses','entries'],true)) {
+    if (!is_string($_GET['catalog']) || (!in_array($_GET['catalog'],['clients','employees','roles','flight-statuses','entries'],true)
+        && workspace_order_status_directory($_GET['catalog'])===null)) {
         throw new ApiError('not_found','Страница справочника не найдена.',404);
     }
     return $_GET['catalog'];
@@ -35,10 +36,10 @@ function workspace_directory_grid_model(string $directory): array {
         return ['id'=>0,'directoryKey'=>$key,'slug'=>'catalog-'.$key,'sourceTable'=>$table['slug'],'title'=>'Статусы рейса',
             'columns'=>[['letter'=>'A','label'=>'Статус рейса'],['letter'=>'B','label'=>'Цвет']]];
     }
-    if ($directory === 'client-order-statuses') {
-        workspace_require('system','client-order-statuses','view');
-        return ['id'=>0,'directoryKey'=>$directory,'slug'=>'catalog-'.$directory,'title'=>'Статусы клиентов',
-            'columns'=>[['letter'=>'A','label'=>'Статус заказа'],['letter'=>'B','label'=>'Цвет']]];
+    if ($statusDirectory=workspace_order_status_directory($directory)) {
+        workspace_order_status_require($directory,'view');
+        return ['id'=>0,'directoryKey'=>$directory,'slug'=>'catalog-'.$directory,'title'=>$statusDirectory['title'],
+            'columns'=>[['letter'=>'A','label'=>$statusDirectory['label']],['letter'=>'B','label'=>'Цвет']]];
     }
     $employees = $directory === 'employees';
     workspace_require('system',$employees ? 'users' : 'roles','view');
@@ -59,7 +60,8 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     $archive = ($_GET['archive'] ?? null) === '1';
     $search = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']),0,160) : '';
     $flightStatuses = $directory === 'flight-statuses';
-    $orderStatuses = $directory === 'client-order-statuses' || $flightStatuses;
+    $statusDirectory = workspace_order_status_directory($directory);
+    $orderStatuses = $statusDirectory !== null || $flightStatuses;
     $canEditStatuses = false;
     $entries = $employees ? workspace_employee_visible_records(active: !$archive) : ($orderStatuses ? [] : workspace_employee_roles($archive));
     $palette = workspace_palette();
@@ -80,11 +82,13 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
                 $entries[] = $status;
             }
         } else {
-            $canEditStatuses = workspace_can('system','client-order-statuses','edit');
-            foreach (workspace_client_order_statuses() as $code=>$status) {
+            $canEditStatuses = isset($statusDirectory['column'])
+                ? workspace_trip_field_status_can(workspace_table('vyvoz'),$statusDirectory['column'],'edit')
+                : workspace_can('system',$directory,'edit');
+            foreach (workspace_client_order_statuses(false,$directory) as $code=>$status) {
                 if (!empty($status['deleted']) || $status['active'] === $archive) continue;
                 $entries[] = ['id'=>$status['id'],'name'=>$status['label'],'color'=>$status['color'],
-                    'revision'=>$status['revision'],'baseHash'=>hash('sha256','client-order-status:'.$code)];
+                    'revision'=>$status['revision'],'baseHash'=>workspace_order_status_hash($directory,$code)];
             }
         }
     }
@@ -146,15 +150,18 @@ function workspace_directory_palette_options(): array {
 function workspace_directory_draft_fields(string $directory, array $roles = [], string $catalogKind = ''): array {
     $name = ['required'=>true,'type'=>'text'];
     $color = ['required'=>true,'type'=>'choice','choices'=>workspace_directory_palette_options()];
+    if (workspace_order_status_directory($directory)!==null) return ['A'=>$name,'B'=>$color];
     $optionalAssignment = ['type'=>'text','required'=>true,'allowEmpty'=>true];
     return match ($directory) {
-        'flight-statuses','client-order-statuses'=>['A'=>$name,'B'=>$color],
+        'flight-statuses'=>['A'=>$name,'B'=>$color],
         'employees'=>['A'=>$name,'B'=>$name,'C'=>['required'=>true,'type'=>'password'],'D'=>['type'=>'email'],
             'E'=>['required'=>true,'type'=>'choice','choices'=>$roles]],
         'clients'=>['A'=>$name,'B'=>$optionalAssignment],
         'entries'=>match (true) {
             workspace_is_document_status_catalog($catalogKind)=>['A'=>$name,'B'=>array_replace($color,['required'=>false])],
             workspace_catalog_has_palette($catalogKind)=>['A'=>$name,'B'=>$color],
+            $catalogKind==='container-types'=>['A'=>$name,'B'=>array_replace($color,['required'=>false]),
+                'C'=>['type'=>'text','compactInput'=>'weight'],'D'=>array_replace($color,['required'=>false])],
             $catalogKind==='dropoff-points'=>['A'=>$name,'B'=>['type'=>'text','singleLine'=>false,'maxLength'=>1500],
                 'C'=>['type'=>'text','singleLine'=>false,'maxLength'=>1500],'D'=>['type'=>'text','singleLine'=>false,'maxLength'=>6000]],
             $catalogKind==='edo-counterparties'=>['A'=>$name,'B'=>$name,'C'=>['type'=>'text'],'D'=>['type'=>'text'],'F'=>['type'=>'text']]

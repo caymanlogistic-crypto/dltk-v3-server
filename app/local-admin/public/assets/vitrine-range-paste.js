@@ -40,8 +40,8 @@
   }
 
   function rememberBefore(cell) {
-    return {cell,before:range.cellText(cell),reset:!cell.classList.contains('local-edited'),
-      initial:payload(cell,'')};
+    return {cell,before:cell.dataset.formula??range.cellText(cell),reset:!cell.classList.contains('local-edited'),
+      fieldColorStatus:grid.fieldColorStatus(cell),initial:payload(cell,'')};
   }
 
   async function send(action,changes) {
@@ -114,7 +114,7 @@
       const history=[];
       let blocked=false;
       for (const change of changes) {
-        const {initial,before,reset}=change;
+        const {initial,before,reset,fieldColorStatus}=change;
         const key=initial.row+':'+initial.column;
         const {cell,result}=saved.get(key);
         const createdRow=createdRows[initial.row];
@@ -125,7 +125,8 @@
         }
         const orderStatus=priorOrderStatus.get(key);
         history.push({...payload(cell,before),reset,beforeRevision:initial.revision,beforeHash:initial.baseHash,
-          ...(orderStatus!==undefined && orderStatus!==cell.dataset.orderStatus && before!=='' ? {orderStatus} : {})});
+          ...(orderStatus!==undefined && orderStatus!==cell.dataset.orderStatus && before!=='' ? {orderStatus} : {}),
+          ...(fieldColorStatus && result.fieldColorStatus==='' && before!=='' ? {fieldColorStatus} : {})});
         if (requiresForm(cell) && before!=='' && change.payload.value==='') blocked=true;
         const address=addressSnapshots.get(key);
         if (result.unloadChanged && !byTarget.has(initial.row+':K')) {

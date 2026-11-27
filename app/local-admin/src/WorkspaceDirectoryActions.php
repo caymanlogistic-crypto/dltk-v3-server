@@ -17,10 +17,9 @@ function workspace_directory_rows_endpoint(string $directory, array $body): neve
     } elseif (!is_int($body['row'] ?? null) || $body['row'] < 1 || !is_int($body['revision'] ?? null)) {
         throw new ApiError('invalid_row','Выберите сохранённую строку.');
     }
-    $result = match ($directory) {
+    $result = workspace_order_status_directory($directory)!==null ? workspace_order_status_row_action($body,$directory) : match ($directory) {
         'employees' => workspace_employee_row_action($body),
         'roles' => workspace_role_row_action($body),
-        'client-order-statuses' => workspace_order_status_row_action($body),
         default => workspace_catalog_row_action($directory,$body),
     };
     json_response($result);
@@ -77,6 +76,7 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         if ($kind==='edo-counterparties') $payload['edoParty']=workspace_edo_party_profile($values);
         if ($kind==='edo-operators') $payload['operatorCode']=workspace_edo_operator_code($values['A']??'');
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
+        if ($kind==='container-types') $payload['containerRule']=workspace_container_type_input($values,workspace_container_type_profile($name));
         if (workspace_catalog_has_palette($kind)) {
             $color=$values['B']??'';
             $payload['color']=workspace_is_document_status_catalog($kind) && $color==='' ? null : workspace_directory_color($color);

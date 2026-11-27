@@ -22,6 +22,7 @@ function vitrine_catalog_links(array $table): array {
         'S'=>['kind'=>'carriers','target'=>'AM','meta'=>'catalog_logists_','source'=>'Из справочника перевозчиков','empty'=>'У перевозчика не указан логист','invalid'=>'Выберите перевозчика из справочника.'],
         'T'=>['kind'=>'assignment-statuses','invalid'=>'Выберите статус поручения из справочника.'],
         'U'=>['kind'=>'etrn-statuses','invalid'=>'Выберите статус ЭТрН из справочника.'],
+        'U2'=>['kind'=>'etrn-signing-statuses','invalid'=>'Выберите статус подписания ЭТРН из справочника.'],
     ];
     foreach (workspace_edo_party_links() as $field=>[$role,$target]) {
         $definitions[$field]=['kind'=>'edo-counterparties','role'=>$role,
@@ -30,7 +31,7 @@ function vitrine_catalog_links(array $table): array {
             'empty'=>'Оператор ЭДО не определён'];
     }
     $links=[];
-    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','I','K','M','O','S','T','U','AA','AC','AE','AG') ORDER BY c.id",[$table['id']])->fetchAll();
+    $bindings=wquery("SELECT b.field_key,c.id,c.kind FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id WHERE b.table_id=? AND b.field_key IN ('B','E','I','K','M','O','S','T','U','U2','AA','AC','AE','AG') ORDER BY c.id",[$table['id']])->fetchAll();
     foreach($bindings as $binding){
         $field=$binding['field_key'];$definition=$definitions[$field];
         if($definition['kind']===$binding['kind']&&!isset($links[$field])){
@@ -45,7 +46,7 @@ function vitrine_bound_catalog_menu(array $tables): array {
         if($table['slug']!=='vyvoz')continue;
         $links=vitrine_catalog_links($table);
         $items=[];
-        foreach(['E','I','K','M','O','S','T','U'] as $field){
+        foreach(['E','I','K','M','O','S','T','U','U2'] as $field){
             $link=$links[$field]??null;
             if(!$link||!workspace_can('catalog',(string)$link['id'],'view',$table['id']))continue;
             $title=wquery('SELECT title FROM catalogs WHERE id=?',[$link['id']])->fetchColumn();
@@ -141,10 +142,14 @@ function vitrine_find_unload_point(array $table,array $record,array $values,int 
     return null;
 }
 
+function vitrine_cell_metadata(array $metadata,string $column): array {
+    return $column==='U2' ? [] : ($metadata[column_number($column)]??[]);
+}
+
 function vitrine_catalog_original_value(array $record,string $column): string {
     $baseline=json_decode($record['baseline_json'],true);
     $metadata=$record['metadata_zlib']?blob_json($record['metadata_zlib']):[];
-    return workspace_string(display_cell($metadata[column_number($column)]??[])??($baseline[$column]??''));
+    return workspace_string(display_cell(vitrine_cell_metadata($metadata,$column))??($baseline[$column]??''));
 }
 
 function vitrine_derived_catalog_columns(array $links): array {
@@ -225,7 +230,7 @@ function vitrine_update_catalog_value(array $table,array $record,array &$values,
     $old=wquery('SELECT value,revision,active FROM cell_versions WHERE record_id=? AND field_key=? FOR UPDATE',[$record['id'],$column])->fetch();
     $baseline=json_decode($record['baseline_json'],true);
     $metadata=$record['metadata_zlib']?blob_json($record['metadata_zlib']):[];
-    $display=display_cell($metadata[column_number($column)]??[]);
+    $display=display_cell(vitrine_cell_metadata($metadata,$column));
     $original=workspace_string($display??($baseline[$column]??''));
     $before=$old?($old['active']?$old['value']:$original):workspace_string($display??($values[$column]??''));
     if($before===$value&&$previous===$value)return null;

@@ -13,9 +13,9 @@ function workspace_catalog_directory_model(): array {
         'edo-counterparties'=>['A'=>'Название','B'=>'ИНН','C'=>'КПП','D'=>'ОГРН','E'=>'Оператор ЭДО','F'=>'ID ЭДО']+workspace_edo_party_roles(),
         'margin-rules'=>['A'=>'Дата начала','B'=>'Минимум, %','C'=>'Минимум, ₽'],
         'status'=>['A'=>'Статус','B'=>'Цвет'],
-        'assignment-statuses','etrn-statuses'=>['A'=>'Статус','B'=>'Цвет'],
+        'assignment-statuses','etrn-statuses','etrn-signing-statuses'=>['A'=>'Статус','B'=>'Цвет'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
-        'container-types'=>['A'=>'Тип контейнера'],
+        'container-types'=>['A'=>'Тип контейнера','B'=>'Цвет типа','C'=>'Порог веса, кг','D'=>'Цвет превышения'],
         'unload-points'=>['A'=>'Клиент','B'=>'Адрес','C'=>'Контакты'],
         'dropoff-points'=>['A'=>'Точка сдачи','B'=>'Адрес','C'=>'Контакты','D'=>'Постоянная инструкция'],
         'fleet-drivers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Телефон','E'=>'Доп. телефон']+
@@ -37,6 +37,7 @@ function workspace_catalog_directory_model(): array {
         if ($catalog['kind']==='margin-rules') {
             $column['kind']=$column['compactInput']=workspace_margin_rule_inputs()[$letter];
         }
+        if ($kind==='container-types' && $letter==='C') $column['kind']=$column['compactInput']='weight';
         if (in_array([$catalog['kind'],$letter],[['carriers','D'],['edo-counterparties','E']],true)) {
             $column['derivedSource']='По идентификатору ЭДО';
             $column['derivedEmptyLabel']='Оператор ЭДО не определён';
@@ -79,6 +80,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $roleFilter=is_string($_GET['partyRole']??null) && isset($partyRoles[$_GET['partyRole']]) ? $_GET['partyRole'] : '';
     $marginRules=$kind==='margin-rules' ? workspace_margin_rule_profiles($id) : [];
     $dropoffProfiles=$kind==='dropoff-points' ? workspace_dropoff_profiles($id) : [];
+    $containerRules=$kind==='container-types' ? workspace_container_type_rules($id) : [];
     $showAll=$managers && ($_GET['archive'] ?? '')==='all';
     $managerRoles=$managers ? array_keys(workspace_manager_roles()) : [];
     $clientCatalog=$unload ? workspace_client_grid_catalog() : null;
@@ -117,6 +119,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         };
         if ($unload) $values['C']=workspace_unload_contact_summary(workspace_unload_primary($entry),(int)$entry['contact_count']);
         if ($kind==='dropoff-points') $values+=($dropoffProfiles[$entryId]??workspace_dropoff_profile([]));
+        if ($kind==='container-types') $values+=workspace_container_type_rule_values($containerRules[$entryId]);
         if (workspace_catalog_has_palette($kind)) $values['B'] = $palette[$entry['color']] ?? '';
         if ($kind==='clients') $values['B'] = $clientManagers[$entryId] ?? '';
         if ($kind==='carriers') $values+=($carrierValues[$entryId]??workspace_carrier_values([]));
@@ -140,6 +143,13 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             else $row['orderFill']=$entry['color'];
             $row['choices']['B']=$choices;
             $row['requiredChoices']['B']=!workspace_is_document_status_catalog($kind);
+        }
+        if ($kind==='container-types') {
+            $rule=$containerRules[$entryId];
+            $row['choices']['B']=$row['choices']['D']=$choices;
+            $row['catalogFills']['B']=$rule['typeColor']??'';
+            $row['catalogFills']['D']=$rule['warningColor']??'';
+            $row['kinds']['C']='weight';
         }
         foreach ($partyRoles as $column=>$_label) {
             $row['choices'][$column]=workspace_edo_party_role_choices();
@@ -376,6 +386,13 @@ function workspace_catalog_directory_edit(array $body, bool $pasteCheck = false)
     } elseif ($kind==='edo-operators') {
         if ($column==='A') $payload['operatorCode']=$value=workspace_edo_operator_code($value);
         else $payload['name']=$value=workspace_catalog_validate_name($value);
+    } elseif ($kind==='container-types' && $column!=='A') {
+        $previous=workspace_container_type_profile($entry['name'],workspace_client_catalog_metadata('container_type_rule_'.$entry['id']));
+        $rule=workspace_container_type_input([$column=>$value],$previous);
+        $payload['active']=(bool)$entry['active'];
+        $payload['containerRule']=$rule;
+        $value=workspace_container_type_rule_values($rule)[$column];
+        if ($column!=='C') $catalogStyle=['catalogFill'=>$rule[$column==='B' ? 'typeColor' : 'warningColor']];
     } elseif ($column === 'A') $payload['name'] = $value = workspace_catalog_validate_name($value);
     elseif (workspace_is_document_status_catalog($kind)) {
         $payload['color']=$value==='' ? null : workspace_directory_color($value);

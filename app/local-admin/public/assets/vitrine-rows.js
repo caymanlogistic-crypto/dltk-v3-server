@@ -362,7 +362,7 @@
         cell.dataset.choices=JSON.stringify([...new Set(choices)]);
       }
       const matchesReference=String(cell.dataset.referenceId)===String(patch.id);
-      const coloredCatalog=['E','T','U'].includes(cell.dataset.column)&&document.body.dataset.workspaceTable==='vyvoz';
+      const coloredCatalog=['E','T','U','U2'].includes(cell.dataset.column)&&document.body.dataset.workspaceTable==='vyvoz';
       const legacyMatch=coloredCatalog&&!Number(cell.dataset.referenceId)&&cell.textContent!==''&&
         [patch.name,patch.beforeName,...(patch.aliases||[])].some(name=>normalizedCatalogName(name)===normalizedCatalogName(cell.textContent));
       if(coloredCatalog&&(matchesReference||legacyMatch)){
