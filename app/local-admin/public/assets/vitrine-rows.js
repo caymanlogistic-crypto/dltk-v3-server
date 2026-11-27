@@ -146,8 +146,24 @@
     })().finally(()=>{if(pending.get(number)===task)pending.delete(number);});
     pending.set(number,task);return task;
   }
-  let focusLastRow=openUnfiltered && initial.length>0;
   let viewportPlan=null;
+  const removedRows=new Set();
+  async function animateRemovedRows() {
+    const marked=[];
+    const animations=[];
+    for (const id of removedRows) {
+      if (positions.has(String(id))) continue;
+      removedRows.delete(id);
+      const row=cache.get(id) ?? body.querySelector('tr[data-row-number="'+id+'"]');
+      if (!row?.isConnected) continue;
+      row.dataset.tripRowRemoving='';
+      marked.push(row);
+      const animation=row.getAnimations().find(item=>item.animationName==='vitrine-trip-row-remove');
+      if (animation) animations.push(animation.finished);
+    }
+    await Promise.allSettled(animations);
+    return marked;
+  }
   function stamp(spacer,size){spacer.hidden=size===0;spacer.firstElementChild.style.setProperty('--spacer-height',size+'px');}
   const availableHeight=()=>scroll.clientHeight-headHeight;
   // Only the login arrival adds space to center the last row of a short table.
@@ -166,7 +182,12 @@
   async function render(){
     if(window.VitrineGrid?.editing())return;
     const plan=viewportPlan;
-    if(!ids.length){viewportPlan=null;body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);stamp(tail,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');return;}
+    if(!ids.length){
+      if (removedRows.size) await animateRemovedRows();
+      viewportPlan=null;body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);stamp(tail,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');
+      window.dispatchEvent(new CustomEvent('vitrine-rows-updated'));
+      return;
+    }
     const displayTop=plan?.top??scroll.scrollTop;
     const visible=Math.max(1,Math.ceil(availableHeight()/height)),viewportStart=viewportIndex(displayTop);
     const viewportEnd=dateLayout ? Math.min(ids.length,viewportIndex(displayTop+availableHeight())+1)
@@ -183,6 +204,13 @@
       await Promise.all(needed);if(ticket!==generation||window.VitrineGrid?.editing())return;
       const rows=ids.slice(start,end).map(id=>cache.get(id));
       if(rows.some(row=>!row))throw new Error('Не удалось загрузить все строки окна. Повторите прокрутку.');
+      if (removedRows.size) {
+        const marked=await animateRemovedRows();
+        if (ticket!==generation || window.VitrineGrid?.editing()) {
+          for (const row of marked) delete row.dataset.tripRowRemoving;
+          return;
+        }
+      }
       const mountStarted=performance.now();
       window.VitrineDisplay?.prepareRows(rows.filter(row=>!row.isConnected));
       rows.forEach((row,index)=>row.setAttribute('aria-rowindex',String(start+index+2)));
@@ -209,14 +237,6 @@
           window.VitrineGrid?.select(cell);
           cell.focus({preventScroll:true});
           plan.focus.action?.(cell);
-        }
-      }
-      if(focusLastRow){
-        focusLastRow=false;
-        const cell=cache.get(ids.at(-1))?.querySelector('td[data-edit-cell]:not([hidden])');
-        if(cell?.isConnected && (!document.activeElement || document.activeElement===document.body)){
-          window.VitrineGrid?.select(cell);
-          cell.focus({preventScroll:true});
         }
       }
       table.dataset.windowMounts=String(++mounts);table.dataset.lastMountScriptMs=(performance.now()-mountStarted).toFixed(2);
@@ -383,8 +403,9 @@
   }
   window.addEventListener('vitrine-editor-closed',()=>{for(const row of cache.values())for(const patch of catalogPatches.values())applyCatalogPatch(row,patch);});
   let refreshTask=null,refreshAgain=false,manifestDeferred=false,createdFocus=null,keepAbsoluteTop=false;
-  async function refreshManifest({focus=null,keepViewport=false}={}){
+  async function refreshManifest({focus=null,keepViewport=false,removedRow=null}={}){
     keepAbsoluteTop ||= keepViewport;
+    if (removedRow!==null && positions.has(String(removedRow))) removedRows.add(Number(removedRow));
     if(focus) {
       const headBottom=table.tHead.getBoundingClientRect().bottom;
       const offset=focus.origin.getBoundingClientRect().top-headBottom;

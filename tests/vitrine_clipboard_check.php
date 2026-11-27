@@ -156,4 +156,15 @@ foreach ([
     try { WorkspaceTripFormula::evaluate($formula); } catch (ApiError $error) { $caught=$error->publicCode; }
     verify($caught===$code,'Trip formula validation '.$formula);
 }
+(static function (): void {
+    $rows=[['rowIndex'=>-1,'tripDraft'=>true,'draftSlot'=>true]];
+    $columns=[['letter'=>'J','label'=>'Вес (брутто)'],['letter'=>'X','label'=>'Доход'],['letter'=>'AI','label'=>'Вес груза (нетто)']];
+    $escape=static fn($value): string=>htmlspecialchars((string)$value,ENT_QUOTES,'UTF-8');
+    $columnClass=static fn(array $column): string=>'';
+    ob_start();
+    require dirname(__DIR__).'/app/local-admin/views/vitrine-rows.php';
+    $html=ob_get_clean();
+    preg_match_all('/<td data-edit-cell data-formula-input[^>]*data-column="([^"]+)"/',$html,$matches);
+    verify($matches[1]===['J','X'],'A new trip exposes formula input for gross weight and income only');
+})();
 echo 'PASS '.$checks." clipboard format and arithmetic checks\n";

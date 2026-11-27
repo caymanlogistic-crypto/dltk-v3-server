@@ -4,6 +4,7 @@
   let clearTarget = null;
   const clearDialog = document.querySelector('[data-clear-cell-dialog]');
   const catalog = document.body.dataset.vitrineCatalog;
+  const isTripGrid = !catalog && document.body.dataset.workspaceTable==='vyvoz';
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   const orderStatuses = JSON.parse(document.getElementById('vitrine-order-statuses')?.content || '{}');
   const fieldColorLists = JSON.parse(document.getElementById('vitrine-field-color-statuses')?.content || '{}');
@@ -591,10 +592,9 @@
     let initialValue = draftType === 'password' ? window.VitrineDirectoryDrafts.secret(cell) : (cell.dataset.formula ?? cell.textContent);
     if (fleetEditor && control) initialValue=control.field.value;
     if (dropoffEditor && !Number(cell.dataset.referenceId)) initialValue='';
-    let replaceLegacyValue = false;
     if (mask) {
       const digits = mask.read(initialValue);
-      replaceLegacyValue = !isSlot && initialValue !== '' && digits === '';
+      const replaceLegacyValue = !isSlot && initialValue !== '' && digits === '';
       if (!replaceLegacyValue && cell.dataset.compactInput !== 'phone' && !cell.hasAttribute('data-formula')) initialValue = mask.format(digits);
       const digitsOnlyPaste = cell.dataset.compactInput === 'date';
       mask.bind(field,{digitsOnlyPaste,formula});
@@ -611,8 +611,7 @@
     if (isContainer) {
       const prefix = /^(?:[A-Z]{0,3}|[A-Z]{3}U[0-9]{0,7})$/;
       const stored = normalizeContainer(initialValue);
-      replaceLegacyValue = initialValue !== '' && !prefix.test(stored);
-      if (!replaceLegacyValue) initialValue = stored;
+      if (prefix.test(stored)) initialValue = stored;
       field.value = firstCharacter?.toUpperCase() ?? initialValue;
       field.placeholder = 'BICU6658782';
       field.spellcheck = false;
@@ -693,7 +692,7 @@
       orderField=picker.field;
       orderField.setAttribute('aria-label',label);
       orderField.classList.add('vitrine-editor-field');
-      const statusGroup=element('div','vitrine-editor-field-group');
+      const statusGroup=element('div','vitrine-editor-field-group vitrine-editor-status-group');
       statusGroup.append(element('div','field-label',label),picker.element);
       panel.append(statusGroup);
       window.VitrineQuickCatalog?.attach(picker,fieldColor ? 'fieldColor'+cell.dataset.column : 'orderStatus',cell,data=>{
@@ -771,8 +770,8 @@
     field.addEventListener('input',fitEditor);
     fitEditor();
     field.focus();
-    if (firstCharacter === null && (searchableCatalog || replaceLegacyValue)) field.select();
-    else field.setSelectionRange(field.value.length, field.value.length);
+    const caret=firstCharacter===null && searchableCatalog ? 0 : field.value.length;
+    field.setSelectionRange(caret,caret);
     if ((fleetEditor || dropoffEditor || typeEditor || unloadEditor) && firstCharacter !== null) {
       field.dispatchEvent(new InputEvent('input',{inputType:'insertText',bubbles:true}));
     }
@@ -847,11 +846,19 @@
   let rowCells = visibleRows();
   window.addEventListener('vitrine-columns-updated', () => {
     rowCells = visibleRows();
-    if(selected?.hidden) select(Array.from(selected.parentElement.querySelectorAll('td[data-edit-cell]')).find(cell=>!cell.hidden));
+    if (!selected?.hidden) return;
+    const replacement=Array.from(selected.parentElement.querySelectorAll('td[data-edit-cell]')).find(cell=>!cell.hidden);
+    if (isTripGrid && !selected.classList.contains('is-current-cell')) setTabStop(replacement);
+    else select(replacement);
   });
   let selected = cells.find(cell=>!cell.hidden) || null;
   table?.setAttribute('role','grid');
   cells.forEach(cell => { cell.tabIndex = cell === selected ? 0 : -1; });
+  function setTabStop(cell) {
+    if (selected) selected.tabIndex=-1;
+    selected=cell;
+    if (selected) selected.tabIndex=0;
+  }
   function select(cell) {
     if (!cell) return;
     if (selected === cell && cell.classList.contains('is-current-cell')) return;
@@ -871,11 +878,15 @@
     if (event.target.closest('.vitrine-derived-icon, .display-column-controls, [data-quick-row-drag], .vitrine-clipboard-menu, input, textarea, select')) return null;
     return event.target === document.body || event.target.closest('.vitrine-table-scroll') ? selected : null;
   }
-  select(selected);
+  if (!isTripGrid) select(selected);
   window.addEventListener('vitrine-rows-updated',()=>{
     cells=Array.from(document.querySelectorAll('td[data-edit-cell]'));rowCells=visibleRows();
     const replacement=selected?cells.find(cell=>cell.dataset.row===selected.dataset.row&&cell.dataset.column===selected.dataset.column):cells.find(cell=>!cell.hidden);
-    if(replacement)select(replacement);
+    if (replacement && (!isTripGrid || selected?.classList.contains('is-current-cell'))) {
+      select(replacement);
+    } else if (isTripGrid && !selected?.isConnected) {
+      setTabStop(cells.find(cell=>!cell.hidden));
+    }
   });
   table?.addEventListener('focusin', event => { const cell = event.target.closest('td[data-edit-cell]'); if (cell) select(cell); });
   function reveal(cell) {
