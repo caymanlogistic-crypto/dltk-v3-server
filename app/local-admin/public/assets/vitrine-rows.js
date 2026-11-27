@@ -327,10 +327,11 @@
         const anchorIndex=Math.max(0,Math.min(ids.length-1,viewportIndex()));
         const anchor=ids[anchorIndex],offset=scroll.scrollTop-rowOffset(anchorIndex);
         const chosen=table.querySelector('td.is-current-cell'),chosenRow=chosen?.dataset.row,chosenColumn=chosen?.dataset.column;
+        const oldPositions=document.body.hasAttribute('data-vitrine-catalog') ? new Map(positions) : null;
         ids=next;positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         manifestVersion++;generation++;navigationGeneration++;navigation=null;pending.clear();loaded.clear();first=last=-1;
         const allowed=new Set(ids);
-        for(const [id,row] of cache)if(searchChanged||!allowed.has(id)){row.remove();cache.delete(id);}
+        for(const [id,row] of cache)if(searchChanged||!allowed.has(id)||oldPositions&&oldPositions.get(String(id))!==positions.get(String(id))){row.remove();cache.delete(id);}
         if(searchChanged){
           appliedSearch=query;
           const url=new URL(location.href);
@@ -387,6 +388,18 @@
     refreshFleetDocuments,
     applyFleetDocuments,
     exportRows,
+    replaceUnloadChoices(groups,clients){
+      for (const row of cache.values()) {
+        const client=row.querySelector('td[data-column="B"]');
+        const address=row.querySelector('td[data-column="K"][data-catalog-id]:not([data-catalog-id="0"])');
+        if (!client || !address) continue;
+        const name=client.textContent.trim().replace(/\s+/g,' ').toLocaleLowerCase('ru');
+        const referenceId=Number(client.dataset.referenceId);
+        if (!referenceId && clients===null) continue;
+        const id=referenceId || (Object.hasOwn(clients,name) ? clients[name] : null);
+        address.dataset.choices=JSON.stringify(groups[id ? 'id:'+id : 'name:'+name]??[]);
+      }
+    },
     filterDirectory(query){
       requestedSearch=query;
       if(query!==appliedSearch||refreshTask)return refreshManifest();

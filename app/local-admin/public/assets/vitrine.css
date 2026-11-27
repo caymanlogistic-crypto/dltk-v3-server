@@ -3016,6 +3016,7 @@ input,select,textarea,button{font-family:var(--font)}
 .ui-time-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .ui-time-label{margin-bottom:4px;color:var(--p-secondary);font:700 10px/14px var(--font);text-transform:uppercase;letter-spacing:.06em}
 .ui-time-list{height:182px;max-height:35vh;overflow:auto;overscroll-behavior:contain;padding:3px;border:1px solid var(--p-border);border-radius:2px;background:linear-gradient(180deg,var(--p-surface),var(--p-panel));box-shadow:inset 0 1px 2px color-mix(in srgb,var(--p-text) 5%,transparent)}
+.ui-time-grid{max-height:calc(100dvh - 64px);overflow:auto;overscroll-behavior:contain}
 .ui-time-option{display:grid;place-items:center;width:100%;height:28px;min-height:28px;border:1px solid transparent;border-radius:2px;font:500 12px/16px var(--font);font-variant-numeric:tabular-nums;color:var(--p-text)}
 .ui-time-option:hover{background:color-mix(in srgb,var(--p-accent) 9%,var(--p-surface))}
 .ui-time-option.is-selected{border-color:var(--p-accent);background:linear-gradient(180deg,color-mix(in srgb,var(--p-accent) 85%,var(--p-surface)),var(--p-accent));color:var(--p-surface);font-weight:600;box-shadow:inset 0 1px color-mix(in srgb,var(--p-surface) 18%,transparent)}
@@ -3259,6 +3260,7 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
   grid-template-columns:minmax(0,1fr);
   grid-template-rows:var(--vitrine-topbar-height) minmax(0,1fr);
 }
+.vitrine .app.app--workspace.vitrine-embedded-catalog { --vitrine-topbar-height:0px; }
 .vitrine .app--workspace > .content { grid-column:1; grid-row:2; padding:0; gap:0; }
 .vitrine .vitrine-topbar {
   display:flex; align-items:center; min-width:0;
@@ -3340,7 +3342,8 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
 .vitrine .vitrine-editor { position:fixed; z-index:100; box-sizing:border-box; width:380px; max-width:calc(100vw - 20px); padding:14px; border:1px solid var(--line); border-radius:2px; background:var(--surface-strong); color:var(--text-main); box-shadow:0 8px 24px rgb(0 0 0 / .22); font-family:var(--font); }
 .vitrine .vitrine-editor-title { margin:0 0 5px; font-size:13px; font-weight:600; }
 .vitrine .vitrine-editor-note { margin:0 0 12px; font-size:11px; color:var(--text-muted); }
-.vitrine .vitrine-editor-field { display:block; box-sizing:border-box; width:100%; max-width:100%; padding:8px; min-height:34px; font:500 12px/1.45 var(--font); }
+.vitrine-editor { --vitrine-editor-control-height:34px; }
+.vitrine .vitrine-editor-field { display:block; box-sizing:border-box; width:100%; max-width:100%; padding:8px; min-height:var(--vitrine-editor-control-height,34px); font:500 12px/1.45 var(--font); }
 .vitrine textarea.vitrine-editor-field { min-height:94px; max-height:220px; resize:vertical; white-space:pre-wrap; }
 .vitrine .vitrine-editor-help { margin:7px 0 0; color:var(--text-muted); font-size:10px; }
 .vitrine .vitrine-editor-error:first-child { margin:0 0 9px; }
@@ -3355,6 +3358,24 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
 
 .vitrine .vitrine-editor-field-group { display:grid; row-gap:6px; }
 .vitrine .vitrine-editor-field-group + .vitrine-editor-field-group { margin-block-start:12px; }
+.vitrine-quick-catalog-field { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px; }
+.vitrine .vitrine-quick-catalog-field .vitrine-excel-button { --control-h:var(--vitrine-editor-control-height); }
+.vitrine .vitrine-catalog-dialog.vitrine-quick-catalog { width:min(960px,calc(100vw - 24px)); }
+.vitrine-quick-catalog iframe { display:block; width:100%; height:min(58vh,540px); border:0; }
+.vitrine .vitrine-table-scroll[data-quick-row-order] { --vitrine-row-number-width:100px; }
+.vitrine .vitrine-drag-grip { fill:currentColor; stroke:none; pointer-events:none; }
+.vitrine .vitrine-cell-icon {
+  position:absolute; inset-block:0; inset-inline-end:0; display:grid; place-items:center;
+  inline-size:30px; padding:2px 2px 2px 0; border:0; background:transparent;
+  background-clip:content-box; color:var(--text-muted);
+}
+.vitrine .vitrine-cell-icon:is(:hover,:focus-visible) { color:#fff; background-color:var(--accent); }
+.vitrine .vitrine-cell-icon:focus-visible { outline-offset:-4px; }
+.vitrine .vitrine-cell-icon svg { width:16px; height:16px; }
+.vitrine [data-quick-row-drag] { cursor:grab; }
+.vitrine [data-quick-row-drag]:active { cursor:grabbing; }
+.vitrine tr[data-quick-drop="before"] > :is(th,td) { box-shadow:inset 0 2px var(--accent); }
+.vitrine tr[data-quick-drop="after"] > :is(th,td) { box-shadow:inset 0 -2px var(--accent); }
 .vitrine .vitrine-table tbody tr > td[data-edit-cell][style*="--preset-cell-fill"] {
   background-color:var(--preset-cell-fill);
   color:var(--preset-cell-text);
@@ -3490,8 +3511,9 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
   display:flex; flex:none; align-items:center; flex-wrap:wrap; gap:10px 16px;
   padding:10px 16px; background:var(--surface-strong); border-bottom:1px solid var(--line);
 }
-.vitrine .vitrine-catalog-toolbar h1 { margin:0; font:400 18px var(--font); }
-.vitrine .vitrine-catalog-toolbar h1 strong { font-weight:700; }
+.vitrine .vitrine-catalog-toolbar h1 { margin:0; }
+.vitrine .vitrine-catalog-toolbar h1, .vitrine .vitrine-editor-title.vitrine-unload-title { font:400 18px var(--font); }
+.vitrine :is(.vitrine-catalog-toolbar h1,.vitrine-unload-title) strong { font-weight:700; }
 .vitrine .vitrine-catalog-search, .vitrine .vitrine-catalog-actions, .vitrine .vitrine-grid-tools {
   display:flex; align-items:center; flex-wrap:wrap; gap:6px;
 }
@@ -3557,6 +3579,9 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
   color:var(--text-muted); background:transparent; font:700 16px/1 var(--font);
   cursor:pointer; opacity:.72;
 }
+.vitrine .vitrine-table tbody .vitrine-row-number:has(.vitrine-row-menu-trigger,[data-quick-row-drag]) { padding-inline-end:32px; }
+.vitrine .vitrine-table tbody .vitrine-row-number:has(.vitrine-row-menu-trigger):has([data-quick-row-drag]) { padding-inline-end:62px; }
+.vitrine .vitrine-row-number:has(.vitrine-row-menu-trigger) [data-quick-row-drag] { inset-inline-end:30px; }
 .vitrine tr:is(:hover,:focus-within) .vitrine-row-number .vitrine-row-menu-trigger,
 .vitrine .vitrine-row-number .vitrine-row-menu-trigger[aria-expanded="true"] { opacity:1; }
 .vitrine [data-directory-reason-field][hidden] { display:none; }

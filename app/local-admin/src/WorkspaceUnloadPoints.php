@@ -29,9 +29,9 @@ function workspace_unload_points(int $catalogId,?int $clientId=null): array {
     return array_column($rows,null,'id');
 }
 
-function workspace_unload_options_by_client(array $points): array {
+function workspace_unload_options_by_client(array $points,int $catalogId): array {
     $options=[];
-    foreach ($points as $point) {
+    foreach (workspace_directory_order_entries($points,$catalogId) as $point) {
         if (!$point['active'] || $point['review_required'] || $point['client']==='') continue;
         $client=workspace_unload_client_key($point['client_id']===null?null:(int)$point['client_id'],$point['client']);
         $options[$client][]=$point['address'];

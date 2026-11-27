@@ -28,7 +28,8 @@ function workspace_catalog_has_palette(string $kind): bool {
 }
 function workspace_status_catalog(array $table): array {
     $id=wquery("SELECT c.id FROM catalogs c JOIN catalog_bindings b ON b.catalog_id=c.id WHERE b.table_id=? AND b.field_key='A' AND c.kind='status' LIMIT 1",[$table['id']])->fetchColumn();
-    return ['id'=>(int)$id,'statuses'=>$id?wquery('SELECT id,name,color,revision FROM catalog_entries WHERE catalog_id=? AND active=TRUE ORDER BY id',[$id])->fetchAll():[],'palette'=>workspace_palette()];
+    $statuses=$id ? wquery('SELECT id,name,color,revision FROM catalog_entries WHERE catalog_id=? AND active=TRUE ORDER BY id',[$id])->fetchAll() : [];
+    return ['id'=>(int)$id,'statuses'=>array_values(workspace_directory_order_entries($statuses,(int)$id)),'palette'=>workspace_palette()];
 }
 function workspace_catalog_validate_name(string $value): string {
     $name=trim(preg_replace('/\s+/u',' ',$value));

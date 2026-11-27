@@ -3,7 +3,7 @@ declare(strict_types=1);
 $employeePage = $directory === 'employees';
 $employeeScope = $employeePage ? workspace_employee_editor_scope() : null;
 $archive = $catalogGrid['archive'];
-$canUploadExcel = $catalogGrid['canEdit'] && !$archive && workspace_directory_excel_supported($directory);
+$canUploadExcel = !$embeddedCatalog && $catalogGrid['canEdit'] && !$archive && workspace_directory_excel_supported($directory);
 $staffDirectory = ($currentTable['catalogKind'] ?? '') === 'managers';
 $visibilityLabel = $staffDirectory ? 'Все сотрудники' : ($directory === 'clients' ? 'Все клиенты' : null);
 $visibilityAria = $staffDirectory ? 'Фильтр сотрудников' : ($directory === 'clients' ? 'Фильтр клиентов' : 'Фильтр записей');
@@ -20,7 +20,7 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
   <h1>Справочник: <strong><?= $escape($currentTable['title']) ?></strong><?php if ($visibilityLabel): ?> (<span data-directory-row-count><?= count($data['rowIds'] ?? []) ?></span>)<?php endif; ?></h1>
   <?php if (!empty($catalogGrid['clientFilter'])): ?>
   <span>Клиент: <strong><?= $escape($catalogGrid['clientFilter']['name']) ?></strong></span>
-  <a href="<?= $escape($viewUrl($directoryUrl.($archive ? '&archive=1' : (!empty($catalogGrid['showAll']) ? '&archive=all' : '')))) ?>"><?= $directory==='clients' ? 'Сбросить выбор клиента' : 'Все точки выгрузки' ?></a>
+  <?php if (!$embeddedCatalog): ?><a href="<?= $escape($viewUrl($directoryUrl.($archive ? '&archive=1' : (!empty($catalogGrid['showAll']) ? '&archive=all' : '')))) ?>"><?= $directory==='clients' ? 'Сбросить выбор клиента' : 'Все точки выгрузки' ?></a><?php endif; ?>
   <?php endif; ?>
   <form class="vitrine-catalog-search" method="get" action="<?= $escape($viewUrl('/vitrine')) ?>">
     <input type="hidden" name="catalog" value="<?= $escape($directory) ?>">
@@ -36,7 +36,7 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
     <?php endif; ?>
     <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape($catalogGrid['search']) ?>"
            aria-label="<?= $escape($searchLabel) ?>" placeholder="<?= $escape($searchPlaceholder) ?>">
-    <?php require __DIR__.'/vitrine-export-button.php'; ?>
+    <?php if (!$embeddedCatalog) require __DIR__.'/vitrine-export-button.php'; ?>
     <?php if ($canUploadExcel): ?>
     <button class="btn btn-secondary btn-icon vitrine-excel-button" type="button" data-directory-import
             aria-label="Загрузить Excel">

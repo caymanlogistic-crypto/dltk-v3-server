@@ -1,6 +1,6 @@
 'use strict';
 (() => {
-  const catalog = JSON.parse(document.getElementById('vitrine-dropoff-options')?.content || '{}');
+  let catalog = JSON.parse(document.getElementById('vitrine-dropoff-options')?.content || '{}');
   function supports(cell) {
     return cell.dataset.column==='M' && Number(cell.dataset.catalogId)>0 &&
       document.body.dataset.workspaceTable==='vyvoz' && cell.parentElement.hasAttribute('data-dropoff-details');
@@ -61,5 +61,5 @@
     const previous=Object.keys(result.dropoffDetails).length ? details(cell) : {};
     cell.parentElement.dataset.dropoffDetails=JSON.stringify({...previous,...result.dropoffDetails});
   }
-  window.VitrineDropoff=Object.freeze({supports,attach,update});
+  window.VitrineDropoff=Object.freeze({supports,attach,update,replaceOptions:options=>{catalog=options;}});
 })();

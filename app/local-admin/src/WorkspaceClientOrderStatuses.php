@@ -16,7 +16,8 @@ function workspace_client_order_statuses(bool $refresh = false): array {
 }
 
 function workspace_active_client_order_statuses(bool $refresh = false): array {
-    return array_filter(workspace_client_order_statuses($refresh),static fn(array $status): bool=>$status['active']);
+    $active = array_filter(workspace_client_order_statuses($refresh),static fn(array $status): bool=>$status['active']);
+    return workspace_directory_order_entries($active,'client-order-statuses');
 }
 
 function workspace_client_order_status(string $code): array {

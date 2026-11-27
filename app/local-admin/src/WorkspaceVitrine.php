@@ -151,7 +151,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $unloadLink=$links['K']??null;
     $canChooseUnload=$unloadLink && workspace_can('catalog',(string)$unloadLink['id'],'view',$t['id']);
     $unloadPoints=$unloadLink ? workspace_unload_points($unloadLink['id']) : [];
-    $unloadOptions=$canChooseUnload ? workspace_unload_options_by_client($unloadPoints) : [];
+    $unloadOptions=$canChooseUnload ? workspace_unload_options_by_client($unloadPoints,$unloadLink['id']) : [];
     if ($canChooseUnload) $boundCatalogs['K']=$unloadLink['id'];
     $dependentValues=array_map('vitrine_catalog_values',$dependentLinks);
     $colorLinks=array_filter(array_intersect_key($links,$boundCatalogs),
@@ -278,7 +278,8 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         if ($dropoffDetails!==null) $rows[array_key_last($rows)]['dropoffDetails']=$dropoffDetails;
         $rows[array_key_last($rows)]['sharedChoices']=$sharedChoices;
     }
-    return ['rowIds'=>$rowIds,'columns'=>$columns,'rows'=>$rows,'tripDraft'=>$tripDraft,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette'],'sharedOptions'=>$sharedOptions,'sharedOptionCatalogs'=>$sharedCatalogs,'dropoffOptions'=>$dropoffOptions,'dropoffEnabled'=>(bool)$dropoffCatalog];
+    return ['rowIds'=>$rowIds,'columns'=>$columns,'rows'=>$rows,'tripDraft'=>$tripDraft,'lastSuccess'=>null,'sheetTitle'=>$t['title'],'sourceKey'=>'workspace','sheetKey'=>$t['slug'],'table'=>$t,'statuses'=>$catalog['statuses'],'palette'=>$catalog['palette'],'sharedOptions'=>$sharedOptions,'sharedOptionCatalogs'=>$sharedCatalogs,'dropoffOptions'=>$dropoffOptions,'dropoffEnabled'=>(bool)$dropoffCatalog,
+        'unloadOptions'=>$unloadOptions,'unloadClients'=>$entriesByName['B']??[]];
 }
 
 function vitrine_store(array $body): array {
@@ -392,7 +393,7 @@ function vitrine_store(array $body): array {
             && workspace_can('catalog',(string)$unloadId,'view',$t['id'])) {
             $points=workspace_unload_points($unloadId);
             $unloadResult['unloadChoices']=workspace_unload_row_options(
-                workspace_unload_options_by_client($points),$reference,$value);
+                workspace_unload_options_by_client($points,$unloadId),$reference,$value);
         }
         $active=$value!==($body['comparisonOriginal']??$body['original']);
         $action=$body['editAction']??($body['reset']?'reset':'edit');if(!in_array($action,['edit','paste','undo','reset','clear'],true))$action='edit';

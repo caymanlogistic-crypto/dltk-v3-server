@@ -50,11 +50,16 @@ function json_response(array $body,int $status=200): never {
     http_response_code($status);header('Content-Type: application/json; charset=utf-8');
     echo json_encode($body,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE|JSON_THROW_ON_ERROR);exit;
 }
+function app_frame_headers(bool $embeddedCatalog=false): void {
+    $ancestors=$embeddedCatalog ? "'self'" : "'none'";
+    header('X-Frame-Options: '.($embeddedCatalog ? 'SAMEORIGIN' : 'DENY'));
+    header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ".configured_origin(runtime_config()['WS_URL'])."; frame-ancestors $ancestors; base-uri 'none'; form-action 'self'");
+}
+
 function secure_request(): void {
     $config=runtime_config();$origin=configured_origin($config['APP_URL']);$authority=substr($origin,strpos($origin,'://')+3);
     if(strtolower($_SERVER['HTTP_HOST']??'')!==$authority)throw new ApiError('invalid_host','Неизвестный адрес сервера.',403);
-    header('Cache-Control: no-store');header('X-Content-Type-Options: nosniff');header('X-Frame-Options: DENY');
-    header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ".configured_origin($config['WS_URL'])."; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    header('Cache-Control: no-store');header('X-Content-Type-Options: nosniff');app_frame_headers();
     ini_set('display_errors','0');ini_set('log_errors','0');ini_set('session.use_strict_mode','1');
     session_name('dltk_v3_server');
     session_set_cookie_params(['httponly'=>true,'secure'=>str_starts_with($origin,'https://'),'samesite'=>'Strict','path'=>app_url_path('/')]);
