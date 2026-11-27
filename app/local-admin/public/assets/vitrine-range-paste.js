@@ -14,8 +14,9 @@
   }
 
   function payload(cell,value) {
+    const anchor=cell.closest('[data-trip-draft-anchor]')?.dataset.tripDraftAnchor;
     return {row:Number(cell.dataset.row),column:cell.dataset.column,value,
-      revision:Number(cell.dataset.revision),baseHash:cell.dataset.base};
+      revision:Number(cell.dataset.revision),baseHash:cell.dataset.base,...(anchor ? {draftAnchor:Number(anchor)} : {})};
   }
 
   function cellAt(row,column) {
@@ -80,6 +81,10 @@
     return transaction(async ()=>{
       const {rowKeys,columns}=range.destination(anchor,source);
       const loaded=await rows.readRangeRows(rowKeys);
+      const day=anchor.closest('[data-trip-draft-date]')?.dataset.tripDraftDate;
+      if (day && loaded.some(row=>row.dataset.tripDraftDate!==day)) {
+        throw new Error('Вставьте данные в свободные строки этой даты частями.');
+      }
       const changes=[];
       const addressSnapshots=new Map();
       const priorOrderStatus=new Map();
@@ -89,6 +94,7 @@
         for (const [c,column] of columns.entries()) {
           const cell=cellAt(row,column);
           const {value,source:ref}=copiedRow[c%copiedRow.length];
+          if (column==='F' && row.hasAttribute('data-trip-draft-date')) continue;
           if (row.hasAttribute('data-trip-draft') && value.trim()==='') continue;
           if (ref?.column===column && cell?.dataset.derivedFrom?.split(' ').some(primary=>{
             const offset=columns.indexOf(primary);
@@ -109,7 +115,9 @@
           changes.push({...change,payload:{...payload(cell,value),...(ref ? {source:ref} : {})}});
         }
       }
-      if (!changes.length) throw new Error('В буфере нет данных для новых строк.');
+      if (!changes.length) throw new Error(anchor.dataset.column==='F' && anchor.closest('[data-trip-draft-date]')
+        ? 'Дата новой строки подставляется из группы. Заполните другое поле рейса.'
+        : 'В буфере нет данных для новых строк.');
       const {saved,createdRows}=await send('pasteRange',changes);
       const history=[];
       let blocked=false;
@@ -138,13 +146,15 @@
       }
       grid.rememberRange({cells:history,blocked});
       range.pasted();
-      const firstCreated=Object.values(createdRows)[0];
-      if (firstCreated) {
+      const createdKeys=Object.keys(createdRows);
+      if (createdKeys.length) {
         try {
+          const focusKey=createdRows[anchor.dataset.row] ? anchor.dataset.row : createdKeys[0];
+          const focusColumn=changes.find(change=>change.initial.row===Number(focusKey)).initial.column;
           const focus=Number(anchor.dataset.row)<0
-            ? {row:Number(createdRows[anchor.dataset.row]??firstCreated),column:anchor.dataset.column,origin:anchor}
+            ? {row:Number(createdRows[focusKey]),column:focusColumn,origin:anchor}
             : null;
-          await rows.refreshManifest({focus});
+          await rows.refreshManifest({focus,filledDrafts:createdKeys});
         } catch (error) {
           window.PlanexNotifications.show({tone:'danger',message:'Рейсы сохранены. Обновите таблицу, чтобы их увидеть.'});
         }

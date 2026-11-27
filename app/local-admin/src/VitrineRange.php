@@ -12,7 +12,8 @@ function vitrine_save_range(?string $directory, array $body): array {
     $ids = $targets = [];
     foreach ($cells as $cell) {
         if (!is_array($cell) || !is_int($cell['row']??null) || $cell['row']===0 ||
-            ($cell['row']<0 && (!$paste || $directory!==null || $cell['row'] < -WORKSPACE_AVTOVYVOZ_DRAFT_ROWS)) ||
+            ($cell['row']<0 && (!$paste || $directory!==null || ($cell['row'] < -WORKSPACE_AVTOVYVOZ_DRAFT_ROWS
+                && workspace_trip_day_draft_date($cell['row'])===null))) ||
             !is_string($cell['column']??null) || !preg_match('/^(?:[A-Z]{1,3}|U2)$/D',$cell['column']) ||
             !is_string($cell['value']??null) || mb_strlen($cell['value'])>20000 ||
             !is_int($cell['revision']??null) || $cell['revision']<0 ||
@@ -39,12 +40,17 @@ function vitrine_save_range(?string $directory, array $body): array {
             $draft = $draftData['tripDraft'];
             if (!$draft) throw new ApiError('forbidden','Нет доступа к созданию рейсов.',403);
             foreach ($draftSlots as $slot) {
+                $firstCell=reset($targets[$slot]);
+                $date=workspace_trip_day_draft_value($draftData['table'],$slot,$firstCell['draftAnchor']??null);
+                if ($date!==null && isset($targets[$slot]['F'])) {
+                    throw new ApiError('trip_day_date','Дата новой строки подставляется из группы.');
+                }
                 foreach ($targets[$slot] as $cell) {
                     if ($cell['revision']!==0 || !hash_equals($draft['baseHash'],$cell['baseHash'])) {
                         throw new ApiError('revision_conflict','Шаблон новой строки изменился. Обновите таблицу.',409);
                     }
                     if (trim($cell['value'])!=='') {
-                        $newRows[$slot] ??= workspace_create_record($draftData['table']);
+                        $newRows[$slot] ??= workspace_create_record($draftData['table'],$date);
                     }
                 }
                 unset($ids[$slot]);

@@ -293,6 +293,7 @@
     }
     const payload={row:Number(cell.dataset.row),column:cell.dataset.column,value,
       revision:Number(cell.dataset.revision || 0),baseHash:cell.dataset.base,reset,editAction:editAction||(reset?'reset':paste?'paste':'edit'),
+      ...(draft?.dataset.tripDraftAnchor ? {draftAnchor:Number(draft.dataset.tripDraftAnchor)} : {}),
       ...(paste ? {paste} : {}),orderStatus,dropoffDetails,fleetGroup,birthRevision,...fieldColorEdit};
     const signature=draft ? JSON.stringify(payload) : null;
     const previous=tripDraftRequests.get(cell);
@@ -324,7 +325,9 @@
   }
   async function showCreatedTrip(cell,row) {
     try {
-      await window.VitrineRows.refreshManifest({focus:{row:Number(row),column:cell.dataset.column,origin:cell,action:flash}});
+      await window.VitrineRows.refreshManifest({
+        focus:{row:Number(row),column:cell.dataset.column,origin:cell,action:flash},filledDrafts:[cell.dataset.row]
+      });
     } catch(error) {
       report(error.message || 'Рейс сохранён. Обновите таблицу.','danger');
     }

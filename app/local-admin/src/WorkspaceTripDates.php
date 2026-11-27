@@ -42,6 +42,28 @@ function workspace_trip_date_group_key(mixed $raw): string {
     return workspace_trip_date_key($raw) ?? ($raw===null || (is_string($raw) && trim($raw)==='') ? 'undated' : 'ambiguous');
 }
 
+function workspace_trip_day_draft_date(int $row): ?string {
+    if (!preg_match('/^-(20[0-9]{2})([0-9]{2})([0-9]{2})[12]$/D',(string)$row,$parts)) return null;
+    [, $year, $month, $day]=$parts;
+    return checkdate((int)$month,(int)$day,(int)$year) ? "$year-$month-$day" : null;
+}
+
+function workspace_trip_day_draft_value(array $table,int $row,mixed $anchor): ?string {
+    if ($row>=-WORKSPACE_AVTOVYVOZ_DRAFT_ROWS) return null;
+    $date=workspace_trip_day_draft_date($row);
+    if ($table['slug']!=='vyvoz' || $date===null || !is_int($anchor) || $anchor<1) {
+        throw new ApiError('invalid_trip_day','Проверьте дату новой строки рейса.');
+    }
+    workspace_require('field','F','view',$table['id']);
+    workspace_require('field','F','edit',$table['id']);
+    $raw=wquery("SELECT JSON_EXTRACT(values_json,'$.F') FROM records WHERE table_id=? AND row_num=? AND archived=0",
+        [$table['id'],$anchor])->fetchColumn();
+    if (!is_string($raw) || workspace_trip_date_key(json_decode($raw,true))!==$date) {
+        throw new ApiError('trip_day_changed','Группа даты изменилась. Обновите таблицу и выберите строку снова.',409);
+    }
+    return substr($date,8,2).'.'.substr($date,5,2).'.'.substr($date,2,2);
+}
+
 function workspace_trip_date_group_label(string $key): string {
     if ($key==='ambiguous') return 'Дата загрузки не определена';
     if ($key==='undated') return 'Без даты загрузки';

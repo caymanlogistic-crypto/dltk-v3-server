@@ -294,7 +294,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
             $tripDraft=array_pop($rows)+['readOnly'=>$readOnly,'sharedChoices'=>$sharedChoices];
             if ($requestedRows!==null) {
                 foreach (array_unique($requestedRows) as $id) {
-                    if ($id<0 && $id>=-WORKSPACE_AVTOVYVOZ_DRAFT_ROWS) {
+                    if ($id<0 && ($id>=-WORKSPACE_AVTOVYVOZ_DRAFT_ROWS || workspace_trip_day_draft_date($id)!==null)) {
                         $rows[]=array_replace($tripDraft,['rowIndex'=>$id]);
                     }
                 }
@@ -325,11 +325,12 @@ function vitrine_store(array $body): array {
         $cached=wquery('SELECT result FROM request_deduplication WHERE user_id=? AND request_id=?',[$u['id'],$request])->fetchColumn();if($cached){return json_decode($cached,true);}
         $created=[];
         if ($body['row']<0) {
-            if ($t['slug']!=='vyvoz' || $body['row'] < -WORKSPACE_AVTOVYVOZ_DRAFT_ROWS || $body['revision']!==0 ||
+            if ($t['slug']!=='vyvoz' || $body['revision']!==0 ||
                 $body['reset'] || trim($body['value'])==='') {
                 throw new ApiError('invalid_edit','Введите значение для новой строки.');
             }
-            $body['row']=workspace_create_record($t);
+            $date=workspace_trip_day_draft_value($t,$body['row'],$body['draftAnchor']??null);
+            $body['row']=workspace_create_record($t,$date);
             $created=['createdRow'=>$body['row']];
         }
         $r=wquery('SELECT * FROM records WHERE table_id=? AND row_num=? AND archived=FALSE FOR UPDATE',[$t['id'],$body['row']])->fetch();if(!$r)throw new ApiError('not_found','Строка не найдена.',404);

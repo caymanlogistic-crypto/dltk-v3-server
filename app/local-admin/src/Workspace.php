@@ -171,9 +171,10 @@ function workspace_manifest_payload(array $table,bool $archive): array {
     return workspace_trip_manifest_order($table,$ids);
 }
 
-function workspace_create_record(array $table): int {
+function workspace_create_record(array $table,?string $tripDate=null): int {
     $row=(int)wquery('SELECT COALESCE(MAX(row_num),1)+1 FROM records WHERE table_id=?',[$table['id']])->fetchColumn();
     $values=array_fill_keys(array_column($table['columns'],'letter'),'');
+    if ($tripDate!==null) $values['F']=$tripDate;
     wquery('INSERT INTO records(table_id,row_num,values_json,baseline_json) VALUES(?,?,?,?)',[$table['id'],$row,wjson($values),wjson($values)]);
     workspace_audit(['tableId'=>$table['id'],'recordId'=>(int)workspace_db()->lastInsertId(),'row'=>$row,'action'=>'create','category'=>'row','after'=>$values]);
     return $row;

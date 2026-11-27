@@ -6,6 +6,7 @@ require dirname(__DIR__).'/app/local-admin/src/WorkspaceFleetDetails.php';
 require dirname(__DIR__).'/app/local-admin/src/bootstrap.php';
 require dirname(__DIR__).'/app/local-admin/src/WorkspaceTripFormula.php';
 require dirname(__DIR__).'/app/local-admin/src/WorkspaceCatalogs.php';
+require_once dirname(__DIR__).'/app/local-admin/src/WorkspaceTripDates.php';
 $checks = 0;
 function verify(bool $condition, string $name): void {
     global $checks;
@@ -34,6 +35,11 @@ foreach (['24001','24 001',"24\u{00A0}001","24\u{202F}001"] as $threshold) {
     verify($updatedRule['threshold']===24001,'Container threshold preserves every digit');
 }
 verify(workspace_container_type_input(['C'=>''],$containerRule)['threshold']===null,'Container threshold can be cleared');
+verify(workspace_trip_day_draft_date(-202611171)==='2026-11-17'
+    && workspace_trip_day_draft_date(-202611172)==='2026-11-17','Both trip drafts inherit the calendar group date');
+foreach ([-202611173,-202602291,-41,-1,202611171] as $row) {
+    verify(workspace_trip_day_draft_date($row)===null,'Other and invalid draft numbers do not map to a group date');
+}
 
 foreach (['29.02.2024', '2024-02-29', '17.11.2026'] as $value) verify(vitrine_clipboard_accepts($value, 'date'), 'Valid date '.$value);
 foreach (['29.02.2025', '31.04.2026', '2026-13-01', '17.11', '45200'] as $value) verify(!vitrine_clipboard_accepts($value, 'date'), 'Invalid date '.$value);

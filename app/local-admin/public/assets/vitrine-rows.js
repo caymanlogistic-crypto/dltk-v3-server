@@ -3,9 +3,12 @@
   const table=document.querySelector('.vitrine-table'),body=document.getElementById('vitrine-rows'),scroll=document.querySelector('.vitrine-table-scroll');
   if(!table||!body||!scroll)return;
   let ids=[];try{ids=JSON.parse(document.getElementById('vitrine-row-manifest').content);}catch{}
-  const dateLayout=window.VitrineTripDateGroups?.create(ids);
   const drafts=Array.from(document.querySelectorAll('[data-draft-slot]'));
   const tripDraftBody=document.querySelector('[data-trip-drafts]');
+  const dayDraftTemplate=tripDraftBody?.hasAttribute('data-trip-day-drafts') ? drafts[0].cloneNode(true) : null;
+  const dateLayout=window.VitrineTripDateGroups?.create(ids,Boolean(dayDraftTemplate));
+  const dayDraftRows=new Map();
+  const dayRefills=new Map();
   const empty=document.getElementById('vitrine-empty');
   const directoryRowCount=document.querySelector('[data-directory-row-count]');
   const search=document.querySelector('.vitrine-catalog-search input[type="search"]');
@@ -14,14 +17,15 @@
   const noTripFilter=tripFilterKey(new URLSearchParams());
   let appliedTripFilter=tripFilterKey(new URLSearchParams(location.search));
   const draftIndex=cell=>drafts.indexOf(cell.closest?.('[data-draft-slot]'));
-  const rowIndex=cell=>positions.get(cell.dataset.row) ?? ids.length+draftIndex(cell);
+  const dataRowCount=()=>dateLayout?.rowKeys.length ?? ids.length;
+  const rowIndex=cell=>dateLayout?.rowIndex(cell.dataset.row) ?? positions.get(cell.dataset.row) ?? dataRowCount()+draftIndex(cell);
   function setCounts() {
     table.dataset.totalRows=String(ids.length);
     if (directoryRowCount && directoryRowCount.textContent!==table.dataset.totalRows) {
       directoryRowCount.textContent=table.dataset.totalRows;
     }
-    table.setAttribute('aria-rowcount',String(ids.length+drafts.length+1));
-    drafts.forEach((row,index)=>row.setAttribute('aria-rowindex',String(ids.length+index+2)));
+    table.setAttribute('aria-rowcount',String(dataRowCount()+drafts.length+1));
+    drafts.forEach((row,index)=>row.setAttribute('aria-rowindex',String(dataRowCount()+index+2)));
     if (empty && search) {
       empty.hidden = ids.length>0 || (drafts.length>0 && !appliedSearch);
       empty.textContent = appliedSearch ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.';
@@ -89,6 +93,48 @@
       if (number<windowStartPage || number>windowEndPage) loaded.delete(number);
     }
     for(const [id,row] of cache)if(!row.isConnected&&!loaded.has(Math.floor(positions.get(String(id))/pageSize)))cache.delete(id);
+    for(const [key,row] of dayDraftRows) if(!row.isConnected) dayDraftRows.delete(key);
+  }
+  function buildDayDraft(key,slot) {
+    const row=dayDraftTemplate.cloneNode(true);
+    row.dataset.rowNumber=key;
+    row.dataset.tripDraftDate=slot.key;
+    row.setAttribute('aria-label','Новая строка на '+slot.key);
+    for (const cell of row.querySelectorAll('td[data-edit-cell]')) {
+      cell.dataset.row=key;
+      cell.tabIndex=-1;
+    }
+    const date=row.querySelector('td[data-column="F"]');
+    date.dataset.readonlyCell='Дата новой строки подставляется из группы.';
+    date.setAttribute('aria-readonly','true');
+    return row;
+  }
+  function mountedDayDraft(key) {
+    const slot=dateLayout.draft(key);
+    const row=dayDraftRows.get(key) ?? buildDayDraft(key,slot);
+    row.dataset.tripDraftAnchor=String(slot.anchor);
+    row.setAttribute('aria-rowindex',String(dateLayout.rowIndex(key)+2));
+    dayDraftRows.set(key,row);
+    return row;
+  }
+  function animateDayRefills() {
+    if (!dayRefills.size) return;
+    const painted=new Set();
+    for (const [key,row] of dayDraftRows) {
+      const slot=dateLayout.draft(key);
+      const count=slot ? dayRefills.get(slot.key) : null;
+      if (!row.isConnected || !count || slot.slot<2-count) continue;
+      row.removeAttribute('data-trip-draft-arrival');
+      void row.offsetWidth;
+      row.dataset.tripDraftArrival='';
+      const animation=row.getAnimations().find(item=>item.animationName==='vitrine-trip-draft-arrival');
+      if (animation) animation.finished.then(
+        ()=>{delete row.dataset.tripDraftArrival;},()=>{}
+      );
+      else delete row.dataset.tripDraftArrival;
+      painted.add(slot.key);
+    }
+    for (const key of painted) dayRefills.delete(key);
   }
   async function fetchRows(wanted, search){
     const url=window.VitrineGridScope.url('/api/vitrine/rows',{rowFilters:true,ids:wanted,search});
@@ -240,12 +286,12 @@
         }
       }
       const mountStarted=performance.now();
-      window.VitrineDisplay?.prepareRows(rows.filter(row=>!row.isConnected));
-      rows.forEach((row,index)=>row.setAttribute('aria-rowindex',String(start+index+2)));
+      rows.forEach((row,index)=>row.setAttribute('aria-rowindex',String((dateLayout?.rowIndex(row.dataset.rowNumber)??start+index)+2)));
       stamp(top,startPadding+windowOffset(start));stampEnd(end);
       if(top.parentElement!==body)body.prepend(top);
       if(bottom.parentElement!==body)body.append(bottom);
-      const mounted=dateLayout?.rowsWithDividers(rows,start,body,visibleColumns().length+1)??rows;
+      const mounted=dateLayout?.rowsWithDividers(rows,start,body,visibleColumns().length+1,mountedDayDraft)??rows;
+      window.VitrineDisplay?.prepareRows(mounted.filter(row=>row.hasAttribute('data-vitrine-row')&&!row.isConnected));
       const keep=new Set(mounted);
       for(const row of body.querySelectorAll('[data-vitrine-row],[data-trip-date-divider]'))if(!keep.has(row))row.remove();
       let cursor=top.nextSibling;
@@ -257,6 +303,7 @@
       }
       window.dispatchEvent(new CustomEvent('vitrine-rows-updated'));
       paintInsertedTrips();
+      animateDayRefills();
       if(plan?.focus && (!plan.focus.onClear || search?.value.trim()==='')) {
         const row=cache.get(plan.focus.row);
         const cell=(plan.focus.column && row?.querySelector('td[data-column="'+plan.focus.column+'"]:not([hidden])'))
@@ -293,13 +340,20 @@
   window.addEventListener('vitrine-statuses-updated',()=>loaded.clear());
   window.addEventListener('vitrine-cell-selected',()=>{navigation=null;});
   window.addEventListener('vitrine-columns-updated',()=>{for(const spacer of [top,bottom,tail])spacer.firstElementChild.colSpan=visibleColumns().length+1;first=-1;queue();});
-  const rangeRows=()=>[...ids.map(String),...drafts.map(row=>row.dataset.rowNumber)];
+  const rangeRows=()=>[...(dateLayout?.rowKeys??ids.map(String)),...drafts.map(row=>row.dataset.rowNumber)];
   function cachedRangeRows(keys){
-    return keys.map(key=>Number(key)>0 ? cache.get(Number(key)) : drafts.find(row=>row.dataset.rowNumber===key));
+    return keys.map(key=>Number(key)>0 ? cache.get(Number(key))
+      : dayDraftRows.get(key) ?? drafts.find(row=>row.dataset.rowNumber===key));
   }
   async function readRangeRows(keys){
     const version=manifestVersion;
-    const rows=cachedRangeRows(keys);
+    const rows=cachedRangeRows(keys).map((row,index)=>{
+      const slot=dateLayout?.draft(keys[index]);
+      if (row || !slot) return row;
+      const draft=buildDayDraft(keys[index],slot);
+      draft.dataset.tripDraftAnchor=String(slot.anchor);
+      return draft;
+    });
     const missing=keys.filter((_,index)=>!rows[index]).map(Number);
     const fresh=new Map();
     for (let offset=0;offset<missing.length;offset+=100) {
@@ -307,16 +361,16 @@
       for (const row of page.rows) fresh.set(row.dataset.rowNumber,row);
     }
     if (version!==manifestVersion) throw new Error('Состав таблицы изменился. Выберите диапазон заново.');
-    const resolved=cachedRangeRows(keys).map((row,index)=>row??fresh.get(keys[index]));
+    const resolved=cachedRangeRows(keys).map((row,index)=>row??rows[index]??fresh.get(keys[index]));
     if (resolved.some(row=>!row)) throw new Error('Не удалось загрузить диапазон таблицы.');
     return resolved;
   }
   let rangeReveal=0;
   async function revealRangeEnd(key,column){
     const ticket=++rangeReveal;
-    const index=positions.get(key);
+    const index=positions.get(key) ?? dateLayout?.draft(key)?.index;
     if (index!==undefined) {
-      ensureVisible(index);
+      ensureVisible(index,key);
       await render();
     }
     if (ticket!==rangeReveal) return;
@@ -333,8 +387,9 @@
     }
   }
   function visibleColumns(){return Array.from(table.querySelectorAll('thead th[data-column]:not([hidden])')).map(node=>node.dataset.column);}
-  function ensureVisible(index){
-    const available=availableHeight(),offset=rowOffset(index);
+  function ensureVisible(index,key){
+    const available=availableHeight();
+    const offset=dateLayout?.draft(key) ? startPadding+dateLayout.draftUnits(key)*height : rowOffset(index);
     if(offset<scroll.scrollTop)scroll.scrollTop=offset;
     else if(offset+height>scroll.scrollTop+available)scroll.scrollTop=Math.max(0,offset+height-available);
   }
@@ -343,37 +398,42 @@
       window.VitrineGrid.select(cell);cell.focus({preventScroll:true});window.VitrineGrid.reveal(cell);action?.(cell);
       return cell;
     }
-    const index=positions.get(cell.dataset.row);if(index===undefined)return null;
+    const key=cell.dataset.row;
+    const index=positions.get(key) ?? dateLayout?.draft(key)?.index;
+    if(index===undefined)return null;
     const ticket=++navigationGeneration;
     await page(Math.floor(index/pageSize));if(ticket!==navigationGeneration)return null;
-    ensureVisible(index);await render();if(ticket!==navigationGeneration)return null;
-    const target=cache.get(ids[index])?.querySelector('td[data-column="'+cell.dataset.column+'"]:not([hidden])');
+    ensureVisible(index,key);await render();if(ticket!==navigationGeneration)return null;
+    const target=(dayDraftRows.get(key)??cache.get(Number(key)))?.querySelector('td[data-column="'+cell.dataset.column+'"]:not([hidden])');
     if(target){window.VitrineGrid.select(target);target.focus({preventScroll:true});window.VitrineGrid.reveal(target);action?.(target);}
     return target;
   }
   function go(cell,r,c){
-    const columns=visibleColumns();if(r<0||r>=ids.length+drafts.length||c<0||c>=columns.length)return false;
-    if(r>=ids.length){
-      const target=drafts[r-ids.length].querySelector('td[data-column="'+columns[c]+'"]');
+    const columns=visibleColumns(),count=dataRowCount();if(r<0||r>=count+drafts.length||c<0||c>=columns.length)return false;
+    if(r>=count){
+      const target=drafts[r-count].querySelector('td[data-column="'+columns[c]+'"]');
       if(!target)return false;
       navigationGeneration++;
       activate(target);
       return true;
     }
+    const key=dateLayout?.rowKeys[r] ?? String(ids[r]);
+    const index=positions.get(key) ?? dateLayout?.draft(key)?.index;
+    if(index===undefined)return false;
     navigation={r,c};const ticket=++navigationGeneration;
-    const ready=cache.get(ids[r])?.querySelector('td[data-column="'+columns[c]+'"]');
+    const ready=(dayDraftRows.get(key)??cache.get(Number(key)))?.querySelector('td[data-column="'+columns[c]+'"]');
     if(ready?.isConnected){
-      window.VitrineGrid.select(ready);ready.focus({preventScroll:true});ensureVisible(r);
+      window.VitrineGrid.select(ready);ready.focus({preventScroll:true});ensureVisible(index,key);
       if(ready.dataset.column!==cell.dataset.column)window.VitrineGrid.reveal(ready);
-      const offset=r%pageSize;
-      const ahead=Math.floor(r/pageSize)+(offset>pageSize*.6?1:offset<pageSize*.4?-1:0);
+      const offset=index%pageSize;
+      const ahead=Math.floor(index/pageSize)+(offset>pageSize*.6?1:offset<pageSize*.4?-1:0);
       if(ahead>=0&&ahead*pageSize<ids.length&&!loaded.has(ahead))page(ahead).catch(()=>{});
       return true;
     }
     (async()=>{
-      await page(Math.floor(r/pageSize));if(ticket!==navigationGeneration)return;
-      ensureVisible(r);await render();if(ticket!==navigationGeneration)return;
-      const target=cache.get(ids[r])?.querySelector('td[data-column="'+columns[c]+'"]');
+      await page(Math.floor(index/pageSize));if(ticket!==navigationGeneration)return;
+      ensureVisible(index,key);await render();if(ticket!==navigationGeneration)return;
+      const target=(dayDraftRows.get(key)??cache.get(Number(key)))?.querySelector('td[data-column="'+columns[c]+'"]');
       if(target){window.VitrineGrid.select(target);target.focus({preventScroll:true});window.VitrineGrid.reveal(target);}
     })().catch(report);return true;
   }
@@ -432,8 +492,13 @@
   }
   window.addEventListener('vitrine-editor-closed',()=>{for(const row of cache.values())for(const patch of catalogPatches.values())applyCatalogPatch(row,patch);});
   let refreshTask=null,refreshAgain=false,manifestDeferred=false,createdFocus=null,keepAbsoluteTop=false;
-  async function refreshManifest({focus=null,keepViewport=false,removedRow=null}={}){
+  async function refreshManifest({focus=null,keepViewport=false,removedRow=null,filledDrafts=[]}={}){
     keepAbsoluteTop ||= keepViewport;
+    for (const key of filledDrafts) {
+      const slot=dateLayout?.draft(String(key));
+      if (!slot) continue;
+      dayRefills.set(slot.key,Math.min(2,(dayRefills.get(slot.key)??0)+1));
+    }
     if (removedRow!==null && positions.has(String(removedRow))) removedRows.add(Number(removedRow));
     if(focus) {
       const headBottom=table.tHead.getBoundingClientRect().bottom;
@@ -466,7 +531,10 @@
         const preserveViewport=keepAbsoluteTop;
         keepAbsoluteTop=false;
         if(!searchChanged && !filterChanged && !target && next.join(',')===ids.join(',')
-          && (!dateLayout || dateLayout.agrees(nextDateGroups)))continue;
+          && (!dateLayout || dateLayout.agrees(nextDateGroups))) {
+          animateDayRefills();
+          continue;
+        }
         const anchorIndex=Math.max(0,Math.min(ids.length-1,viewportIndex()));
         const anchor=ids[anchorIndex],offset=scroll.scrollTop-rowOffset(anchorIndex);
         const chosen=table.querySelector('td.is-current-cell'),chosenRow=chosen?.dataset.row,chosenColumn=chosen?.dataset.column;
@@ -500,7 +568,7 @@
           if(candidate)window.VitrineGrid?.select(candidate);
         }
       }while(refreshAgain);
-    })().finally(()=>{refreshTask=null;createdFocus=null;});
+    })().finally(()=>{refreshTask=null;createdFocus=null;dayRefills.clear();});
     return refreshTask;
   }
   let tripDateFrame=0;
@@ -594,11 +662,11 @@
     shortDriverName,
     resolveCell:cell=>cache.get(Number(cell.dataset.row))?.querySelector('td[data-column="'+cell.dataset.column+'"]')||cell,
     move(cell,dr,dc,wrap){const columns=visibleColumns();let r=(navigation?.r??rowIndex(cell))+dr,c=(navigation?.c??columns.indexOf(cell.dataset.column))+dc;if(wrap&&c<0){r--;c=columns.length-1;}if(wrap&&c>=columns.length){r++;c=0;}return go(cell,r,c);},
-    edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?ids.length+drafts.length-1:0):rowIndex(cell),end?columns.length-1:0);},
+    edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?dataRowCount()+drafts.length-1:0):rowIndex(cell),end?columns.length-1:0);},
     get total(){return ids.length;}
   });
   if(tripDraftBody)tripDraftBody.append(tail);
-  if(dateLayout && initial.length) body.replaceChildren(...dateLayout.rowsWithDividers(initial,initialStart,body,visibleColumns().length+1));
+  if(dateLayout && initial.length) body.replaceChildren(...dateLayout.rowsWithDividers(initial,initialStart,body,visibleColumns().length+1,mountedDayDraft));
   if(openUnfiltered && initial.length){
     stamp(top,startPadding+windowOffset(initialStart));
     stampEnd(ids.length);
