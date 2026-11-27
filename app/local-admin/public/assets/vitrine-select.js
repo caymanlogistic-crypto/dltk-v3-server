@@ -17,7 +17,8 @@
   window.VitrineSelect = Object.freeze({
     create(sourceOptions, initialValue = '', {searchable = false, searchKey = value => value, showLabels = false, showColorSwatches = false} = {}) {
       const withSwatches = showColorSwatches || sourceOptions.some(option => Object.hasOwn(option, 'color'));
-      const options = sourceOptions.map(option => ({value:String(option.value ?? ''),label:String(option.label ?? option.value ?? ''),color:option.color,search:String(option.search ?? '')}));
+      const normalizeOptions = items => items.map(option => ({value:String(option.value ?? ''),label:String(option.label ?? option.value ?? ''),color:option.color,search:String(option.search ?? '')}));
+      let options = normalizeOptions(sourceOptions);
       const id = 'vitrine-select-' + (++sequence);
       const element = document.createElement('div');
       element.className = 'custom-select vitrine-select';
@@ -52,7 +53,7 @@
       const normalize = value => value.trim().replace(/\s+/g,' ').toLocaleLowerCase('ru').replace(/ё/g,'е');
       let opened = false, activeIndex = -1, typed = '', typedAt = 0, filtering = false;
       let visible = options.map((_,index)=>index);
-      const nodes = options.map((option,index) => {
+      const renderOptions = () => options.map((option,index) => {
         const node = document.createElement('div'); node.className = 'cs-option'; node.id = id + '-' + index;
         node.setAttribute('role','option'); node.setAttribute('aria-selected',String(displayValue(option) === field.value));
         if (withSwatches) {
@@ -68,6 +69,7 @@
         node.addEventListener('pointermove',() => activate(index));
         list.append(node); return node;
       });
+      let nodes = renderOptions();
       function selectedIndex() { return options.findIndex(option => displayValue(option) === field.value); }
       function activate(index) {
         activeIndex = index;
@@ -144,11 +146,11 @@
       element.addEventListener('focusout',event => { if (!element.contains(event.relatedTarget)) close(); });
       const instance = {element,close,attached:false}; instances.add(instance);
       function resolveValue() {
-        if (field.value === initialDisplay) return String(initialValue);
         if (showLabels) {
           const selected = options[selectedIndex()];
           if (selected) return selected.value;
         }
+        if (field.value === initialDisplay) return String(initialValue);
         if (!searchable) return field.value;
         const query = field.value.trim();
         if (!query) return '';
@@ -157,7 +159,18 @@
         const matches = options.filter(option=>normalize(option.value) === normalize(query));
         return matches.length === 1 ? matches[0].value : null;
       }
-      return {element,field,resolveValue};
+      function replaceOptions(items, selectedValue) {
+        close();
+        options = normalizeOptions(items);
+        const selected = options.find(option=>option.value===selectedValue);
+        if (selected) field.value = displayValue(selected);
+        list.replaceChildren();
+        nodes = renderOptions();
+        visible = options.map((_,index)=>index);
+        field.placeholder = options.find(option => option.value === '')?.label || 'Не выбран';
+        empty.hidden = true;
+      }
+      return {element,field,resolveValue,replaceOptions};
     }
   });
 })();

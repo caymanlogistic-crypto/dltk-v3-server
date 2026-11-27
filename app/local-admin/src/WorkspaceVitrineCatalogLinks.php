@@ -132,19 +132,19 @@ function vitrine_catalog_options(array $t,array $links): array {
     $boundChoices=[];$boundCatalogs=[];$catalogVisibility=[];$entriesByName=[];
     $catalogIds=array_column($links,'id')?:[0];
     $catalogSlots=implode(',',array_fill(0,count($catalogIds),'?'));
-    $partyOptions=[];
-    foreach(wquery("SELECT b.field_key,c.id AS catalog_id,e.id AS entry_id,e.name,e.normalized,e.active FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id LEFT JOIN catalog_entries e ON e.catalog_id=c.id AND (e.active=TRUE OR c.kind IN ('clients','terminals-main')) WHERE b.table_id=? AND b.field_key NOT IN ('','A') AND c.kind<>'unload-points' AND (?=TRUE OR c.id IN ($catalogSlots)) ORDER BY e.id",[$t['id'],(int)$t['is_demo'],...$catalogIds])->fetchAll() as $option){
+    foreach(wquery("SELECT b.field_key,c.id AS catalog_id,e.id AS entry_id,e.name,e.normalized,e.active FROM catalog_bindings b JOIN catalogs c ON c.id=b.catalog_id LEFT JOIN catalog_entries e ON e.catalog_id=c.id AND (e.active=TRUE OR c.kind IN ('clients','terminals-main')) WHERE b.table_id=? AND b.field_key NOT IN ('','A') AND c.kind<>'unload-points' AND (?=TRUE OR c.id IN ($catalogSlots)) ORDER BY e.name,e.id",[$t['id'],(int)$t['is_demo'],...$catalogIds])->fetchAll() as $option){
         $key=$option['field_key'];$catalogId=(int)$option['catalog_id'];
+        $entryId=(int)$option['entry_id'];
         $linked=($links[$key]['id']??0)===$catalogId;
         if ($linked && $links[$key]['kind']==='edo-counterparties') {
             if (!($catalogVisibility[$catalogId]??=workspace_can('catalog',(string)$catalogId,'view',$t['id']))) continue;
             $boundCatalogs[$key]=$catalogId;
             $boundChoices[$key]??=[];
-            $profile=workspace_edo_party_profiles($catalogId)[(int)$option['entry_id']]??[];
+            $profile=workspace_edo_party_profiles($catalogId)[$entryId]??[];
             if ($option['active'] && ($profile[$links[$key]['role']]??'')==='Да') {
                 $label=workspace_edo_party_label($option['name'],$profile);
-                $entriesByName[$key][vitrine_catalog_key($label)]=(int)$option['entry_id'];
-                $partyOptions[$key][]=$label;
+                $entriesByName[$key][vitrine_catalog_key($label)]=$entryId;
+                $boundChoices[$key][$entryId]=$label;
             }
             continue;
         }
@@ -153,7 +153,7 @@ function vitrine_catalog_options(array $t,array $links): array {
         if(!$linked&&(!$t['is_demo']||!$option['active']))continue;
         $boundCatalogs[$key]=$catalogId;
         $boundChoices[$key]??=[];
-        if($option['active'])$boundChoices[$key][]=$option['name'];
+        if($option['active'])$boundChoices[$key][$entryId]=$option['name'];
     }
     if (isset($links['O'],$boundChoices['O'])) {
         $vehicles=workspace_fleet_entries('fleet-vehicles',$links['O']['id']);
@@ -167,16 +167,17 @@ function vitrine_catalog_options(array $t,array $links): array {
             $trailer=$vehicle['trailer_plate']??'';
             $value=workspace_fleet_trip_vehicle_label($plate,$trailer);
             $name=$canViewDriver ? trim(implode(' ',[$vehicle['surname']??'',$vehicle['given_name']??'',$vehicle['patronymic']??''])) : '';
-            $boundChoices['O'][]=['value'=>$value,'driver'=>$name,
+            $boundChoices['O'][(int)$vehicle['id']]=['value'=>$value,'driver'=>$name,
                 'search'=>workspace_fleet_plate_key($plate).' '.workspace_fleet_plate_key($trailer)];
         }
     }
     foreach(['B','E'] as $key){
         if(isset($links[$key]))$entriesByName[$key]=($entriesByName[$key]??[])+workspace_client_catalog_aliases($links[$key]['id']);
     }
-    foreach ($partyOptions as $key=>$labels) {
-        natcasesort($labels);
-        $boundChoices[$key]=array_values($labels);
+    foreach ($boundChoices as $key=>$options) {
+        $entries=[];
+        foreach ($options as $id=>$option) $entries[]=['id'=>$id,'option'=>$option];
+        $boundChoices[$key]=array_column(workspace_directory_order_entries($entries,$boundCatalogs[$key]),'option');
     }
     return [$boundChoices,$boundCatalogs,$entriesByName];
 }

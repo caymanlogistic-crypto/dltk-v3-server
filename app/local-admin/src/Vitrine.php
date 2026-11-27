@@ -5,6 +5,7 @@ require_once __DIR__.'/Format.php';
 require_once __DIR__.'/VitrineClipboard.php';
 
 require_once __DIR__.'/WorkspaceVitrine.php';
+require_once __DIR__.'/WorkspaceVitrineQuickCatalog.php';
 require_once __DIR__.'/WorkspaceDirectoryExcel.php';
 require_once __DIR__.'/WorkspaceClientCatalogGrid.php';
 
@@ -28,6 +29,7 @@ function vitrine_edit_row_ids(array $body): array {
 
 function vitrine_rows_endpoint(): never {
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') throw new ApiError('method','Доступен только просмотр.',405);
+    if (isset($_GET['quickOptions'])) vitrine_quick_catalog_options();
     $value = $_GET['ids'] ?? '';
     if (!is_string($value) || !preg_match('/^\d+(?:,\d+){0,99}$/D',$value)) throw new ApiError('invalid_rows','Запрашивайте от 1 до 100 строк.');
     $ids = array_map('intval',explode(',',$value));
@@ -143,6 +145,7 @@ function vitrine_paste_check(): never {
 }
 
 function vitrine_save_cell(): never {
+    if (isset($_GET['quickOrder'])) vitrine_quick_catalog_reorder();
     $directory = vitrine_directory_requested();
     if ($directory !== null && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $directoryBody = wbody();
@@ -267,6 +270,11 @@ function render_vitrine(): void {
     $error = null;
     $data = ['columns'=>[], 'rows'=>[], 'lastSuccess'=>null, 'sheetTitle'=>'ВЫВОЗ'];
     $directory = vitrine_directory_requested();
+    $embeddedCatalog = isset($_GET['quickCatalog']);
+    if ($embeddedCatalog) {
+        vitrine_quick_catalog_validate_directory($_GET['quickCatalog'],$directory);
+        app_frame_headers(true);
+    }
     if ($directory==='entries' && is_scalar($_GET['id']??null)) {
         $kind=wquery('SELECT kind FROM catalogs WHERE id=?',[(int)$_GET['id']])->fetchColumn();
         if (is_string($kind) && workspace_fleet_retired_kind($kind)) {

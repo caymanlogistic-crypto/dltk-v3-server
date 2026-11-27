@@ -1,11 +1,13 @@
 <?php
 declare(strict_types=1);
+$dragGrip = '<svg aria-hidden="true" class="vitrine-drag-grip" viewBox="0 0 16 16"><circle cx="5" cy="4" r="1.2"/><circle cx="11" cy="4" r="1.2"/><circle cx="5" cy="8" r="1.2"/><circle cx="11" cy="8" r="1.2"/><circle cx="5" cy="12" r="1.2"/><circle cx="11" cy="12" r="1.2"/></svg>';
 $escape = static fn(mixed $value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 $currentUser=workspace_current_user();
 $directory = $directory ?? null;
 $clientCatalog = $directory === 'clients';
 $catalogGrid = $data['catalogGrid'] ?? null;
 $canManageDirectory = $catalogGrid['canEdit'] ?? false;
+$canReorderCatalogRows = $embeddedCatalog && $canManageDirectory && !in_array($_GET['archive']??null,['1','all'],true);
 $canManageRows = $canManageDirectory || (!$directory && !empty($data['table']['id']) &&
     workspace_can('table',(string)$data['table']['id'],'edit',$data['table']['id']));
 $rowArchive = $catalogGrid['archive'] ?? (($_GET['archive']??null)==='1');
@@ -25,6 +27,7 @@ $canOpenStatuses = !$directory || in_array('vyvoz',array_column($workspaceTables
 $canViewClientColors = workspace_can('system','client-order-statuses','view');
 $preferences=empty($error) ? workspace_preferences($currentTable) : [];
 $isAvtovyvoz = !$directory && $currentTable['slug']==='vyvoz';
+$quickCatalogs = $isAvtovyvoz && !$rowArchive && empty($error) ? vitrine_quick_catalogs($currentTable) : [];
 $loginArrival = $isAvtovyvoz && !$rowArchive && empty($error) && ($_GET['from']??null)==='login';
 $arrivalBlocking = $loginArrival ? ' blocking="render"' : '';
 $defaultGridWidth = $currentTable['defaultGridWidth'] ?? 'full';
@@ -44,6 +47,10 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="csrf-token" content="<?= $escape(csrf_token()) ?>">
   <meta id="vitrine-status-data" name="vitrine-status-data" content="<?= $escape(json_encode(['statuses'=>$data['statuses'] ?? [], 'palette'=>$data['palette'] ?? []], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE)) ?>">
   <meta id="vitrine-order-statuses" content="<?= $escape(wjson(workspace_active_client_order_statuses())) ?>">
+  <?php if ($quickCatalogs): ?>
+  <meta id="vitrine-quick-catalogs" content="<?= $escape(wjson($quickCatalogs)) ?>">
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-quick-catalog.js')) ?>"></script>
+  <?php endif; ?>
   <?php if (($currentTable['catalogKind']??null)==='fleet-vehicles'): ?>
   <meta id="vitrine-fleet-edit-groups" content="<?= $escape(wjson(workspace_fleet_edit_groups())) ?>">
   <?php endif; ?>
@@ -80,6 +87,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-trip-driver.js')) ?>"></script>
   <?php endif; ?>
   <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <?php if ($canReorderCatalogRows): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-order.js')) ?>"></script>
+  <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-grid.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (!$directory): ?>
@@ -113,7 +123,8 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
 </head>
 <body class="vitrine<?= $clientCatalog ? ' vitrine-catalog-page' : '' ?>"<?php if ($directory): ?> data-vitrine-catalog="<?= $escape($directory) ?>"<?php endif; ?> data-workspace-user="<?= (int)$currentUser['id'] ?>" data-workspace-table="<?= $escape($currentTable['slug']) ?>">
 <a class="vitrine-skip" href="#workspace">К таблице</a>
-<div class="app app--workspace">
+<div class="app app--workspace<?= $embeddedCatalog ? ' vitrine-embedded-catalog' : '' ?>">
+  <?php if (!$embeddedCatalog): ?>
   <header class="vitrine-topbar">
     <a class="sidebar-brand vitrine-brand" href="<?= htmlspecialchars(app_url_path('/vitrine'),ENT_QUOTES,'UTF-8') ?>"><span class="logo-mark" aria-hidden="true"></span><span class="brand-name">ЛК ДЛТК</span></a>
     <nav class="vitrine-topnav" aria-label="Основная навигация">
@@ -187,6 +198,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
       </details>
     </nav>
   </header>
+  <?php endif; ?>
   <main class="content ui-detail-card" id="workspace" tabindex="-1">
     <?php if (!empty($error)): ?>
     <section class="vitrine-message" role="alert"><h2>Не удалось загрузить таблицу</h2><p><?= $escape($error) ?></p><p>Обновите страницу, чтобы повторить загрузку.</p></section>
@@ -209,7 +221,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
     if (in_array(true,array_column($columns,'tripDriverCard'),true)) require __DIR__.'/vitrine-trip-driver-dialog.php'; ?>
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
-      <div class="table-scroll vitrine-table-scroll" tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
+      <div class="table-scroll vitrine-table-scroll"<?= $canReorderCatalogRows ? " data-quick-row-order" : "" ?> tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
         <table class="table vitrine-table<?= !empty($catalogGrid['unloadPoints']) ? ' vitrine-unload-points' : '' ?>" data-freeze-columns<?= $isAvtovyvoz ? ' data-row-page-size="'.WORKSPACE_AVTOVYVOZ_PAGE_SIZE.'"'.(!$rowArchive ? ' data-open-at-last-row' : '') : '' ?>>
           <caption class="vitrine-sr-only"><?php if ($directory): ?>Справочник «<?= $escape($currentTable['title']) ?>»<?php else: ?>Последние непустые строки листа <?= $escape($data['sheetTitle'] ?? 'ВЫВОЗ') ?>. Все исходные столбцы.<?php endif; ?></caption>
           <colgroup><col class="vitrine-row-column"><?php foreach ($columns as $column): ?><col class="vitrine-data-column<?= $columnClass($column) ?>" data-column="<?= $escape($column['letter']) ?>"><?php endforeach; ?></colgroup>
@@ -225,7 +237,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 18 18M10.6 10.7a2 2 0 0 0 2.7 2.7M9.2 5.3a10.8 10.8 0 0 1 2.8-.4c6 0 10 7.1 10 7.1a17.4 17.4 0 0 1-2.7 3.4M6.3 6.3A18.3 18.3 0 0 0 2 12s4 7.1 10 7.1c1.6 0 3-.5 4.3-1.2"/></svg>
                   </button>
                   <button type="button" class="display-column-drag" data-column-drag aria-label="<?= $escape('Переместить столбец '.$column['letter'].' '.$column['label']) ?>" aria-keyshortcuts="ArrowLeft ArrowRight">
-                    <svg aria-hidden="true" viewBox="0 0 16 16" fill="currentColor"><circle cx="5" cy="4" r="1.2"/><circle cx="11" cy="4" r="1.2"/><circle cx="5" cy="8" r="1.2"/><circle cx="11" cy="8" r="1.2"/><circle cx="5" cy="12" r="1.2"/><circle cx="11" cy="12" r="1.2"/></svg>
+                    <?= $dragGrip ?>
                   </button>
                   <button type="button" class="display-column-pin" data-column-pin aria-pressed="false" aria-label="<?= $escape('Закрепление столбца '.$column['letter'].' '.$column['label']) ?>">
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5m-7-5v-1a2 2 0 0 1 1.1-1.8l1.8-.9A2 2 0 0 0 9 11.5V6H8a2 2 0 0 1 0-4h8a2 2 0 0 1 0 4h-1v5.5a2 2 0 0 0 1.1 1.8l1.8.9A2 2 0 0 1 19 16v1z"/></svg>
@@ -240,10 +252,21 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           </tbody>
           <?php if ($showDraftRows || $tripDraft) require __DIR__.'/vitrine-drafts.php'; ?>
         </table>
+        <?php if ($canReorderCatalogRows): ?>
+        <template id="vitrine-row-drag-template">
+          <button type="button" class="vitrine-cell-icon" draggable="true" data-quick-row-drag aria-keyshortcuts="ArrowUp ArrowDown"><?= $dragGrip ?></button>
+        </template>
+        <?php endif; ?>
         <div class="vitrine-message vitrine-empty" id="vitrine-empty" <?= count($rows) || $tripDraft || ($showDraftRows && $catalogGrid['search'] === '') ? 'hidden' : '' ?> role="status"><?= ($catalogGrid ? $catalogGrid['search'] !== '' : count($rows) > 0) ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.' ?></div>
       </div>
     </section>
     </div>
+    <?php if ($quickCatalogs): ?>
+    <dialog class="vitrine-catalog-dialog vitrine-quick-catalog" data-vitrine-quick-catalog aria-label="Быстрое редактирование">
+      <iframe title="Справочник"></iframe>
+      <footer class="modal-foot"><button type="button" class="btn btn-secondary" data-quick-close autofocus>Закрыть</button></footer>
+    </dialog>
+    <?php endif; ?>
     <?php endif; ?>
   </main>
 </div>
