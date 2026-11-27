@@ -156,7 +156,8 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
         }
         if ($kind==='carriers') {
             $payload['carrierDetails']=workspace_carrier_details(['B'=>$values['B'],'edoId'=>$values['C']]);
-            $payload['logist']=workspace_client_validate_manager($values['E']);
+            [$payload['logist']]=workspace_carrier_logist_input((int)$schema['id'],(int)($old['id']??0),
+                workspace_client_validate_manager($values['E']));
         }
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
         if ($kind==='status' || $kind==='order-statuses' || (workspace_catalog_has_palette($kind) && $values['B']!=='')) {

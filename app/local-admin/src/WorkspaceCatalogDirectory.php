@@ -417,6 +417,9 @@ function workspace_catalog_directory_edit(array $body, bool $pasteCheck = false)
     } elseif ($kind==='clients' && isset(WORKSPACE_CLIENT_REQUISITE_LABELS[$column])) {
         $payload['clientRequisites']=workspace_client_validate_requisites([$column=>$value]);
         $value=$payload['clientRequisites'][$column];
+    } elseif ($kind==='carriers' && $column==='E') {
+        [$value]=workspace_carrier_logist_input($id,(int)$entry['id'],workspace_client_validate_manager($value));
+        $payload['logist']=$value;
     } else $payload[$kind === 'clients' ? 'manager' : 'logist'] = $value = workspace_client_validate_manager($value);
     if ($pasteCheck) return ['accepted'=>true];
     $baseHash = workspace_catalog_directory_hash($id,$body['row']);

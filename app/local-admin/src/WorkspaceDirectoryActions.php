@@ -194,6 +194,11 @@ function workspace_assert_employee_unused(array $employee): void {
         if ($accounts && $catalog['kind']==='clients') continue;
         $assignments = $catalog['kind'] === 'clients' ? workspace_client_manager_values((int)$catalog['id'])
             : workspace_client_catalog_metadata('catalog_logists_'.$catalog['id']);
+        $links=$catalog['kind']==='carriers' ? workspace_carrier_logist_accounts((int)$catalog['id']) : [];
+        foreach ($links as $carrierId=>$accountId) {
+            if ((int)$accountId===$employee['id'] && !workspace_row_deleted('catalog_deleted_client_',(int)$carrierId)) $count++;
+            unset($assignments[$carrierId]);
+        }
         foreach ($assignments as $name) if (is_string($name) && in_array(vitrine_status_key($name),$names,true)) $count++;
     }
     if ($count) throw new ApiError('entry_in_use','Сотрудник указан в справочниках клиентов или перевозчиков. Назначений — '.$count.'. Удалить его нельзя.',409);

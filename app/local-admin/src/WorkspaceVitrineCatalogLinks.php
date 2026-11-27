@@ -68,6 +68,7 @@ function vitrine_bound_catalog_menu(array $tables): array {
 
 function vitrine_catalog_values(array $link): array {
     if($link['kind']==='clients')return workspace_client_manager_values($link['id']);
+    if($link['kind']==='carriers')return workspace_carrier_logist_values($link['id']);
     if ($link['kind']==='edo-counterparties') {
         return array_map(static fn(array $profile): string=>workspace_carrier_edo_operator($profile['F']),workspace_edo_party_profiles($link['id']));
     }
