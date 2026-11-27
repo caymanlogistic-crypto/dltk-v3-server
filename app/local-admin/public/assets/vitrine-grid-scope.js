@@ -23,6 +23,9 @@
       }
     }
     if (ids) params.set('ids', ids.join(','));
+    if (path === '/api/vitrine/rows' && document.querySelector('.vitrine-table[data-client-requisites]')) {
+      params.set('clientRequisites','1');
+    }
     if (fleetDocuments) params.set('fleetDocuments','1');
     if (tripDriver) params.set('tripDriver','1');
     const endpoint = path + '?' + params;

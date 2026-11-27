@@ -14,7 +14,7 @@ $searchPlaceholder = match ($directory) {
     'entries'=>'Поиск по справочнику',
     default=>'Название статуса',
 };
-$searchLabel = $directory === 'clients' ? 'Поиск по клиенту или менеджеру' : 'Поиск в справочнике';
+$searchLabel = $directory === 'clients' ? 'Поиск по клиенту, ИНН или менеджеру' : 'Поиск в справочнике';
 $unloadClientName = !empty($catalogGrid['unloadPoints']) ? ($catalogGrid['clientFilter']['name']??null) : null;
 ?>
 <section class="vitrine-catalog-toolbar" aria-label="Управление справочником"<?= isset($catalogGrid['id']) ? ' data-catalog-id="'.(int)$catalogGrid['id'].'"' : '' ?>>

@@ -65,6 +65,8 @@ function workspace_directory_excel_entries(array $schema): array {
         'unload-points'=>workspace_unload_points($id),
         default=>[],
     };
+    $clientRequisites=$kind==='clients' ? workspace_client_requisites($id) : [];
+    $emptyClientRequisites=array_fill_keys(array_keys(WORKSPACE_CLIENT_REQUISITE_LABELS),'');
     $palette=array_column(workspace_palette(),'name','fill');
     foreach ($entries as $entryId=>&$entry) {
         $detail=$secondary[$entryId]??null;
@@ -75,7 +77,7 @@ function workspace_directory_excel_entries(array $schema): array {
         $entry['detail']=$detail;
         $base=['A'=>$entry['name']];
         $entry['values']=match($kind) {
-            'clients'=>$base+['B'=>$detail??''],
+            'clients'=>$base+['B'=>$detail??'']+($clientRequisites[$entryId]??[])+$emptyClientRequisites,
             'carriers'=>$base+($detail??workspace_carrier_values([])),
             'edo-operators'=>workspace_edo_operator_values($entry),
             'edo-counterparties'=>workspace_edo_party_values($entry['name'],$detail??[]),
@@ -99,6 +101,7 @@ function workspace_directory_excel_header(array $labels,array $sheet,string $kin
     if (in_array('Клиент',$labels,true) && in_array('Менеджер',$labels,true)) $allowed[]='Точки выгрузки';
     if ($kind==='fleet-vehicles') $allowed[]='Тип транспорта';
     $required=array_diff($labels,['Пароль','Доп. телефон']);
+    if ($kind==='clients') $required=array_diff_key($required,WORKSPACE_CLIENT_REQUISITE_LABELS);
     if ($kind==='carriers') unset($required['D']);
     if ($kind==='edo-counterparties') unset($required['E']);
     if (count($header)!==count(array_unique($header)) || array_diff($header,$allowed) ||
@@ -143,6 +146,7 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
         $payload['name']=$name;
         if ($kind==='clients') {
             $payload['manager']=workspace_client_validate_manager($values['B']);
+            $payload['clientRequisites']=workspace_client_validate_requisites($values);
             if ($payload['manager']!==($old['values']['B']??'') && workspace_manager_catalog_id()) {
                 workspace_client_manager_ids($payload['manager']);
             }
@@ -212,6 +216,11 @@ function workspace_directory_excel_plan(array $schema,array $entries,array $shee
                 if (count($matches)>1) directory_xlsx_error('Найдено несколько записей с таким названием. Укажите ID записи и её версию.');
                 $id=$matches[0]??0;
                 $old=$entries[$id]??null;
+            }
+            if ($kind==='clients' && $old) {
+                foreach (WORKSPACE_CLIENT_REQUISITE_LABELS as $column=>$label) {
+                    if (!isset($positions[$label])) $values[$column]=$old['values'][$column]??'';
+                }
             }
             if ($kind==='fleet-vehicles' && $old) {
                 if (!isset($positions[$schema['labels']['Q']])) $values['Q']=$old['values']['Q'];

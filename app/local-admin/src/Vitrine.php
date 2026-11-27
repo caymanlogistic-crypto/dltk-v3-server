@@ -54,6 +54,10 @@ function vitrine_rows_endpoint(): never {
     $data = $directory ? workspace_directory_grid_data($directory,$ids) : vitrine_data($ids,($_GET['archive']??null)==='1');
     $catalogGrid = $data['catalogGrid'] ?? null;
     $columns=$data['columns']; $rows=$data['rows'];
+    if (($data['table']['catalogKind']??null)==='clients' && ($_GET['clientRequisites']??'')!=='1') {
+        // A tab opened before the requisites columns were added still has the old headers.
+        $columns=array_filter($columns,static fn(array $column): bool=>!isset(WORKSPACE_CLIENT_REQUISITE_LABELS[$column['letter']]));
+    }
     $escape=static fn(mixed $value): string => htmlspecialchars((string)$value,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
     $columnClass=static fn(array $column): string => mb_strtolower(trim($column['label']))==='время'?' vitrine-time-column':'';
     ob_start(); require __DIR__.'/../views/vitrine-rows.php'; $html=ob_get_clean();

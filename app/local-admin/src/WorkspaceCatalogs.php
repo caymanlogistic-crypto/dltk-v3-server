@@ -52,6 +52,11 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
     }
     $hasManager=$catalog['kind']==='clients'&&array_key_exists('manager',$b);
     $manager=$hasManager?workspace_client_validate_manager($b['manager']):'';
+    $clientRequisites=[];
+    if ($catalog['kind']==='clients' && array_key_exists('clientRequisites',$b)) {
+        if (!is_array($b['clientRequisites'])) throw new ApiError('invalid_client_requisites','Проверьте реквизиты клиента.');
+        $clientRequisites=workspace_client_validate_requisites($b['clientRequisites']);
+    }
     $hasLogist=$catalog['kind']==='carriers'&&array_key_exists('logist',$b);
     $logist=$hasLogist?workspace_client_validate_manager($b['logist']):'';
     $carrierDetails=$catalog['kind']==='carriers' && isset($b['carrierDetails'])
@@ -118,6 +123,12 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
         $logistChanged=$hasLogist&&$beforeLogist!==$logist;
         $beforeManager=$old&&$hasManager?(workspace_client_manager_values($cid)[$old['id']]??''):'';
         $managerChanged=$hasManager&&$beforeManager!==$manager;
+        $beforeRequisites=array_fill_keys(array_keys(WORKSPACE_CLIENT_REQUISITE_LABELS),'');
+        if ($clientRequisites && $old) {
+            $beforeRequisites=workspace_client_catalog_metadata('client_requisites_'.$old['id']) + $beforeRequisites;
+        }
+        $afterRequisites=array_replace($beforeRequisites,$clientRequisites);
+        $requisitesChanged=$afterRequisites!==$beforeRequisites;
         $beforeCarrier=$carrierDetails!==null && $old ? workspace_carrier_entry_details((int)$old['id']) : workspace_carrier_details([]);
         if ($carrierDetails!==null) $carrierDetails['C']=$beforeCarrier['C']; // Preserve the archived source text.
         $carrierChanged=$carrierDetails!==null && $beforeCarrier!==$carrierDetails;
@@ -129,7 +140,7 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
         $beforeContainer=$containerRule!==null && $old ? workspace_container_type_profile($old['name'],
             workspace_client_catalog_metadata('container_type_rule_'.$old['id'])) : null;
         $containerChanged=$containerRule!==null && $containerRule!=$beforeContainer;
-        if($deleteReason===null&&$old&&$old['name']===$name&&$old['normalized']===$norm&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$logistChanged&&!$dropoffChanged&&!$carrierChanged&&!$ruleChanged&&!$partyChanged&&!$containerChanged){return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
+        if($deleteReason===null&&$old&&$old['name']===$name&&$old['normalized']===$norm&&$old['color']===$color&&(bool)$old['active']===$active&&!$managerChanged&&!$requisitesChanged&&!$logistChanged&&!$dropoffChanged&&!$carrierChanged&&!$ruleChanged&&!$partyChanged&&!$containerChanged){return ['id'=>(int)$old['id'],'revision'=>(int)$old['revision']];}
         if($old){wquery('UPDATE catalog_entries SET name=?,normalized=?,color=?,active=?,revision=? WHERE id=?',[$name,$norm,$color,(int)$active,$revision,$old['id']]);$id=(int)$old['id'];}
         else{wquery('INSERT INTO catalog_entries(catalog_id,name,normalized,color,active) VALUES(?,?,?,?,?)',[$cid,$name,$norm,$color,(int)$active]);$id=(int)workspace_db()->lastInsertId();}
         if($managerChanged)workspace_client_set_manager($cid,$id,$manager);
@@ -173,6 +184,12 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
                 ['container_type_rule_'.$id,wjson($containerRule)]);
             if ($before!==null) $before['containerRule']=$beforeContainer;
             $after['containerRule']=$containerRule;
+        }
+        if ($requisitesChanged) {
+            wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+                ['client_requisites_'.$id,wjson($afterRequisites)]);
+            if ($before!==null) $before['clientRequisites']=$beforeRequisites;
+            $after['clientRequisites']=$afterRequisites;
         }
         if($hasManager){
             if($before!==null)$before['manager']=$beforeManager;

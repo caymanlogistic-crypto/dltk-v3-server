@@ -81,7 +81,13 @@ function workspace_catalog_row_action(string $directory, array $body): array {
             $color=$values['B']??'';
             $payload['color']=workspace_is_document_status_catalog($kind) && $color==='' ? null : workspace_directory_color($color);
         }
-        if ($kind === 'clients' && isset($values['B'])) $payload['manager'] = $values['B'];
+        if ($kind === 'clients') {
+            if (trim($values['B']??'')!=='') $payload['manager'] = $values['B'];
+            $payload['clientRequisites']=array_filter(
+                array_intersect_key($values,WORKSPACE_CLIENT_REQUISITE_LABELS),
+                static fn(string $value): bool=>trim($value)!==''
+            );
+        }
         if ($kind==='carriers') {
             $payload['carrierDetails']=workspace_carrier_details(['B'=>$values['B']??'','edoId'=>$values['C']??'']);
             $payload['logist']=$values['E']??'';
