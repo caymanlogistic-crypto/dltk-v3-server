@@ -30,6 +30,7 @@
       const input = node('input','field-input');
       input.dataset.contactField=key; input.type=type; input.maxLength=max;
       input.value=contact[key]??''; input.readOnly=!save;
+      if (key==='phone') window.VitrineCompactInput.phone.bind(input);
       line.append(node('span','field-label',label),input);
       section.append(line);
     }

@@ -9,6 +9,26 @@
   };
   const rowControls=row=>[...row.querySelectorAll('td button')].filter(visible);
 
+  function bindCellActivation(button,activate) {
+    button.addEventListener('click',event=>{
+      if (event.detail===0) activate();
+    });
+    button.addEventListener('dblclick',activate);
+  }
+
+  function moveTab(dialog,event,hadMenu=false) {
+    const controls=[...dialog.querySelectorAll('button,input,textarea,select,a[href],[tabindex]')]
+      .filter(element=>element.tabIndex>=0 && visible(element));
+    if (!controls.length) return;
+    const current=controls.indexOf(document.activeElement);
+    const wraps=event.shiftKey ? current<=0 : current===controls.length-1;
+    if (!hadMenu && current>=0 && !wraps) return;
+    event.preventDefault();
+    const index=current<0 ? (event.shiftKey ? controls.length-1 : 0)
+      : (current+(event.shiftKey?-1:1)+controls.length)%controls.length;
+    focus(controls[index]);
+  }
+
   function bind(dialog,{rows,menu,closeMenu,isBusy,onEscape}) {
     const list=rows.closest('section');
     const listActions=()=>[...list.querySelectorAll('.vitrine-editor-actions button')].filter(visible);
@@ -21,20 +41,6 @@
     function focusFirst(fallback) {
       const cells=[...rows.querySelectorAll('td:not(:first-child) button')].filter(visible);
       return focus(cells[0]??fallback);
-    }
-    function moveTab(event) {
-      const hadMenu=!menu.hidden;
-      if (hadMenu) closeMenu(true);
-      const controls=[...dialog.querySelectorAll('button,input,textarea,select,a[href],[tabindex]')]
-        .filter(element=>element.tabIndex>=0 && visible(element));
-      if (!controls.length) return;
-      const current=controls.indexOf(document.activeElement);
-      const wraps=event.shiftKey ? current<=0 : current===controls.length-1;
-      if (!hadMenu && current>=0 && !wraps) return;
-      event.preventDefault();
-      const index=current<0 ? (event.shiftKey ? controls.length-1 : 0)
-        : (current+(event.shiftKey?-1:1)+controls.length)%controls.length;
-      focus(controls[index]);
     }
     function moveInRows(event,row,cell) {
       const column=cell.cellIndex;
@@ -60,7 +66,12 @@
         else onEscape();
         return;
       }
-      if (event.key==='Tab') { moveTab(event);return; }
+      if (event.key==='Tab') {
+        const hadMenu=!menu.hidden;
+        if (hadMenu) closeMenu(true);
+        moveTab(dialog,event,hadMenu);
+        return;
+      }
       if (isBusy() || event.ctrlKey || event.metaKey || event.altKey) return;
       if (menu.contains(event.target) && ['ArrowUp','ArrowDown','Home','End'].includes(event.key)) {
         const items=[...menu.querySelectorAll('[role="menuitem"]')].filter(visible);
@@ -100,5 +111,5 @@
     });
     return {focusFirst,focusRow};
   }
-  window.VitrineClientRelationsKeyboard=Object.freeze({bind});
+  window.VitrineClientRelationsKeyboard=Object.freeze({bind,moveTab,bindCellActivation});
 })();

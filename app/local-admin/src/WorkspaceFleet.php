@@ -22,12 +22,30 @@ function workspace_fleet_entries(string $kind,int $catalogId): array {
         ORDER BY e.name,e.id",[$catalogId])->fetchAll(),null,'id');
 }
 
-function workspace_fleet_values(string $kind,array $entry): array {
-    if ($kind==='fleet-drivers') return ['A'=>$entry['surname'],'B'=>$entry['given_name'],'C'=>$entry['patronymic'],'D'=>$entry['phone'],'E'=>$entry['additional_phone']];
-    return ['B'=>$entry['brand'],'A'=>$entry['name'],'C'=>$entry['vehicle_type'],
-        'I'=>$entry['trailer_brand']??'','H'=>$entry['trailer_plate']??'',
-        'D'=>$entry['surname']??'','E'=>$entry['given_name']??'','F'=>$entry['patronymic']??'',
-        'G'=>$entry['phone']??'','Q'=>$entry['additional_phone']??''];
+function workspace_fleet_phone_columns(string $kind): array {
+    return $kind==='fleet-drivers' ? ['D','E'] : ['G','Q'];
+}
+
+function workspace_fleet_display_values(string $kind,array $values): array {
+    foreach (workspace_fleet_phone_columns($kind) as $column) {
+        $values[$column]=workspace_phone_display($values[$column]??'');
+    }
+    if ($kind==='fleet-vehicles') {
+        $values['A']=workspace_fleet_plate_format($values['A'])??$values['A'];
+        $values['H']=workspace_fleet_plate_format($values['H'],true)??$values['H'];
+        $values['B']=mb_strtoupper($values['B']);
+        $values['I']=mb_strtoupper($values['I']);
+    }
+    return $values;
+}
+
+function workspace_fleet_values(string $kind,array $entry,bool $display=true): array {
+    $values=$kind==='fleet-drivers' ? ['A'=>$entry['surname'],'B'=>$entry['given_name'],'C'=>$entry['patronymic'],'D'=>$entry['phone'],'E'=>$entry['additional_phone']]
+        : ['B'=>$entry['brand'],'A'=>$entry['name'],'C'=>$entry['vehicle_type'],
+            'I'=>$entry['trailer_brand']??'','H'=>$entry['trailer_plate']??'',
+            'D'=>$entry['surname']??'','E'=>$entry['given_name']??'','F'=>$entry['patronymic']??'',
+            'G'=>$entry['phone']??'','Q'=>$entry['additional_phone']??''];
+    return $display ? workspace_fleet_display_values($kind,$values) : $values;
 }
 
 function workspace_fleet_driver_columns(): array {
@@ -41,20 +59,31 @@ function workspace_fleet_draft_fields(string $kind): array {
     return ['A'=>$required,'B'=>$text]+array_fill_keys([...array_keys(workspace_fleet_driver_columns()),'H','I'],$text);
 }
 
+function workspace_fleet_plate_compact(string $value): string {
+    $value=workspace_fleet_plate_reorder($value);
+    return mb_strtoupper(preg_replace('/[\s\p{Pd}]+/u','',$value)??trim($value));
+}
+
+function workspace_fleet_plate_reorder(string $value): string {
+    if (preg_match('/^\s*([АВЕІКМНОРСТХABEIKMHOPCTX]{2})\s*\p{Pd}\s*([0-9])\s+([0-9]{4})\s*$/iuD',$value,$parts)) {
+        return "$parts[1] $parts[3]-$parts[2]";
+    }
+    return $value;
+}
+
 function workspace_fleet_plate_key(string $value): string {
-    $plate=mb_strtoupper(trim($value));
-    return strtr(preg_replace('/[\s-]+/u','',$plate),[
-        'А'=>'A','В'=>'B','Е'=>'E','К'=>'K','М'=>'M','Н'=>'H','О'=>'O','Р'=>'P','С'=>'C','Т'=>'T','У'=>'Y','Х'=>'X',
+    return strtr(workspace_fleet_plate_compact($value),[
+        'А'=>'A','В'=>'B','Е'=>'E','І'=>'I','К'=>'K','М'=>'M','Н'=>'H','О'=>'O','Р'=>'P','С'=>'C','Т'=>'T','У'=>'Y','Х'=>'X',
     ]);
 }
 
-function workspace_fleet_values_validated(string $kind,array $values): array {
+function workspace_fleet_values_validated(string $kind,array $values,array $previous=[]): array {
     if ($kind==='fleet-drivers') {
         $surname=workspace_unload_text($values['A']??'',65);
         $given=workspace_unload_text($values['B']??'',45);
         $patronymic=workspace_unload_text($values['C']??'',45);
-        $phone=workspace_fleet_phone_input(workspace_unload_text($values['D']??'',100));
-        $additionalPhone=workspace_fleet_phone_input(workspace_unload_text($values['E']??'',100));
+        $phone=workspace_phone_storage($values['D']??'',$previous['D']??null);
+        $additionalPhone=workspace_phone_storage($values['E']??'',$previous['E']??null);
         if ($surname==='' || $given==='') throw new ApiError('invalid_driver','Укажите фамилию и имя водителя.');
         foreach ([$surname,$given,$patronymic] as $part) {
             if ($part!=='' && !preg_match("/^\p{L}[\p{L}\p{M}'’ -]*$/uD",$part)) {
@@ -65,20 +94,20 @@ function workspace_fleet_values_validated(string $kind,array $values): array {
         return ['name'=>$name,'key'=>vitrine_catalog_key($name),'profile'=>[$surname,$given,$patronymic,$phone,$additionalPhone],
             'values'=>['A'=>$surname,'B'=>$given,'C'=>$patronymic,'D'=>$phone,'E'=>$additionalPhone]];
     }
-    $plate=mb_strtoupper(workspace_unload_text($values['A']??'',28));
+    $plate=mb_strtoupper(workspace_unload_text(workspace_fleet_plate_reorder($values['A']??''),28));
     $key=workspace_fleet_plate_key($plate);
     if (!preg_match('/^(?=[\p{L}\d]{4,14}$)(?=.*\d)(?=.*\p{L})[\p{L}\d]+$/uD',$key)) {
         throw new ApiError('invalid_vehicle','Укажите один госномер с буквами и цифрами.');
     }
     if (workspace_fleet_trailer_key($plate)) throw new ApiError('invalid_vehicle','Госномер полуприцепа укажите в отдельном столбце.');
     $trailer=workspace_fleet_trailer_values($values);
-    $brand=workspace_unload_text($values['B']??'',160);
+    $brand=mb_strtoupper(workspace_unload_text($values['B']??'',160));
     $type=workspace_unload_text($values['C']??'',100);
     $driverValues=[];
     foreach (array_combine(['A','B','C','D','E'],array_keys(workspace_fleet_driver_columns())) as $target=>$column) {
-        $driverValues[$target]=trim($values[$column]??'');
+        $driverValues[$target]=$values[$column]??'';
     }
-    $driver=array_filter($driverValues,'strlen') ? workspace_fleet_values_validated('fleet-drivers',$driverValues) : null;
+    $driver=array_filter($driverValues,'strlen') ? workspace_fleet_values_validated('fleet-drivers',$driverValues,['D'=>$previous['G']??null,'E'=>$previous['Q']??null]) : null;
     return ['name'=>$plate,'key'=>$key,'profile'=>[$brand,$type],
         'driver'=>$driver,'trailer'=>$trailer,'values'=>['B'=>$brand,'A'=>$plate,'C'=>$type,'I'=>$trailer['brand'],'H'=>$trailer['plate']]+
             array_combine(array_keys(workspace_fleet_driver_columns()),array_values($driver['values']??$driverValues))];
@@ -94,7 +123,7 @@ function workspace_fleet_resolve_driver(?array $driver,?int $previous): ?array {
     if (!$entry) return workspace_fleet_write('fleet-drivers',$catalog,$driver['values']);
     if (!$entry['active']) throw new ApiError('inactive_driver','Водитель находится в архиве.');
     $id=(int)$entry['id'];
-    $known=workspace_fleet_values('fleet-drivers',$entry);
+    $known=workspace_fleet_values('fleet-drivers',$entry,false);
     $next=$known;
     foreach (['D','E'] as $column) {
         $value=$driver['values'][$column];
@@ -109,8 +138,8 @@ function workspace_fleet_write(string $kind,int $catalogId,array $values,?int $i
     workspace_require('catalog',(string)$catalogId,'edit');
     $old=$id ? (workspace_fleet_entries($kind,$catalogId)[$id]??null) : null;
     if ($id && (!$old || !$old['active'] || (int)$old['revision']!==$revision)) workspace_directory_conflict();
-    $next=workspace_fleet_values_validated($kind,$values);
-    $before=$old ? workspace_fleet_values($kind,$old) : null;
+    $before=$old ? workspace_fleet_values($kind,$old,false) : null;
+    $next=workspace_fleet_values_validated($kind,$values,$before??[]);
     if ($old && $before===$next['values']) return ['id'=>$id,'revision'=>$revision,'values'=>$before];
     try {
         if ($kind==='fleet-vehicles') {
@@ -129,7 +158,10 @@ function workspace_fleet_write(string $kind,int $catalogId,array $values,?int $i
         }
         $rev=$old ? $revision+1 : 1;
         if ($old) {
-            wquery('UPDATE catalog_entries SET name=?,normalized=?,revision=? WHERE id=?',[$next['name'],$next['key'],$rev,$id]);
+            $sameName=$kind==='fleet-drivers' && array_intersect_key($before,array_flip(['A','B','C']))===
+                array_intersect_key($next['values'],array_flip(['A','B','C']));
+            wquery('UPDATE catalog_entries SET name=?,normalized=?,revision=? WHERE id=?',
+                [$sameName?$old['name']:$next['name'],$sameName?$old['normalized']:$next['key'],$rev,$id]);
         } else {
             wquery('INSERT INTO catalog_entries(catalog_id,name,normalized) VALUES(?,?,?)',[$catalogId,$next['name'],$next['key']]);
             $id=(int)workspace_db()->lastInsertId();
@@ -156,8 +188,7 @@ function workspace_fleet_write(string $kind,int $catalogId,array $values,?int $i
 }
 
 function workspace_fleet_save(string $kind,int $catalogId,array $values,?int $id=null,?int $revision=null,?array $birth=null): array {
-    workspace_begin();
-    try {
+    return workspace_transaction(static function() use ($kind,$catalogId,$values,$id,$revision,$birth) {
         if ($birth!==null) {
             $previousDriver=workspace_fleet_driver_id($id);
             $previousDocuments=workspace_fleet_documents($previousDriver);
@@ -173,12 +204,10 @@ function workspace_fleet_save(string $kind,int $catalogId,array $values,?int $id
                 workspace_fleet_store_documents($driver,$documents,array_replace($documents,['birth_date'=>$newBirth]));
             }
         }
-        workspace_db()->commit();
+
+        $result['values']=workspace_fleet_display_values($kind,$result['values']);
         return $result;
-    } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
-        throw $error;
-    }
+    });
 }
 
 function workspace_fleet_driver_id(int $vehicle): int {
@@ -192,6 +221,7 @@ function workspace_fleet_assigned_driver(int $vehicle): ?array {
         WHERE v.entry_id=? AND d.active=TRUE',[$vehicle])->fetch();
     if (!$driver) return null;
     $phones=workspace_fleet_phone_pair($driver['phone'],$driver['additional_phone']);
+    $phones=array_map('workspace_phone_display',$phones);
     return ['id'=>$driver['id'],'name'=>$driver['name'],'phones'=>implode(', ',array_unique(array_filter($phones,'strlen')))];
 }
 

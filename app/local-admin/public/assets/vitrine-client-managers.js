@@ -28,7 +28,9 @@
   function action(text,run,cls='vitrine-client-relations-cell') {
     const button=node('button',text,cls);
     button.type='button';
-    button.addEventListener('click',()=>{if (!busy) run(button);});
+    const activate=()=>{if (!busy) run(button);};
+    if (cls==='vitrine-client-relations-cell') window.VitrineClientRelationsKeyboard.bindCellActivation(button,activate);
+    else button.addEventListener('click',activate);
     return button;
   }
   function position() {
@@ -170,6 +172,7 @@
     finally { busy=false;fields.forEach(field=>field.disabled=false); }
   }
   add.addEventListener('click',()=>edit(null,add));
+  window.VitrineCompactInput.phone.bind(createForm.elements.phone);
   function openProfile(employee,button) {
     profile=employee;
     returnFocus=button;

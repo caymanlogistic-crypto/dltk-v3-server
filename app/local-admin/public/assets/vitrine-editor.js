@@ -118,10 +118,33 @@
   function rememberPaste(before, result) {
     pasteUndo.push({...before, revision:result.revision, baseHash:result.baseHash});
   }
+  function updatePreviousUndo(state) {
+    for (let index=pasteUndo.length-1;index>=0;index--) {
+      const entry=pasteUndo[index];
+      const items=entry.range?.cells??[entry];
+      const item=items.find(candidate=>Number(candidate.row??candidate.cell?.dataset.row)===state.row &&
+        (candidate.column??candidate.cell?.dataset.column)===state.column);
+      if (!item) continue;
+      if (item.revision===state.beforeRevision && item.baseHash===state.beforeHash) {
+        item.revision=state.revision;
+        item.baseHash=state.baseHash;
+      }
+      return;
+    }
+  }
   async function undoPaste() {
     if (undoing || pendingCells.size) { report('Дождитесь сохранения ячейки.'); return; }
     const entry = pasteUndo.at(-1);
     if (!entry) return;
+    if (entry.range) {
+      try {
+        const restored=await window.VitrineRangePaste.undo(entry.range);
+        pasteUndo.pop();
+        for (const state of restored) updatePreviousUndo(state);
+      }
+      catch(error) { report(error.message || 'Не удалось отменить вставку диапазона.','danger'); }
+      return;
+    }
     const cell = window.VitrineRows?.resolveCell(entry.cell) || entry.cell;
     if (Number(cell.dataset.revision) !== entry.revision || (catalog === 'employees' && cell.dataset.base !== entry.baseHash)) {
       report('Ячейка изменилась после вставки. Отмена не выполнена.', 'danger'); return;
@@ -130,12 +153,8 @@
     try {
       const result = await writeCell(cell,entry.value,!entry.edited,null,'undo');
       applyResult(cell,result); pasteUndo.pop();
-      const previous = pasteUndo.findLast(item => item.cell === cell);
-      if (previous && previous.revision === entry.beforeRevision &&
-          (catalog !== 'employees' || previous.baseHash === entry.beforeHash)) {
-        previous.revision = result.revision;
-        previous.baseHash = result.baseHash;
-      }
+      updatePreviousUndo({row:Number(cell.dataset.row),column:cell.dataset.column,
+        beforeRevision:entry.beforeRevision,beforeHash:entry.beforeHash,revision:result.revision,baseHash:result.baseHash});
       const shown=window.VitrineRows&&!cell.isConnected?await window.VitrineRows.activate(cell):cell;
       if(shown){flash(shown);table?.classList.add('keyboard-navigation');select(shown);shown.focus({preventScroll:true});reveal(shown);}
     } catch(error) {
@@ -256,6 +275,10 @@
     }
     if (typeof result.value !== 'string' || !Number.isInteger(result.revision) || typeof result.baseHash !== 'string') throw new Error('Неполный ответ сервера. Обновите страницу.');
     if(draft)tripDraftRequests.delete(cell);
+    applySavedEffects(cell,result,editAction);
+    return result;
+  }
+  function applySavedEffects(cell,result,editAction) {
     if (result.dependentCell) window.VitrineRows?.patch(result.dependentCell);
     for (const patch of result.dependentCells ?? []) window.VitrineRows?.patch(patch);
     for (const patch of result.unloadCells ?? []) window.VitrineRows?.patch(patch);
@@ -263,7 +286,6 @@
       window.VitrineRows?.applyFleetDocuments(result.createdRow ?? cell.dataset.row,result.fleetDocumentValue,editAction==='clear');
     }
     if (result.reauthenticate) location.assign(window.DltkPaths?.path('/login') ?? '/login');
-    return result;
   }
   async function showCreatedTrip(cell,row) {
     try {
@@ -321,7 +343,7 @@
   async function save(reset = false) {
     if (!active || active.saving) return;
     const editor = active;
-    if (!reset && editor.cell.dataset.compactInput && !hasDraft(editor)) {
+    if (!reset && (editor.cell.dataset.compactInput || editor.cell.dataset.kind==='slot') && !hasDraft(editor)) {
       close();
       return;
     }
@@ -399,14 +421,24 @@
       const input = column === cell.dataset.column ? field : element('input','field-input vitrine-editor-field');
       input.type = 'text';
       input.autocomplete = 'off';
-      const date = ['P','O','L','M'].includes(column);
+      const calendarKind = {P:'birth-date',O:'passport-issued',L:'license-issued',M:'license-date'}[column];
       input.maxLength = ({A:28,B:160,H:28,I:160,D:65,E:45,F:45,G:100,Q:100,J:50,N:400,K:80})[column] ?? 10;
-      if (['G','Q'].includes(column)) input.inputMode = 'tel';
-      if (date) {
-        input.inputMode = 'numeric';
-        input.placeholder = 'ДД.ММ.ГГГГ';
+      const phone = peer.dataset.compactInput === 'phone';
+      if (calendarKind) {
+        input.dataset.calendarKind=calendarKind;
+        input.id ||= 'vitrine-fleet-date-'+column;
+        window.VitrineCompactInput.documentDate.bind(input);
       }
-      if (input !== field) input.value = initial[index];
+      if (input !== field) {
+        input.value=initial[index];
+        if (phone) window.VitrineCompactInput.phone.bind(input);
+      }
+      if (column==='B' || column==='I') input.addEventListener('input',()=>{
+        const start=input.value.slice(0,input.selectionStart).toUpperCase().length;
+        const end=input.value.slice(0,input.selectionEnd).toUpperCase().length;
+        input.value=input.value.toUpperCase();
+        input.setSelectionRange(start,end);
+      });
       const title = peer.dataset.label;
       const label = element('label','vitrine-editor-field-group');
       input.setAttribute('aria-label',title);
@@ -488,8 +520,7 @@
     const useCustom = !mask && (catalog || !isSingleLine) && (isStatus || choices.length > 0 || Number(cell.dataset.catalogId) > 0);
     const typeEditor = isContainerTypeCell(cell);
     const unloadClient = catalog==='entries' && cell.dataset.column==='A' && document.getElementById('unload-contacts-dialog');
-    const fleetSearchKey = value => value.toUpperCase().replace(/[АВЕКМНОРСТУХ]/g,
-      letter => 'ABEKMHOPCTYX'['АВЕКМНОРСТУХ'.indexOf(letter)]).replace(/[\s-]+/g,'');
+    const fleetSearchKey = window.VitrineSelect.vehicleSearchKey;
     const searchableCatalog = isEdoPartyCell(cell) || fleetEditor || dropoffEditor || pickupEditor || typeEditor || unloadEditor || unloadClient || cell.hasAttribute('data-order-status');
     const catalogOptions = () => {
       const required = cell.hasAttribute('data-required-choice');
@@ -524,12 +555,15 @@
     if (mask) {
       const digits = mask.read(initialValue);
       replaceLegacyValue = !isSlot && initialValue !== '' && digits === '';
-      if (!replaceLegacyValue) initialValue = mask.format(digits);
-      mask.bind(field);
+      if (!replaceLegacyValue && cell.dataset.compactInput !== 'phone') initialValue = mask.format(digits);
+      const digitsOnlyPaste = cell.dataset.compactInput === 'date';
+      mask.bind(field,{digitsOnlyPaste});
     }
     field.autocomplete = draftType === 'password' ? 'new-password' : 'off';
     if (draftType === 'password') field.type = 'password';
     if (draftType === 'email') field.inputMode = 'email';
+    if (draftType === 'date') field.inputMode = 'numeric';
+    if (draftType === 'phone') field.inputMode = 'numeric';
     if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
     field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : isSingleLine && catalog ? 160 : 20000;
     field.value = mask && firstCharacter !== null ? mask.format(firstCharacter) : firstCharacter ?? initialValue;
@@ -615,6 +649,12 @@
       field.addEventListener('input',event=>{
         if (field.value && event.inputType?.startsWith('insert')) requestField.checked = false;
       });
+    } else if (draftType==='password' && window.DltkPasswordVisibility && document.getElementById('vitrine-password-eye')) {
+      const wrapper = element('div','auth-password');
+      const toggle = document.getElementById('vitrine-password-eye').content.firstElementChild.cloneNode(true);
+      wrapper.append(field,toggle);
+      panel.append(wrapper);
+      window.DltkPasswordVisibility(field,toggle);
     } else panel.append(control?.element || field);
     if (control) window.VitrineQuickCatalog?.attach(control,cell.dataset.column,cell,data=>{
       if (isStatus) window.vitrineStatusCatalog={...window.vitrineStatusCatalog,statuses:data.statuses};
@@ -647,7 +687,7 @@
     saveButton.addEventListener('click', () => save());
     cancelButton.addEventListener('click', close);
     actions.append(saveButton, cancelButton);
-    if (!dropoff && !isStatus && !documentStatusEditor && !orderField && cell.classList.contains('local-edited')) {
+    if (!dropoff && !isStatus && !documentStatusEditor && !orderField && cell.dataset.compactInput!=='time' && cell.classList.contains('local-edited')) {
       const resetButton = element('button', 'btn btn-secondary vitrine-editor-reset', 'Исходное');
       resetButton.type = 'button'; resetButton.addEventListener('click', () => save(true));
       buttons.push(resetButton); actions.append(resetButton);
@@ -657,7 +697,7 @@
     cell.classList.add('is-editing');
     select(cell);
     active = { panel, cell, field, initialValue, orderField, orderControl, initialOrder:orderControl?.resolveValue(), requestField, initialRequest, dropoff, fleetDriver, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
-    window.dispatchEvent(new CustomEvent('vitrine-editor-opened',{detail:{row:Number(cell.dataset.row),column:cell.dataset.column}}));
+    window.dispatchEvent(new CustomEvent('vitrine-editor-opened',{detail:{row:Number(cell.dataset.row),column:cell.dataset.column,panel,cell,field,dropoffDate:dropoff?.dateField}}));
     table?.classList.add('has-editor');
     panel.addEventListener('keydown', event => {
       const directions = {ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[-1,0],ArrowDown:[1,0]};
@@ -671,7 +711,8 @@
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
       if (event.key === 'Enter' && (event.target === field || event.target === orderField || event.target === requestField || fleetDriver?.fields.includes(event.target)) && !event.shiftKey && !event.isComposing) { event.preventDefault(); save(); }
       if (event.key === 'Tab') {
-        const focusable = [...(fleetDriver?.fields ?? [field]), orderField, requestField, ...(dropoff?.fields??[]), ...buttons].filter(node => node && !node.disabled);
+        const focusable = [...panel.querySelectorAll('input,textarea,button,select')].filter(node=>
+          node.tabIndex>=0 && !node.disabled && !node.closest('[hidden]') && node.getClientRects().length);
         const first = focusable[0], last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
@@ -703,7 +744,8 @@
   });
   const table = document.querySelector('.vitrine-table');
   table?.addEventListener('pointermove', event => {
-    if (event.pointerType === 'touch' || (!event.movementX && !event.movementY) || active) return;
+    if (event.pointerType === 'touch' || (!event.movementX && !event.movementY) || active ||
+        window.VitrineClipboardMenu?.opened() || window.VitrineRange?.blocksHover() || window.VitrineRangePaste?.busy()) return;
     const cell = event.target.closest('td[data-edit-cell]');
     if (table.classList.contains('keyboard-navigation')) table.classList.remove('keyboard-navigation');
     if (cell !== selected) select(cell);
@@ -711,7 +753,9 @@
   table?.addEventListener('mousedown', event => {
     table.classList.remove('keyboard-navigation');
     const cell = event.target.closest('td[data-edit-cell]');
-    if (event.button !== 0 || !cell) return;
+    if (!cell) return;
+    if (event.button === 2) { event.preventDefault(); return; }
+    if (event.button !== 0) return;
     event.preventDefault();
     if (!active) cell.focus({ preventScroll:true });
   });
@@ -735,16 +779,18 @@
     else report(active.saving ? 'Дождитесь сохранения ячейки.' : 'Сначала сохраните правку или нажмите «Отмена»');
     (active.field.disabled && active.requestField ? active.requestField : active.field).focus();
   }, true);
-  document.addEventListener('click', event => {
-    if (event.target.closest('[data-trip-driver-button]')) return;
-    const cell = event.target.closest('td[data-edit-cell]');
-    if (!cell) return;
-    if (['unload-contacts','client-unload-points','client-managers'].includes(cell.dataset.kind)) { open(cell); return; }
-    if (cell.dataset.kind === 'time' || cell.dataset.derivedSource || cell.hasAttribute('data-readonly-cell')) {
-      select(cell);
-      cell.focus({preventScroll:true});
-      if (cell.dataset.derivedSource) notifyDerivedCell(cell);
-    } else open(cell);
+  const clickedCell = event => event.target.closest('button, a[href], input, select, textarea')
+    ? null : event.target.closest('td[data-edit-cell]');
+  table?.addEventListener('click', event => {
+    const cell = clickedCell(event);
+    if (!cell || active || window.VitrineRangePaste?.busy()) return;
+    select(cell);
+    cell.focus({preventScroll:true});
+  });
+  table?.addEventListener('dblclick', event => {
+    const cell = clickedCell(event);
+    if (!cell || window.VitrineRangePaste?.busy()) return;
+    open(cell);
   });
   let cells = Array.from(document.querySelectorAll('td[data-edit-cell]'));
   const visibleRows = () => Array.from(document.querySelectorAll('[data-vitrine-row]')).map(row => Array.from(row.querySelectorAll('td[data-edit-cell]:not([hidden])')));
@@ -772,7 +818,7 @@
     window.dispatchEvent(new CustomEvent('vitrine-cell-selected'));
   }
   function eventCell(event) {
-    if (event.target.closest('.vitrine-derived-icon, .display-column-controls, [data-quick-row-drag]')) return null;
+    if (event.target.closest('.vitrine-derived-icon, .display-column-controls, [data-quick-row-drag], .vitrine-clipboard-menu, input, textarea, select')) return null;
     return event.target === document.body || event.target.closest('.vitrine-table-scroll') ? selected : null;
   }
   select(selected);
@@ -869,6 +915,7 @@
   });
 
   document.addEventListener('keydown', event => {
+    if (window.VitrineRangePaste?.busy()) return;
     if (event.key === 'F6' && !document.querySelector('dialog[open]')) {
       event.preventDefault();
       table?.classList.add('keyboard-navigation');
@@ -934,15 +981,13 @@
     }
     if (['Enter','F2'].includes(event.key)) { event.preventDefault(); const action=next=>{if(event.key==='Enter'&&next.dataset.kind==='time'&&!next.dataset.compactInput)editTime(next);else open(next);};if(window.VitrineRows&&!cell.isConnected)window.VitrineRows.activate(cell,action);else action(cell); }
   });
-  let copied = null;
   document.addEventListener('copy', event => {
     const cell = eventCell(event);
-    if (active || !cell || !event.clipboardData) return;
-    copied = cell.closest('[data-draft-slot]') ? null : {row:Number(cell.dataset.row),column:cell.dataset.column,revision:Number(cell.dataset.revision),baseHash:cell.dataset.base,value:cell.textContent};
-    event.preventDefault(); event.clipboardData.setData('text/plain',cell.textContent);
-    if (copied) event.clipboardData.setData('application/x-dltk-cell',JSON.stringify(copied));
+    if (active || !cell || !event.clipboardData || !window.VitrineRange) return;
+    window.VitrineRange.copy(cell,event).catch(error=>report(error.message || 'Не удалось скопировать диапазон.','danger'));
   });
   document.addEventListener('paste', async event => {
+    if (event.defaultPrevented || window.VitrineRangePaste?.busy()) return;
     let cell = eventCell(event);
     const inEditor = active && event.target === active.field;
     if ((!cell && !inEditor) || !event.clipboardData) return;
@@ -951,6 +996,27 @@
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
     const target = cell || active.cell;
+    let value = event.clipboardData.getData('text/plain');
+    let source = null;
+    if (!inEditor && !active && window.VitrineRange) {
+      if (!value && !window.VitrineRange.containsMany(target)) {
+        report('В буфере обмена нет текста.','info'); return;
+      }
+      try {
+        const data = window.VitrineRange.parse(value);
+        if (data.length>1 || data[0].length>1 || window.VitrineRange.containsMany(target)) {
+          if (value === '' && !data[0][0].source) {
+            report('В буфере обмена нет текста.','info'); return;
+          }
+          await window.VitrineRangePaste.paste(target,data);
+          return;
+        }
+        value=data[0][0].value;
+        source=data[0][0].source??null;
+      } catch (error) {
+        report(error.message || 'Не удалось вставить диапазон.','danger');return;
+      }
+    }
     if (target.dataset.kind==='client-managers') { report('Откройте список менеджеров из ячейки.','info'); return; }
     if (target.dataset.kind==='client-unload-points') { report('Откройте точки выгрузки из ячейки.','info'); return; }
     if (target.dataset.kind==='unload-contacts') { report('Откройте редактор контактов из ячейки.','info'); return; }
@@ -961,11 +1027,10 @@
     if (target.dataset.derivedSource) { notifyDerivedCell(target); return; }
     if (target.hasAttribute('data-readonly-cell')) { report(target.dataset.readonlyCell, 'info'); return; }
     if (pendingCells.has(target) || active?.saving) { report('Дождитесь сохранения ячейки.'); return; }
-    const value = event.clipboardData.getData('text/plain');
-    let source = null;
-    try { source = JSON.parse(event.clipboardData.getData('application/x-dltk-cell') || 'null'); } catch {}
-    if (!source && copied?.value === value) source = copied;
-    if (value.length > 20000 || value.includes('\t')) { report('Вставляйте одну ячейку размером до 20 000 символов.','danger'); return; }
+    if (!source) {
+      try { source = JSON.parse(event.clipboardData.getData('application/x-dltk-cell') || 'null'); } catch {}
+    }
+    if (value.length > 20000) { report('Вставляйте одну ячейку размером до 20 000 символов.','danger'); return; }
     const paste = {source};
     if (inEditor) {
       const editor = active;
@@ -975,10 +1040,12 @@
           ...(fleetGroups.length && target.dataset.column==='P' ? {fleetGroup:{P:value},birthRevision:fleetBirthRevision(target)} : {})})});
         const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'Не удалось проверить формат.');
         if (active !== editor) return;
+        const editorValue = typeof result.editorValue === 'string' ? result.editorValue : value;
         if (target.dataset.kind === 'container') active.field.value = normalizeContainer(value);
         else if (active.field.dataset.customSelect) active.field.value = value;
-        else active.field.setRangeText(value,active.field.selectionStart,active.field.selectionEnd,'end');
+        else active.field.setRangeText(editorValue,active.field.selectionStart,active.field.selectionEnd,'end');
         active.paste = paste;
+        window.VitrineRange?.pasted();
         fitEditor();
       } catch(error) { report(error.message || 'Не удалось проверить вставку.','danger'); }
       return;
@@ -989,6 +1056,7 @@
     let created=false;
     try {
       const result = await writeCell(target,value,false,paste);
+      window.VitrineRange?.pasted();
       if(result.createdRow){
         created=true;
         await showCreatedTrip(target,result.createdRow);
@@ -1002,5 +1070,14 @@
   });
   document.querySelector('.vitrine-table-scroll')?.addEventListener('scroll', position);
   window.addEventListener('resize', fitEditor);
-  window.VitrineGrid=Object.freeze({select,reveal,positionPanel,editing:()=>Boolean(active || clearTarget),editingCell:()=>active?.cell||clearTarget,applyRemote,patchSharedOptions});
+  window.VitrineGrid=Object.freeze({select,reveal,positionPanel,editing:()=>Boolean(active || clearTarget),
+    editingCell:()=>active?.cell||clearTarget,applyRemote,patchSharedOptions,
+    rangeBusy:()=>Boolean(undoing || pendingCells.size || window.VitrineRangePaste?.busy()),
+    rememberRange:range=>pasteUndo.push({range}),
+    applyRangeSave(cell,result){
+      applySavedEffects(cell,result);
+      applyResult(cell,result);
+      if (cell.isConnected) flash(cell);
+    }
+  });
 })();

@@ -44,7 +44,7 @@ function workspace_unload_row_options(array $options,?int $clientId,string $clie
 }
 
 function workspace_unload_primary(array $point): string {
-    return (string)($point['original'] ?: implode(' · ',array_filter([$point['contact_name'],$point['phone'],$point['email']])));
+    return (string)($point['original'] ?: implode(' · ',array_filter([$point['contact_name'],workspace_phone_display((string)$point['phone']),$point['email']])));
 }
 
 function workspace_unload_contact_line(string $value): string {
@@ -104,15 +104,7 @@ function workspace_unload_validate_point(array $values,?array $old=null): array 
 }
 
 function workspace_unload_save_point(int $catalogId,array $values,?int $entryId=null,?int $revision=null,?int $clientId=null,?string $primaryContact=null): array {
-    workspace_begin();
-    try {
-        $result=workspace_unload_write_point($catalogId,$values,$entryId,$revision,$clientId,$primaryContact);
-        workspace_db()->commit();
-        return $result;
-    } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
-        throw $error;
-    }
+    return workspace_transaction(static fn()=>workspace_unload_write_point($catalogId,$values,$entryId,$revision,$clientId,$primaryContact));
 }
 
 function workspace_unload_write_point(int $catalogId,array $values,?int $entryId=null,?int $revision=null,?int $clientId=null,?string $primaryContact=null): array {
@@ -189,7 +181,11 @@ function workspace_unload_contacts(int $catalogId,int $entryId,?array $body=null
         if (!$entry || ($body!==null && !$entry['active'])) throw new ApiError('not_found','Точка выгрузки не найдена.',404);
         $read=static fn(): array=>wquery('SELECT id,name,phone,email,original,is_primary FROM unload_point_contacts WHERE entry_id=? ORDER BY is_primary DESC,id',[$entryId])->fetchAll();
         $old=$read();
-        if ($body===null) return ['point'=>$entry['address'],'revision'=>(int)$entry['revision'],'contacts'=>$old];
+        if ($body===null) {
+            foreach ($old as &$contact) $contact['phone']=workspace_phone_display($contact['phone']);
+            unset($contact);
+            return ['point'=>$entry['address'],'revision'=>(int)$entry['revision'],'contacts'=>$old];
+        }
         if (($body['revision']??null)!==(int)$entry['revision']) workspace_directory_conflict();
         $contacts=$body['contacts']??null;
         if (!is_array($contacts) || !array_is_list($contacts) || count($contacts)>150) throw new ApiError('invalid_contacts','Проверьте список контактов.');
@@ -199,10 +195,10 @@ function workspace_unload_contacts(int $catalogId,int $entryId,?array $body=null
         foreach ($contacts as $row) {
             if (!is_array($row) || !is_bool($row['primary']??null)) throw new ApiError('invalid_contacts','Проверьте данные контакта.');
             $name=workspace_unload_text($row['name']??'',160);
-            $phone=workspace_unload_text($row['phone']??'',100);
+            $before=$existing[$row['id']??0]??null;
+            $phone=workspace_phone_storage($row['phone']??'',$before['phone']??null);
             $email=workspace_unload_text($row['email']??'',254);
             if ($email!=='' && !filter_var($email,FILTER_VALIDATE_EMAIL)) throw new ApiError('invalid_email','Проверьте адрес e-mail.');
-            $before=$existing[$row['id']??0]??null;
             $original=$before && [$name,$phone,$email]===[$before['name'],$before['phone'],$before['email']] ? $before['original'] : '';
             if ($name==='' && $phone==='' && $email==='' && $original==='') continue;
             $normalized[]=[$name,$phone,$email,$original,(int)$row['primary']];

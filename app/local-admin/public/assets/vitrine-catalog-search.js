@@ -55,13 +55,32 @@
     });
   }
   if (!field || !grid) return;
-  async function update() {
+  async function update(force=false) {
     clearTimeout(timer);
     try {
-      await grid.filterDirectory(field.value.trim());
+      await grid.filterDirectory(field.value.trim(),{force});
     } catch (error) {
       window.PlanexNotifications.show({tone:'danger',message:error.message || 'Не удалось выполнить поиск.'});
     }
+  }
+  for (const filter of form.querySelectorAll('[data-vitrine-filter-param]')) {
+    const parameter=filter.dataset.vitrineFilterParam;
+    const options=JSON.parse(filter.dataset.filterOptions);
+    const defaultValue=options[0].value;
+    const selected=new URLSearchParams(location.search).get(parameter) ?? defaultValue;
+    const initial=options.some(option=>option.value===selected) ? selected : defaultValue;
+    const selector=window.VitrineSelect.create(options,initial,{showLabels:true});
+    selector.field.setAttribute('aria-label',filter.dataset.filterLabel);
+    filter.append(selector.element);
+    selector.field.addEventListener('change',()=>{
+      const selectedValue=selector.resolveValue();
+      if (!options.some(option=>option.value===selectedValue)) return;
+      const url=new URL(location.href);
+      if (selectedValue===defaultValue) url.searchParams.delete(parameter); else url.searchParams.set(parameter,selectedValue);
+      if (url.href===location.href) return;
+      history.replaceState(history.state,'',url);
+      update(true);
+    });
   }
   function schedule() {
     clearTimeout(timer);

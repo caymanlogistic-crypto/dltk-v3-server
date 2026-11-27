@@ -116,6 +116,13 @@ function vitrine_date_in_window(string $normalized, int $daysBack, int $daysAhea
     return $value >= $earliest && $value <= $latest;
 }
 
+function vitrine_compact_display(string $value,?string $kind): string {
+    if ($kind===null || (!in_array($kind,['date','time'],true) && vitrine_compact_integer_bounds($kind)===null)) {
+        return $value;
+    }
+    return vitrine_compact_input($value,$kind)??$value;
+}
+
 function vitrine_compact_integer_bounds(string $kind): ?array {
     return match ($kind) {
         'weight'=>[1000,50000],

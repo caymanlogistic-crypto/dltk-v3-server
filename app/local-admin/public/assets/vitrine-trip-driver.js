@@ -32,7 +32,10 @@
     content.setAttribute('aria-busy','true');
     dialog.showModal();
     try {
-      const url = window.VitrineGridScope.url('/api/vitrine/rows',{ids:[Number(origin.dataset.row)],rowFilters:true,tripDriver:true});
+      let url = window.VitrineGridScope.url('/api/vitrine/rows',{ids:[Number(origin.dataset.row)],rowFilters:true,tripDriver:true});
+      if (document.body.dataset.workspaceUser==='preview') {
+        url += '&vehicle='+encodeURIComponent(origin.querySelector('[data-trip-vehicle-value]').textContent);
+      }
       const response = await fetch(url,{signal,cache:'no-store'});
       const result = await response.json();
       if (!response.ok || result.error) throw new Error(result.error?.message || 'Не удалось открыть карточку водителя.');

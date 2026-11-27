@@ -104,11 +104,14 @@ function workspace_client_grid_hash(int $entryId): string {
 
 function workspace_client_grid_endpoint(bool $pasteCheck = false): never {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method', 'Метод не поддерживается.', 405);
+    json_response(workspace_client_grid_edit(wbody(),$pasteCheck));
+}
+
+function workspace_client_grid_edit(array $body, bool $pasteCheck = false): array {
     $catalog = workspace_client_grid_catalog();
     if (!$catalog) throw new ApiError('not_found', 'Справочник «Клиенты» не найден.', 404);
     $catalogId = (int)$catalog['id'];
     workspace_require('catalog', (string)$catalogId, 'edit');
-    $body = wbody();
     if (!is_int($body['row'] ?? null) || !in_array($body['column'] ?? null, ['A','B'], true) || !is_string($body['value'] ?? null)) {
         throw new ApiError('invalid_edit', 'Некорректные данные ячейки справочника.');
     }
@@ -122,7 +125,7 @@ function workspace_client_grid_endpoint(bool $pasteCheck = false): never {
     if (!$entry || !$entry['active']) throw new ApiError('not_found', 'Активная запись справочника не найдена.', 404);
     $isName = $body['column'] === 'A';
     $value = $isName ? workspace_catalog_validate_name($body['value']) : workspace_client_validate_manager($body['value']);
-    if ($pasteCheck) json_response(['accepted'=>true]);
+    if ($pasteCheck) return ['accepted'=>true];
     if (!is_int($body['revision'] ?? null) || ($body['baseHash'] ?? null) !== workspace_client_grid_hash((int)$entry['id'])) {
         throw new ApiError('invalid_edit', 'Обновите справочник и повторите сохранение.');
     }
@@ -132,5 +135,5 @@ function workspace_client_grid_endpoint(bool $pasteCheck = false): never {
     ];
     if (!$isName) $payload['manager'] = $value;
     $result = workspace_catalog_save($payload);
-    json_response($result + ['value'=>$value, 'original'=>$value, 'baseHash'=>$body['baseHash'], 'edited'=>false]);
+    return $result + ['value'=>$value, 'original'=>$value, 'baseHash'=>$body['baseHash'], 'edited'=>false];
 }

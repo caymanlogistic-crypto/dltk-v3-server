@@ -52,6 +52,7 @@
     }
     return {
       fields:Object.values(fields),
+      dateField:fields.validUntil,
       values:()=>Object.fromEntries(Object.entries(fields).map(([name,field])=>[name,field.value])),
       dirty:()=>Object.entries(fields).some(([name,field])=>field.value!==(initial[name]??'')),
     };

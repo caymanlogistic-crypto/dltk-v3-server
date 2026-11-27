@@ -110,12 +110,48 @@ function workspace_archive_row_visible(): string {
     return "NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('directory_deleted_record_',r.id))";
 }
 
+function workspace_vyvoz_filter(string $key): string {
+    $value=$_GET[$key]??'';
+    return is_string($value) ? mb_substr(trim($value),0,160) : '';
+}
+
 function workspace_manifest(array $t, bool $archive=false): array {
     $filter=$archive ? 'AND '.workspace_archive_row_visible()
         : "AND (metadata_zlib IS NULL OR REGEXP_LIKE(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(values_json,?)),''),'[^[:space:] ]')
             OR EXISTS (SELECT 1 FROM cell_versions v WHERE v.record_id=r.id AND v.field_key=? AND v.revision>0 AND v.value=''))";
     $args=$archive ? [$t['id'],1] : [$t['id'],0,'$.'.$t['carrier_column'],$t['carrier_column']];
-    $ids=array_map('intval',wquery("SELECT row_num FROM records r WHERE table_id=? AND archived=? $filter ORDER BY row_num DESC LIMIT ".WORKSPACE_MANIFEST_LIMIT,$args)->fetchAll(PDO::FETCH_COLUMN));
+    $baseRows="FROM records r WHERE table_id=? AND archived=? $filter";
+    $visibleRows="$baseRows ORDER BY row_num DESC LIMIT ".WORKSPACE_MANIFEST_LIMIT;
+    $conditions=[];
+    if ($t['slug']==='vyvoz') {
+        $valueSql=static fn(string $column): string=>"COALESCE(JSON_UNQUOTE(JSON_EXTRACT(values_json,'$.$column')),'')";
+        foreach (['tripStatus'=>'A','tripClient'=>'B'] as $parameter=>$column) {
+            $value=workspace_vyvoz_filter($parameter);
+            if ($value!=='' && workspace_can('field',$column,'view',$t['id'])) {
+                $conditions[]='LOWER(TRIM('.$valueSql($column).'))=?';
+                $args[]=mb_strtolower($value);
+            }
+        }
+        $query=workspace_vyvoz_filter('q');
+        if ($query!=='') {
+            require_once __DIR__.'/WorkspaceTripSearch.php';
+            $scope=$archive ? "FROM (SELECT id,row_num,values_json $visibleRows) AS r WHERE TRUE" : $baseRows;
+            $extra=$conditions ? ' AND '.implode(' AND ',$conditions) : '';
+            $documents=workspace_fleet_trip_documents_can_view($t['id'])
+                ? '(SELECT document_text FROM fleet_trip_documents d WHERE d.record_id=r.id)' : 'NULL';
+            $records=wquery("SELECT r.row_num,r.values_json,$documents AS documents,
+                (SELECT JSON_OBJECTAGG(rr.field_key,JSON_OBJECT('id',e.id,'catalogId',e.catalog_id,'name',e.name))
+                 FROM record_references rr JOIN catalog_entries e ON e.id=rr.entry_id
+                 WHERE rr.record_id=r.id) AS cell_references,
+                (SELECT status_id FROM cell_versions cv WHERE cv.record_id=r.id AND cv.field_key='A') AS status_id
+                $scope $extra ORDER BY row_num DESC",$args);
+            $ids=workspace_trip_search_ids($t,$records,$query);
+            return $archive ? $ids : array_reverse($ids);
+        }
+    }
+    $sql=$conditions ? "SELECT row_num FROM (SELECT row_num,values_json $visibleRows) AS visible_rows WHERE ".implode(' AND ',$conditions).' ORDER BY row_num DESC'
+        : 'SELECT row_num '.$visibleRows;
+    $ids=array_map('intval',wquery($sql,$args)->fetchAll(PDO::FETCH_COLUMN));
     return !$archive && $t['slug']==='vyvoz' ? array_reverse($ids) : $ids;
 }
 function workspace_create_record(array $table): int {
@@ -129,6 +165,19 @@ function workspace_begin(): void {
     workspace_db()->beginTransaction();
     // One short writer lock gives outbox IDs commit order. No locks while the user types.
     wquery("SELECT value FROM workspace_meta WHERE `key`='marker' FOR UPDATE");
+}
+function workspace_transaction(callable $write): mixed {
+    $db = workspace_db();
+    if ($db->inTransaction()) return $write();
+    try {
+        workspace_begin();
+        $result = $write();
+        $db->commit();
+        return $result;
+    } catch (Throwable $error) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $error;
+    }
 }
 function workspace_event(string $type,array $payload): int {wquery('INSERT INTO outbox_events(event_type,payload) VALUES(?,?)',[$type,wjson($payload)]);return (int)workspace_db()->lastInsertId();}
 function workspace_audit(array $e): int {
@@ -158,6 +207,10 @@ function workspace_api(string $path): never {
     if($path==='/api/workspace/preferences'){
         $directory=vitrine_directory_requested();
         $model=$directory ? workspace_directory_grid_model($directory) : workspace_table();
+        if (($model['catalogKind']??null)==='terminals-main' && ($_GET['tariffs']??null)==='1') {
+            require_once __DIR__.'/WorkspaceTerminalTariffs.php';
+            $model=workspace_terminal_tariff_grid($model);
+        }
         json_response(workspace_preferences($model,$method==='POST'?wbody():null));
     }
     if($path==='/api/workspace/ws-ticket'&&$method==='POST'){

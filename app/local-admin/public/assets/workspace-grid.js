@@ -46,15 +46,4 @@
   window.addEventListener('vitrine-editor-closed',()=>{
     for(const patch of delayed.values())window.VitrineRows?.patch(patch);delayed.clear();
   });
-  let menu=null;
-  function closeMenu(){menu?.remove();menu=null;}
-  document.querySelector('.vitrine-table')?.addEventListener('contextmenu',event=>{
-    const cell=event.target.closest('td[data-row][data-column]');if(!cell)return;
-    event.preventDefault();closeMenu();menu=document.createElement('div');menu.className='vitrine-editor vitrine-history-menu';
-    menu.style.setProperty('--vitrine-editor-left',Math.min(event.clientX,innerWidth-240)+'px');
-    menu.style.setProperty('--vitrine-editor-top',Math.min(event.clientY,innerHeight-90)+'px');
-    const link=document.createElement('a');link.className='btn';link.textContent='История строки '+cell.dataset.row;link.href=historyUrl(cell.dataset.row);menu.append(link);document.body.append(menu);link.focus();
-  });
-  document.addEventListener('pointerdown',event=>{if(menu&&!menu.contains(event.target))closeMenu();});
-  document.addEventListener('keydown',event=>{if(event.key==='Escape')closeMenu();});
 })();

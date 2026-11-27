@@ -18,6 +18,9 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
 ?>
 <section class="vitrine-catalog-toolbar" aria-label="Управление справочником"<?= isset($catalogGrid['id']) ? ' data-catalog-id="'.(int)$catalogGrid['id'].'"' : '' ?>>
   <h1>Справочник: <strong><?= $escape($currentTable['title']) ?></strong><?php if ($visibilityLabel): ?> (<span data-directory-row-count><?= count($data['rowIds'] ?? []) ?></span>)<?php endif; ?></h1>
+  <?php if (!$embeddedCatalog && ($currentTable['catalogKind']??null)==='terminals-main'): ?>
+  <a class="btn btn-secondary" href="<?= $escape($viewUrl($directoryUrl.'&tariffs=1')) ?>">Тарифы</a>
+  <?php endif; ?>
   <?php if (!empty($catalogGrid['clientFilter'])): ?>
   <span>Клиент: <strong><?= $escape($catalogGrid['clientFilter']['name']) ?></strong></span>
   <?php if (!$embeddedCatalog): ?><a href="<?= $escape($viewUrl($directoryUrl.($archive ? '&archive=1' : (!empty($catalogGrid['showAll']) ? '&archive=all' : '')))) ?>"><?= $directory==='clients' ? 'Сбросить выбор клиента' : 'Все точки выгрузки' ?></a><?php endif; ?>
@@ -49,6 +52,9 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
   <?php if ($catalogGrid['canEdit'] && !$archive && !empty($catalogGrid['syncLabel'])): ?>
   <button class="btn" type="button" id="client-catalog-sync"><?= $escape($catalogGrid['syncLabel']) ?></button>
   <?php endif; ?>
+  <?php if (!empty($catalogGrid['standaloneCard'])): ?>
+  <button class="btn" type="button" data-standalone-card-open>Транспорт перевозчика</button>
+  <?php endif; ?>
   <?php if ($directory === 'entries' && !empty($catalogGrid['hasDetails'])): ?>
   <button class="btn" type="button" data-directory-details>Реквизиты</button>
   <?php if (!empty($catalogGrid['unkeyedCount'])): ?>
@@ -69,7 +75,13 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
     <div class="modal-body">
       <label class="field"><span class="field-label">ФИО</span><input class="field-input" name="name" maxlength="160" required autofocus></label>
       <label class="field"><span class="field-label">Логин</span><input class="field-input" name="login" maxlength="60" required autocomplete="off"></label>
-      <label class="field"><span class="field-label" id="employee-password-label">Пароль</span><input class="field-input" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="72"></label>
+      <div class="field">
+        <label class="field-label" id="employee-password-label" for="employee-password">Пароль</label>
+        <div class="auth-password">
+          <input class="field-input" id="employee-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="72">
+          <?php $passwordEyeField='employee-password'; require __DIR__.'/password-eye.php'; ?>
+        </div>
+      </div>
       <label class="field"><span class="field-label">Email</span><input class="field-input" name="email" type="email" maxlength="254" autocomplete="off"></label>
       <div class="field"><span class="field-label" id="employee-role-label">Роль</span><div data-employee-role></div></div>
       <label class="checkbox-item"><input type="checkbox" name="active"> Учётная запись активна</label>
@@ -78,6 +90,9 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
     <footer class="modal-foot"><button class="btn btn-primary" type="submit">Сохранить</button><button class="btn btn-secondary" type="button" data-close>Отмена</button></footer>
   </form>
 </dialog>
+<template id="vitrine-password-eye">
+  <?php $passwordEyeField='vitrine-editor-field'; require __DIR__.'/password-eye.php'; ?>
+</template>
 <?php endif; ?>
 
 <?php if ($directory === 'entries' && !empty($catalogGrid['hasDetails'])): ?>
@@ -88,6 +103,7 @@ $searchLabel = $directory === 'clients' ? 'Поиск по клиенту или
 </dialog>
 <?php endif; ?>
 
+<?php if (!empty($catalogGrid['standaloneCard'])) require __DIR__.'/vitrine-standalone-card.php'; ?>
 <?php if (!empty($catalogGrid['clientUnloadCatalog'])) require __DIR__.'/vitrine-client-unload-dialog.php'; ?>
 <?php if (!empty($catalogGrid['clientManagers'])) require __DIR__.'/vitrine-client-managers-dialog.php'; ?>
 <?php if (!empty($catalogGrid['unloadPoints'])): ?>

@@ -93,19 +93,21 @@ function workspace_write_order_statuses(array $statuses): void {
 
 function workspace_client_order_status_grid_endpoint(bool $pasteCheck = false): never {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method','Метод не поддерживается.',405);
+    json_response(workspace_client_order_status_grid_edit(wbody(),$pasteCheck));
+}
+
+function workspace_client_order_status_grid_edit(array $body, bool $pasteCheck = false): array {
     workspace_require('system','client-order-statuses','view');
     workspace_require('system','client-order-statuses','edit');
-    $body = wbody();
     if (!is_int($body['row'] ?? null) || !in_array($body['column'] ?? null,['A','B'],true) || !is_string($body['value'] ?? null)) {
         throw new ApiError('invalid_edit','Некорректные данные статуса заказа.');
     }
     $column = $body['column'];
     $value = $column === 'A' ? workspace_catalog_validate_name($body['value']) : trim($body['value']);
     $newValue = $column === 'A' ? $value : workspace_directory_color($value);
-    if ($pasteCheck) json_response(['accepted'=>true]);
+    if ($pasteCheck) return ['accepted'=>true];
 
-    workspace_begin();
-    try {
+    return workspace_transaction(static function() use ($body,$column,$value,$newValue) {
         $statuses = workspace_client_order_statuses(true);
         $code = null;
         foreach ($statuses as $key=>$item) if ($item['id'] === $body['row'] && $item['active']) $code = $key;
@@ -123,11 +125,8 @@ function workspace_client_order_status_grid_endpoint(bool $pasteCheck = false): 
             $statuses[$code] = $status;
             workspace_write_order_statuses($statuses);
         }
-        workspace_db()->commit();
-        json_response(['value'=>$value,'original'=>$value,'revision'=>$status['revision'],'baseHash'=>$baseHash,
-            'edited'=>false,'orderFill'=>$column==='B' ? $status['color'] : null]);
-    } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
-        throw $error;
-    }
+
+        return ['value'=>$value,'original'=>$value,'revision'=>$status['revision'],'baseHash'=>$baseHash,
+            'edited'=>false,'orderFill'=>$column==='B' ? $status['color'] : null];
+    });
 }
