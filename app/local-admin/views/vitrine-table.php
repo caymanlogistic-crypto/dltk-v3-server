@@ -4,7 +4,7 @@ $dragGrip = '<svg aria-hidden="true" class="vitrine-drag-grip" viewBox="0 0 16 1
 ?>
     <div class="vitrine-grid-region" data-grid-width="<?= $escape($gridWidth) ?>" data-grid-default-width="<?= $escape($defaultGridWidth) ?>">
     <section class="table-card vitrine-table-card" aria-label="<?= $escape($directory ? 'Справочник «'.$currentTable['title'].'»' : $currentTable['title']) ?>">
-      <div class="table-scroll vitrine-table-scroll"<?= $canReorderCatalogRows ? " data-quick-row-order" : "" ?> tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
+      <div class="table-scroll vitrine-table-scroll"<?= $canReorderCatalogRows || !empty($canReorderTripRows) ? " data-quick-row-order" : "" ?><?= !empty($showTripRowOrder) ? " data-trip-row-order" : "" ?> tabindex="0" role="region" aria-label="Таблица, прокрутка по горизонтали и вертикали">
         <table class="table vitrine-table<?= !empty($catalogGrid['unloadPoints']) ? ' vitrine-unload-points' : '' ?>" data-freeze-columns<?= $isAvtovyvoz ? ' data-row-page-size="'.WORKSPACE_AVTOVYVOZ_PAGE_SIZE.'"'.(!$rowArchive ? ' data-open-at-last-row' : '') : '' ?><?= $loginArrival ? ' data-center-on-login' : '' ?>>
           <caption class="vitrine-sr-only"><?php if ($directory): ?>Справочник «<?= $escape($currentTable['title']) ?>»<?php else: ?>Последние непустые строки листа <?= $escape($data['sheetTitle'] ?? 'ВЫВОЗ') ?>. Все исходные столбцы.<?php endif; ?></caption>
           <colgroup><col class="vitrine-row-column"><?php foreach ($columns as $column): ?><col class="vitrine-data-column<?= $columnClass($column) ?>" data-column="<?= $escape($column['letter']) ?>"><?php endforeach; ?></colgroup>
@@ -35,7 +35,7 @@ $dragGrip = '<svg aria-hidden="true" class="vitrine-drag-grip" viewBox="0 0 16 1
           </tbody>
           <?php if ($showDraftRows || $tripDraft) require __DIR__.'/vitrine-drafts.php'; ?>
         </table>
-        <?php if ($canReorderCatalogRows): ?>
+        <?php if ($canReorderCatalogRows || !empty($canReorderTripRows)): ?>
         <template id="vitrine-row-drag-template">
           <button type="button" class="vitrine-cell-icon" draggable="true" data-quick-row-drag aria-keyshortcuts="ArrowUp ArrowDown"><?= $dragGrip ?></button>
         </template>

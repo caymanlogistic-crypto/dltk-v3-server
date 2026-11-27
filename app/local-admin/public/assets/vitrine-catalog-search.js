@@ -55,12 +55,29 @@
     });
   }
   if (!field || !grid) return;
+  const progress=form.querySelector('[data-vitrine-search-progress]');
+  let updateSequence=0;
   async function update(force=false) {
     clearTimeout(timer);
+    const sequence=++updateSequence;
+    let showProgress;
     try {
-      await grid.filterDirectory(field.value.trim(),{force});
+      const request=grid.filterDirectory(field.value.trim(),{force});
+      if (progress && request) {
+        field.setAttribute('aria-busy','true');
+        showProgress=setTimeout(()=>{if(sequence===updateSequence)progress.hidden=false;},120);
+      }
+      await request;
     } catch (error) {
-      window.PlanexNotifications.show({tone:'danger',message:error.message || 'Не удалось выполнить поиск.'});
+      if (sequence===updateSequence) {
+        window.PlanexNotifications.show({tone:'danger',message:error.message || 'Не удалось выполнить поиск.'});
+      }
+    } finally {
+      clearTimeout(showProgress);
+      if (progress && sequence===updateSequence) {
+        progress.hidden=true;
+        field.removeAttribute('aria-busy');
+      }
     }
   }
   for (const filter of form.querySelectorAll('[data-vitrine-filter-param]')) {

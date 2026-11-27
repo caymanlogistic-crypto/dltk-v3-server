@@ -56,7 +56,7 @@
     if (text !== undefined) node.textContent = text;
     return node;
   }
-  function close() {
+  function close(restoreFocus=true) {
     if (!active || active.saving) return;
     const cell = active.cell;
     active.panel.remove();
@@ -64,7 +64,7 @@
     active = null;
     table?.classList.remove('has-editor');
     table?.classList.add('keyboard-navigation');
-    cell.focus({ preventScroll:true });
+    if (restoreFocus) cell.focus({ preventScroll:true });
     window.dispatchEvent(new CustomEvent('vitrine-editor-closed'));
   }
   function position() {
@@ -279,6 +279,7 @@
     return result;
   }
   function applySavedEffects(cell,result,editAction) {
+    if (cell.dataset.column==='F' && !result.createdRow) window.VitrineRows?.refreshTripDates();
     if (result.dependentCell) window.VitrineRows?.patch(result.dependentCell);
     for (const patch of result.dependentCells ?? []) window.VitrineRows?.patch(patch);
     for (const patch of result.unloadCells ?? []) window.VitrineRows?.patch(patch);
@@ -289,8 +290,7 @@
   }
   async function showCreatedTrip(cell,row) {
     try {
-      await window.VitrineRows.refreshManifest();
-      await window.VitrineRows.activate({dataset:{row:String(row),column:cell.dataset.column}},flash);
+      await window.VitrineRows.refreshManifest({focus:{row:Number(row),column:cell.dataset.column,origin:cell,action:flash}});
     } catch(error) {
       report(error.message || 'Рейс сохранён. Обновите таблицу.','danger');
     }
@@ -380,7 +380,7 @@
         editor.dropoff?.values(),editor.fleetDriver?.values(),editor.fleetDriver?.birthRevision);
       if(result.createdRow){
         editor.saving=false;
-        close();
+        close(false);
         await showCreatedTrip(cell,result.createdRow);
         return;
       }

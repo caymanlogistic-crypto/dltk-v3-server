@@ -8,6 +8,7 @@
                 <?php if (!empty($row['relatedUrl'])): ?>data-related-url="<?= $escape(function_exists('app_url_path') ? app_url_path($row['relatedUrl']) : $row['relatedUrl']) ?>"<?php endif; ?>
                 <?= !empty($row['draftSlot']) ? 'data-draft-slot' : '' ?>
                 <?= !empty($row['tripDraft']) ? 'data-trip-draft' : '' ?>
+                <?php if (!empty($row['tripDate'])): ?>data-trip-date="<?= $escape($row['tripDate']) ?>"<?php endif; ?>
                 data-row-number="<?= (int)$row['rowIndex'] ?>"><th scope="row" class="vitrine-row-number cell-mono"><?= $escape($row['rowLabel'] ?? $row['rowIndex']) ?><?php if (!empty($row['rowActions'])): ?><button type="button" class="vitrine-row-menu-trigger" data-directory-row-menu aria-label="Действия со строкой <?= $escape($row['rowLabel']) ?>" aria-haspopup="menu" aria-expanded="false" aria-controls="directory-row-menu" tabindex="-1">⋯</button><?php endif; ?></th>
             <?php foreach ($columns as $column): ?>
             <?php

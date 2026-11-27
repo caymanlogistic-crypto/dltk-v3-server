@@ -140,11 +140,10 @@
       const firstCreated=Object.values(createdRows)[0];
       if (firstCreated) {
         try {
-          await rows.refreshManifest();
-          if (Number(anchor.dataset.row)<0) {
-            const target=createdRows[anchor.dataset.row]??firstCreated;
-            await rows.activate({dataset:{row:String(target),column:anchor.dataset.column}});
-          }
+          const focus=Number(anchor.dataset.row)<0
+            ? {row:Number(createdRows[anchor.dataset.row]??firstCreated),column:anchor.dataset.column,origin:anchor}
+            : null;
+          await rows.refreshManifest({focus});
         } catch (error) {
           window.PlanexNotifications.show({tone:'danger',message:'Рейсы сохранены. Обновите таблицу, чтобы их увидеть.'});
         }

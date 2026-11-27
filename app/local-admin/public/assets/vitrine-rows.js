@@ -3,14 +3,16 @@
   const table=document.querySelector('.vitrine-table'),body=document.getElementById('vitrine-rows'),scroll=document.querySelector('.vitrine-table-scroll');
   if(!table||!body||!scroll)return;
   let ids=[];try{ids=JSON.parse(document.getElementById('vitrine-row-manifest').content);}catch{}
+  const dateLayout=window.VitrineTripDateGroups?.create(ids);
   const drafts=Array.from(document.querySelectorAll('[data-draft-slot]'));
   const tripDraftBody=document.querySelector('[data-trip-drafts]');
   const empty=document.getElementById('vitrine-empty');
   const directoryRowCount=document.querySelector('[data-directory-row-count]');
   const search=document.querySelector('.vitrine-catalog-search input[type="search"]');
   let appliedSearch=search?.value.trim() ?? '', requestedSearch=appliedSearch;
-  const hasTripFilter=params=>['tripStatus','tripClient'].some(key=>params.has(key));
-  let appliedTripFilter=hasTripFilter(new URLSearchParams(location.search));
+  const tripFilterKey=params=>JSON.stringify(['tripStatus','tripClient'].map(key=>params.get(key) || ''));
+  const noTripFilter=tripFilterKey(new URLSearchParams());
+  let appliedTripFilter=tripFilterKey(new URLSearchParams(location.search));
   const draftIndex=cell=>drafts.indexOf(cell.closest?.('[data-draft-slot]'));
   const rowIndex=cell=>positions.get(cell.dataset.row) ?? ids.length+draftIndex(cell);
   function setCounts() {
@@ -30,7 +32,7 @@
   const pageSize=Number(table.dataset.rowPageSize)||100,cache=new Map(),loaded=new Map(),pending=new Map();
   const compactWindow=table.hasAttribute('data-row-page-size');
   const openAtLastRow=table.hasAttribute('data-open-at-last-row');
-  const openUnfiltered=openAtLastRow && !appliedSearch && !appliedTripFilter;
+  const openUnfiltered=openAtLastRow && !appliedSearch && appliedTripFilter===noTripFilter;
   const centerOnLogin=openUnfiltered && table.hasAttribute('data-center-on-login');
   const bufferBefore=compactWindow ? 6 : 20;
   const bufferAfter=compactWindow ? 12 : 20;
@@ -131,9 +133,11 @@
       const received=new Set(result.rowIds);
       const missing=new Set(wanted.filter(id=>!received.has(id)));
       if(missing.size){
-        ids=ids.filter(id=>!missing.has(id));positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
+        const remaining=ids.filter(id=>!missing.has(id));
+        dateLayout?.remove(ids,remaining);
+        ids=remaining;positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         for(const id of missing)cache.delete(id);
-        loaded.clear();pending.clear();manifestVersion++;generation++;navigationGeneration++;navigation=null;first=last=-1;
+        loaded.clear();pending.clear();manifestVersion++;generation++;navigationGeneration++;navigation=null;first=last=-1;viewportPlan=null;
         setCounts();table.removeAttribute('aria-busy');
         queue();return;
       }
@@ -143,21 +147,30 @@
     pending.set(number,task);return task;
   }
   let focusLastRow=openUnfiltered && initial.length>0;
+  let viewportPlan=null;
   function stamp(spacer,size){spacer.hidden=size===0;spacer.firstElementChild.style.setProperty('--spacer-height',size+'px');}
   const availableHeight=()=>scroll.clientHeight-headHeight;
   // Only the login arrival adds space to center the last row of a short table.
   let endPadding=centerOnLogin ? Math.max(0,(availableHeight()-height)/2) : 0;
-  let startPadding=centerOnLogin ? Math.max(0,availableHeight()/2-(ids.length-.5)*height) : 0;
-  const rowOffset=index=>startPadding+index*height;
-  const viewportIndex=()=>Math.max(0,Math.min(ids.length-1,Math.floor((scroll.scrollTop-startPadding)/height)));
+  const windowOffset=index=>(dateLayout?.units(index)??index)*height;
+  const lastRowUnits=dateLayout?.units(ids.length-1,true)??ids.length-1;
+  let startPadding=centerOnLogin ? Math.max(0,availableHeight()/2-(lastRowUnits+.5)*height) : 0;
+  const rowOffset=index=>startPadding+(dateLayout?.units(index,true)??index)*height;
+  const viewportIndex=(top=scroll.scrollTop)=>dateLayout
+    ? dateLayout.indexAt(top-startPadding,height,ids.length)
+    : Math.max(0,Math.min(ids.length-1,Math.floor((top-startPadding)/height)));
   function stampEnd(end) {
-    stamp(bottom,(ids.length-end)*height+(tripDraftBody ? 0 : endPadding));
+    stamp(bottom,windowOffset(ids.length)-windowOffset(end)+(tripDraftBody ? 0 : endPadding));
     if(tripDraftBody)stamp(tail,Math.max(0,endPadding-drafts.length*height));
   }
   async function render(){
     if(window.VitrineGrid?.editing())return;
-    if(!ids.length){body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);stamp(tail,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');return;}
-    const visible=Math.max(1,Math.ceil(availableHeight()/height)),viewportStart=viewportIndex(),viewportEnd=Math.min(ids.length,viewportStart+visible+1);
+    const plan=viewportPlan;
+    if(!ids.length){viewportPlan=null;body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);stamp(tail,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');return;}
+    const displayTop=plan?.top??scroll.scrollTop;
+    const visible=Math.max(1,Math.ceil(availableHeight()/height)),viewportStart=viewportIndex(displayTop);
+    const viewportEnd=dateLayout ? Math.min(ids.length,viewportIndex(displayTop+availableHeight())+1)
+      : Math.min(ids.length,viewportStart+visible+1);
     if(first>=0&&(first===0||viewportStart>=first+refillMargin)&&(last===ids.length||viewportEnd<=last-refillMargin))return;
     const start=Math.max(0,Math.min(ids.length-1,viewportStart-bufferBefore));
     const end=Math.min(ids.length,compactWindow ? viewportEnd+bufferAfter : start+visible+bufferBefore+bufferAfter);
@@ -173,15 +186,31 @@
       const mountStarted=performance.now();
       window.VitrineDisplay?.prepareRows(rows.filter(row=>!row.isConnected));
       rows.forEach((row,index)=>row.setAttribute('aria-rowindex',String(start+index+2)));
-      stamp(top,rowOffset(start));stampEnd(end);
+      stamp(top,startPadding+windowOffset(start));stampEnd(end);
       if(top.parentElement!==body)body.prepend(top);
       if(bottom.parentElement!==body)body.append(bottom);
-      const keep=new Set(rows);
-      for(const row of body.querySelectorAll('[data-vitrine-row]'))if(!keep.has(row))row.remove();
+      const mounted=dateLayout?.rowsWithDividers(rows,start,body,visibleColumns().length+1)??rows;
+      const keep=new Set(mounted);
+      for(const row of body.querySelectorAll('[data-vitrine-row],[data-trip-date-divider]'))if(!keep.has(row))row.remove();
       let cursor=top.nextSibling;
-      for(const row of rows){if(cursor===row)cursor=cursor.nextSibling;else body.insertBefore(row,cursor||bottom);}
+      for(const row of mounted){if(cursor===row)cursor=cursor.nextSibling;else body.insertBefore(row,cursor||bottom);}
       first=start;last=end;
+      if(plan) {
+        viewportPlan=null;
+        scroll.scrollTop=plan.top;
+      }
       window.dispatchEvent(new CustomEvent('vitrine-rows-updated'));
+      if(plan?.focus && (!plan.focus.onClear || search?.value.trim()==='')) {
+        const row=cache.get(plan.focus.row);
+        const cell=(plan.focus.column && row?.querySelector('td[data-column="'+plan.focus.column+'"]:not([hidden])'))
+          || row?.querySelector('td[data-edit-cell]:not([hidden])');
+        if(cell?.isConnected) {
+          if(plan.focus.onClear) scroll.scrollLeft=0;
+          window.VitrineGrid?.select(cell);
+          cell.focus({preventScroll:true});
+          plan.focus.action?.(cell);
+        }
+      }
       if(focusLastRow){
         focusLastRow=false;
         const cell=cache.get(ids.at(-1))?.querySelector('td[data-edit-cell]:not([hidden])');
@@ -196,9 +225,14 @@
       const ahead=upward?Math.floor(start/pageSize)-1:Math.floor((end-1)/pageSize)+1;
       if(ahead>=0&&ahead*pageSize<ids.length&&!loaded.has(ahead))page(ahead).catch(()=>{});
     }catch(error){if(ticket===generation)report(error);}
-    finally{if(ticket===generation)table.removeAttribute('aria-busy');}
+    finally{
+      if(ticket===generation){
+        if(viewportPlan===plan)viewportPlan=null;
+        table.removeAttribute('aria-busy');
+      }
+    }
   }
-  function queue(){if(!frame)frame=requestAnimationFrame(()=>{frame=0;render();});}
+  function queue(){if(!frame&&!viewportPlan)frame=requestAnimationFrame(()=>{frame=0;if(!viewportPlan)render();});}
   scroll.addEventListener('scroll',queue,{passive:true});
   const resize = () => {
     headHeight=table.querySelector('thead').getBoundingClientRect().height;
@@ -348,8 +382,14 @@
     }
   }
   window.addEventListener('vitrine-editor-closed',()=>{for(const row of cache.values())for(const patch of catalogPatches.values())applyCatalogPatch(row,patch);});
-  let refreshTask=null,refreshAgain=false,manifestDeferred=false;
-  async function refreshManifest(){
+  let refreshTask=null,refreshAgain=false,manifestDeferred=false,createdFocus=null,keepAbsoluteTop=false;
+  async function refreshManifest({focus=null,keepViewport=false}={}){
+    keepAbsoluteTop ||= keepViewport;
+    if(focus) {
+      const headBottom=table.tHead.getBoundingClientRect().bottom;
+      const offset=focus.origin.getBoundingClientRect().top-headBottom;
+      createdFocus={...focus,offset};
+    }
     if(window.VitrineGrid?.editing()){manifestDeferred=true;return;}
     if(refreshTask){refreshAgain=true;return refreshTask;}
     refreshTask=(async()=>{
@@ -362,22 +402,30 @@
         if(query!==requestedSearch||urlRequested!==manifestUrl()){refreshAgain=true;continue;}
         const result=await response.json();
         if(query!==requestedSearch||urlRequested!==manifestUrl()){refreshAgain=true;continue;}
+        if(search&&search.value.trim()!==query)continue;
         if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось обновить список строк.');
         if(!Array.isArray(result.rowIds)||result.rowIds.some(id=>!Number.isInteger(id)))throw new Error('Некорректный список строк.');
         if(window.VitrineGrid?.editing()){manifestDeferred=true;return;}
         const next=[...new Set(result.rowIds)];
+        const nextDateGroups=result.tripDateGroups??[];
         const searchChanged=query!==appliedSearch;
-        const tripFilter=hasTripFilter(new URL(urlRequested,location.href).searchParams);
+        const tripFilter=tripFilterKey(new URL(urlRequested,location.href).searchParams);
         const filterChanged=tripFilter!==appliedTripFilter;
-        if(!searchChanged && !filterChanged && next.join(',')===ids.join(','))continue;
+        const target=createdFocus && next.includes(createdFocus.row) ? createdFocus : null;
+        if(target)createdFocus=null;
+        const preserveViewport=keepAbsoluteTop;
+        keepAbsoluteTop=false;
+        if(!searchChanged && !filterChanged && !target && next.join(',')===ids.join(',')
+          && (!dateLayout || dateLayout.agrees(nextDateGroups)))continue;
         const anchorIndex=Math.max(0,Math.min(ids.length-1,viewportIndex()));
         const anchor=ids[anchorIndex],offset=scroll.scrollTop-rowOffset(anchorIndex);
         const chosen=table.querySelector('td.is-current-cell'),chosenRow=chosen?.dataset.row,chosenColumn=chosen?.dataset.column;
         const oldPositions=document.body.hasAttribute('data-vitrine-catalog') ? new Map(positions) : null;
+        dateLayout?.replace(next,nextDateGroups);
         ids=next;positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         manifestVersion++;generation++;navigationGeneration++;navigation=null;pending.clear();loaded.clear();first=last=-1;
         const allowed=new Set(ids);
-        for(const [id,row] of cache)if(searchChanged||!allowed.has(id)||oldPositions&&oldPositions.get(String(id))!==positions.get(String(id))){row.remove();cache.delete(id);}
+        for(const id of cache.keys())if(searchChanged||!allowed.has(id)||oldPositions&&oldPositions.get(String(id))!==positions.get(String(id)))cache.delete(id);
         if(searchChanged){
           appliedSearch=query;
           const url=new URL(location.href);
@@ -388,16 +436,30 @@
         setCounts();
         const resetScroll=searchChanged || filterChanged;
         if (resetScroll) startPadding=endPadding=0;
+        const returnToEnd=openAtLastRow && resetScroll && !query && ids.length>0
+          && (searchChanged || tripFilter===noTripFilter);
         const newAnchor=resetScroll?0:positions.get(String(anchor))??Math.min(anchorIndex,Math.max(ids.length-1,0));
-        scroll.scrollTop=resetScroll?0:Math.max(0,rowOffset(newAnchor)+offset);
+        const top=target
+          ? rowOffset(positions.get(String(target.row)))-Math.max(0,Math.min(target.offset,availableHeight()-height))
+          : returnToEnd ? rowOffset(ids.length-1)+height-availableHeight()
+            : resetScroll ? 0 : preserveViewport ? scroll.scrollTop : rowOffset(newAnchor)+offset;
+        viewportPlan={top:Math.max(0,top),focus:target ?? (returnToEnd ? {row:ids.at(-1),onClear:true} : null)};
         await render();
-        if(chosenRow&&!chosen?.closest('[data-draft-slot]')&&!positions.has(chosenRow)){
+        if(!target&&!returnToEnd&&chosenRow&&!chosen?.closest('[data-draft-slot]')&&!positions.has(chosenRow)){
           const candidate=body.querySelector('td[data-column="'+chosenColumn+'"]:not([hidden])')||table.querySelector('tbody td[data-edit-cell]:not([hidden])');
           if(candidate)window.VitrineGrid?.select(candidate);
         }
       }while(refreshAgain);
-    })().finally(()=>{refreshTask=null;});
+    })().finally(()=>{refreshTask=null;createdFocus=null;});
     return refreshTask;
+  }
+  let tripDateFrame=0;
+  function refreshTripDates() {
+    if(!dateLayout||tripDateFrame)return;
+    tripDateFrame=requestAnimationFrame(()=>{
+      tripDateFrame=0;
+      refreshManifest().catch(report);
+    });
   }
   window.addEventListener('vitrine-editor-closed',()=>{if(manifestDeferred){manifestDeferred=false;refreshManifest().catch(report);}});
   const fleetDocumentRequests=new WeakMap();
@@ -434,6 +496,7 @@
 
   window.VitrineRows=Object.freeze({
     refreshManifest,
+    refreshTripDates,
     refreshFleetDocuments,
     applyFleetDocuments,
     exportRows,
@@ -484,8 +547,9 @@
     get total(){return ids.length;}
   });
   if(tripDraftBody)tripDraftBody.append(tail);
+  if(dateLayout && initial.length) body.replaceChildren(...dateLayout.rowsWithDividers(initial,initialStart,body,visibleColumns().length+1));
   if(openUnfiltered && initial.length){
-    stamp(top,rowOffset(initialStart));
+    stamp(top,startPadding+windowOffset(initialStart));
     stampEnd(ids.length);
     body.prepend(top);
     body.append(bottom);

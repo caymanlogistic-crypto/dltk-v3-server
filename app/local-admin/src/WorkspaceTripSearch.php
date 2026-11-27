@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__.'/VitrineClipboard.php';
 require_once __DIR__.'/WorkspaceVitrine.php';
+require_once __DIR__.'/WorkspaceTripDates.php';
 
 function workspace_trip_search_ids(array $table,PDOStatement $records,string $query): array {
     $columns=array_filter($table['columns'],static fn(array $column): bool=>
@@ -27,6 +28,16 @@ function workspace_trip_search_ids(array $table,PDOStatement $records,string $qu
     $rowNumber=ctype_digit($query) ? (int)$query : 0;
     $numeric=preg_match('/[0-9]/',$query)===1;
     $contains=static fn(string $value): bool=>$value!=='' && mb_stripos(str_replace($spaces,' ',$value),$query)!==false;
+    $canJoin=!str_contains($query,"\0");
+    $formattedFields=$slots;
+    if ($numeric) {
+        $formattedFields+=array_fill_keys(array_keys(array_filter($compact,static fn($kind)=>$kind!=='container')),true);
+        if ($phoneColumn!==null) $formattedFields[$phoneColumn]=true;
+        if ($margin) $formattedFields+=['X'=>true,'Y'=>true];
+    }
+    $formattedFields=array_intersect_key($formattedFields,$visible);
+    $formattedMatches=[];
+    $pointContacts=[];
     $matches=[];
     while ($record=$records->fetch()) {
         $number=(int)$record['row_num'];
@@ -38,10 +49,11 @@ function workspace_trip_search_ids(array $table,PDOStatement $records,string $qu
             if ($numeric && $margin && isset($visible['Z'])) $values['Z']=workspace_trip_margin($values);
             $status=$statuses[(int)$record['status_id']]??null;
             if ($status!==null) $values['A']=$status;
-            $point=$unloadPoints[$references['K']['id']??0]??null;
+            $pointId=$references['K']['id']??0;
+            $point=$unloadPoints[$pointId]??null;
             if ($point!==null) {
                 $values['K']=$point['address'];
-                $values['L']=workspace_unload_primary($point);
+                $values['L']=$pointContacts[$pointId]??=workspace_unload_primary($point);
             }
             if ($record['documents']!==null) $values['R']=$record['documents'];
             foreach ($references as $field=>$reference) {
@@ -50,22 +62,49 @@ function workspace_trip_search_ids(array $table,PDOStatement $records,string $qu
                 }
             }
             vitrine_apply_catalog_dependents($values,$references,$dependentLinks,$names,$dependentValues);
-            foreach (array_intersect_key($values,$visible) as $field=>$raw) {
-                if ($raw==='' || $raw===null) continue;
-                $value=workspace_string($raw);
-                if ($contains($value)) {
-                    $matches[]=$number;
-                    break;
+            $rawValues=array_intersect_key($values,$visible);
+            $matched=$contains(workspace_string($rawValues['A']??'')) || $contains(workspace_string($rawValues['B']??''));
+            $strings=[];
+            if (!$matched) {
+                $strings=array_map(static fn($value): string=>is_string($value) ? $value : workspace_string($value),$rawValues);
+                // The separator cannot occur in the query, so a match cannot cross cell boundaries.
+                if ($canJoin) {
+                    $matched=$contains(implode("\0",$strings));
+                } else {
+                    foreach ($strings as $value) {
+                        if ($contains($value)) {
+                            $matched=true;
+                            break;
+                        }
+                    }
                 }
-                $display=match (true) {
-                    isset($slots[$field])=>vitrine_slot_input($value)??$value,
-                    $numeric && $field===$phoneColumn=>workspace_fleet_trip_phone_display($value),
-                    $numeric && $margin && in_array($field,['X','Y'],true)=>($amount=workspace_trip_amount_minor($raw))!==null
-                        ? workspace_trip_amount_label($amount) : $value,
-                    $numeric && isset($compact[$field])=>vitrine_compact_display($value,$compact[$field]),
-                    default=>$value,
-                };
-                if ($display!==$value && $contains($display)) {
+            }
+            if ($matched) {
+                $matches[]=$number;
+            }
+            foreach ($matched ? [] : array_intersect_key($rawValues,$formattedFields) as $field=>$raw) {
+                if ($raw==='' || $raw===null) continue;
+                $value=$strings[$field];
+                $cacheKey=gettype($raw).':'.$value;
+                $shownMatches=$formattedMatches[$field][$cacheKey]??null;
+                if ($shownMatches===null) {
+                    $display=match (true) {
+                        isset($slots[$field])=>vitrine_slot_input($value)??$value,
+                        $field===$phoneColumn=>workspace_fleet_trip_phone_display($value),
+                        $margin && in_array($field,['X','Y'],true)=>($amount=workspace_trip_amount_minor($raw))!==null
+                            ? workspace_trip_amount_label($amount) : $value,
+                        default=>vitrine_compact_display($value,$compact[$field]),
+                    };
+                    $shownMatches=$display!==$value && $contains($display);
+                    if (!$shownMatches && $field==='F' && ($compact[$field]??null)==='date' &&
+                        (is_int($raw) || is_float($raw)) && ($date=workspace_trip_date_key($raw))!==null) {
+                        $shownMatches=$contains(vitrine_compact_display($date,'date'));
+                    }
+                    if (strlen($value)<=128 && count($formattedMatches[$field]??[])<1024) {
+                        $formattedMatches[$field][$cacheKey]=$shownMatches;
+                    }
+                }
+                if ($shownMatches) {
                     $matches[]=$number;
                     break;
                 }

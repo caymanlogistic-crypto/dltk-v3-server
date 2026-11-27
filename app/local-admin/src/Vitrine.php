@@ -207,6 +207,10 @@ function vitrine_paste_check(): never {
 
 function vitrine_save_cell(): never {
     if (isset($_GET['quickOrder'])) vitrine_quick_catalog_reorder();
+    if (isset($_GET['tripOrder'])) {
+        require_once __DIR__.'/WorkspaceTripRowOrder.php';
+        workspace_trip_row_reorder();
+    }
     $directory = vitrine_directory_requested();
     if ($directory !== null && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $directoryBody = wbody();

@@ -27,6 +27,9 @@ $canOpenStatuses = !$directory || in_array('vyvoz',array_column($workspaceTables
 $canViewClientColors = workspace_can('system','client-order-statuses','view');
 $preferences=empty($error) ? workspace_preferences($currentTable) : [];
 $isAvtovyvoz = !$directory && $currentTable['slug']==='vyvoz';
+$showTripRowOrder = $isAvtovyvoz && !$rowArchive && empty($error) &&
+    in_array('F',array_column($data['columns']??[],'letter'),true);
+$canReorderTripRows = $showTripRowOrder && $canManageRows;
 $quickCatalogs = $isAvtovyvoz && !$rowArchive && empty($error) ? vitrine_quick_catalogs($currentTable) : [];
 $loginArrival = $isAvtovyvoz && !$rowArchive && empty($error) && ($_GET['from']??null)==='login';
 $arrivalBlocking = $loginArrival ? ' blocking="render"' : '';
@@ -62,6 +65,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta id="vitrine-shared-options" data-catalogs="<?= $escape(wjson($data['sharedOptionCatalogs']??[])) ?>" content="<?= $escape(wjson($data['sharedOptions'])) ?>">
   <?php endif; ?>
   <meta id="vitrine-row-manifest" name="vitrine-row-manifest" content="<?= $escape(json_encode($data['rowIds'] ?? [])) ?>">
+  <?php if ($isAvtovyvoz && !$rowArchive): ?>
+  <meta id="vitrine-trip-date-groups" content="<?= $escape(wjson($data['tripDateGroups']??[])) ?>">
+  <?php endif; ?>
   <script src="<?= htmlspecialchars(app_url_path('/assets/vitrine-theme.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <meta id="workspace-preferences" name="workspace-preferences" content="<?= $escape(wjson($preferences)) ?>">
   <meta name="workspace-event-cursor" content="<?= (int)$eventCursor ?>">
@@ -89,8 +95,11 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if (in_array(true,array_column($columns,'tripDriverCard'),true)): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-trip-driver.js')) ?>"></script>
   <?php endif; ?>
+  <?php if ($isAvtovyvoz && !$rowArchive): ?>
+  <script defer<?= $arrivalBlocking ?> src="<?= $escape($viewUrl('/assets/vitrine-trip-date-groups.js')) ?>"></script>
+  <?php endif; ?>
   <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js'),ENT_QUOTES,'UTF-8') ?>"></script>
-  <?php if ($canReorderCatalogRows): ?>
+  <?php if ($canReorderCatalogRows || $showTripRowOrder): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-order.js')) ?>"></script>
   <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
@@ -240,8 +249,14 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
         <div class="vitrine-directory-visibility" data-vitrine-filter-param="<?= $escape($parameter) ?>"
              data-filter-label="<?= $escape($label) ?>" data-filter-options="<?= $escape(wjson($options)) ?>"></div>
         <?php endforeach; ?>
-        <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape(workspace_vyvoz_filter('q')) ?>"
-               aria-label="Поиск по рейсам" placeholder="Поиск по рейсам">
+        <div class="vitrine-search-field">
+          <input class="field-input" type="search" name="q" maxlength="160" value="<?= $escape(workspace_vyvoz_filter('q')) ?>"
+                 aria-label="Поиск по рейсам" placeholder="Поиск по рейсам">
+          <span class="vitrine-search-progress" data-vitrine-search-progress role="status" hidden>
+            <span class="ui-spinner" aria-hidden="true"></span>
+            <span class="vitrine-sr-only">Поиск рейсов…</span>
+          </span>
+        </div>
         <?php require __DIR__.'/vitrine-export-button.php'; ?>
       </form>
       <?php else: ?>

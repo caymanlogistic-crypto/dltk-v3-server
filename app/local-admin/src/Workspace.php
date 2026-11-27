@@ -77,13 +77,18 @@ function workspace_auth_route(string $path): void {
 /** Open business policy now; centralized rules permit future restrictions without UI bypasses. */
 function workspace_can(string $type,string $resource,string $action,?int $tableId=null): bool {
     $u=workspace_current_user();
-    $rules=wquery('SELECT resource_type,resource_id,action,effect FROM access_rules WHERE user_id=? OR role_id IN (SELECT role_id FROM user_roles WHERE user_id=?)',[$u['id'],$u['id']])->fetchAll();
+    static $readRules=[];
+    $readOnly=in_array($_SERVER['REQUEST_METHOD']??'',['GET','HEAD'],true);
+    $rules=$readOnly ? ($readRules[$u['id']]??=workspace_access_rules($u['id'])) : workspace_access_rules($u['id']);
     foreach($rules as $r){
         $object=$r['resource_type']===$type&&in_array($r['resource_id'],['*',$resource],true);
         $parent=$tableId!==null&&$r['resource_type']==='table'&&in_array($r['resource_id'],['*',(string)$tableId],true);
         if(($object||$parent)&&in_array($r['action'],['*',$action],true)&&$r['effect']==='deny')return false;
     }
     return true;
+}
+function workspace_access_rules(int $userId): array {
+    return wquery('SELECT resource_type,resource_id,action,effect FROM access_rules WHERE user_id=? OR role_id IN (SELECT role_id FROM user_roles WHERE user_id=?)',[$userId,$userId])->fetchAll();
 }
 function workspace_require(string $type,string $id,string $action,?int $tableId=null): void {if(!workspace_can($type,$id,$action,$tableId))throw new ApiError('forbidden','Для этого действия нет доступа.',403);}
 function workspace_table_display_title(string $slug,string $title): string {
@@ -120,7 +125,8 @@ function workspace_manifest(array $t, bool $archive=false): array {
         : "AND (metadata_zlib IS NULL OR REGEXP_LIKE(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(values_json,?)),''),'[^[:space:] ]')
             OR EXISTS (SELECT 1 FROM cell_versions v WHERE v.record_id=r.id AND v.field_key=? AND v.revision>0 AND v.value=''))";
     $args=$archive ? [$t['id'],1] : [$t['id'],0,'$.'.$t['carrier_column'],$t['carrier_column']];
-    $baseRows="FROM records r WHERE table_id=? AND archived=? $filter";
+    $baseFilter="WHERE r.table_id=? AND r.archived=? $filter";
+    $baseRows="FROM records r $baseFilter";
     $visibleRows="$baseRows ORDER BY row_num DESC LIMIT ".WORKSPACE_MANIFEST_LIMIT;
     $conditions=[];
     if ($t['slug']==='vyvoz') {
@@ -135,16 +141,19 @@ function workspace_manifest(array $t, bool $archive=false): array {
         $query=workspace_vyvoz_filter('q');
         if ($query!=='') {
             require_once __DIR__.'/WorkspaceTripSearch.php';
-            $scope=$archive ? "FROM (SELECT id,row_num,values_json $visibleRows) AS r WHERE TRUE" : $baseRows;
+            $scope=$archive ? "FROM (SELECT id,row_num,values_json $visibleRows) AS r" : 'FROM records r';
+            $where=$archive ? 'WHERE TRUE' : $baseFilter;
             $extra=$conditions ? ' AND '.implode(' AND ',$conditions) : '';
-            $documents=workspace_fleet_trip_documents_can_view($t['id'])
-                ? '(SELECT document_text FROM fleet_trip_documents d WHERE d.record_id=r.id)' : 'NULL';
+            $canViewDocuments=workspace_fleet_trip_documents_can_view($t['id']);
+            $documents=$canViewDocuments ? 'd.document_text' : 'NULL';
+            $joinDocuments=$canViewDocuments ? 'LEFT JOIN fleet_trip_documents d ON d.record_id=r.id' : '';
             $records=wquery("SELECT r.row_num,r.values_json,$documents AS documents,
                 (SELECT JSON_OBJECTAGG(rr.field_key,JSON_OBJECT('id',e.id,'catalogId',e.catalog_id,'name',e.name))
                  FROM record_references rr JOIN catalog_entries e ON e.id=rr.entry_id
-                 WHERE rr.record_id=r.id) AS cell_references,
-                (SELECT status_id FROM cell_versions cv WHERE cv.record_id=r.id AND cv.field_key='A') AS status_id
-                $scope $extra ORDER BY row_num DESC",$args);
+                 WHERE rr.record_id=r.id) AS cell_references, cv.status_id
+                $scope
+                LEFT JOIN cell_versions cv ON cv.record_id=r.id AND cv.field_key='A'
+                $joinDocuments $where $extra ORDER BY r.row_num DESC",$args);
             $ids=workspace_trip_search_ids($t,$records,$query);
             return $archive ? $ids : array_reverse($ids);
         }
@@ -154,6 +163,13 @@ function workspace_manifest(array $t, bool $archive=false): array {
     $ids=array_map('intval',wquery($sql,$args)->fetchAll(PDO::FETCH_COLUMN));
     return !$archive && $t['slug']==='vyvoz' ? array_reverse($ids) : $ids;
 }
+function workspace_manifest_payload(array $table,bool $archive): array {
+    $ids=workspace_manifest($table,$archive);
+    if ($archive || $table['slug']!=='vyvoz') return ['rowIds'=>$ids];
+    require_once __DIR__.'/WorkspaceTripDates.php';
+    return workspace_trip_manifest_order($table,$ids);
+}
+
 function workspace_create_record(array $table): int {
     $row=(int)wquery('SELECT COALESCE(MAX(row_num),1)+1 FROM records WHERE table_id=?',[$table['id']])->fetchColumn();
     $values=array_fill_keys(array_column($table['columns'],'letter'),'');
@@ -202,7 +218,8 @@ function workspace_api(string $path): never {
     if($path==='/api/workspace/bootstrap'&&$method==='GET')json_response(['user'=>workspace_current_user(),'tables'=>workspace_tables(),'catalogs'=>workspace_catalogs(),'roles'=>wquery('SELECT id,name FROM roles ORDER BY id')->fetchAll(),'policyMode'=>'open','googleSyncEnabled'=>false]);
     if($path==='/api/workspace/manifest'&&$method==='GET'){
         $directory=vitrine_directory_requested();
-        json_response(['rowIds'=>$directory ? workspace_directory_grid_data($directory,[])['rowIds'] : workspace_manifest(workspace_table(),($_GET['archive']??null)==='1')]);
+        json_response($directory ? ['rowIds'=>workspace_directory_grid_data($directory,[])['rowIds']]
+            : workspace_manifest_payload(workspace_table(),($_GET['archive']??null)==='1'));
     }
     if($path==='/api/workspace/preferences'){
         $directory=vitrine_directory_requested();
