@@ -127,7 +127,7 @@ function vitrine_save_range(?string $directory, array $body): array {
             }
             $results[$index] = ['row'=>$row,'column'=>$column,'result'=>$result];
         }
-        foreach ($newRows as $row) workspace_event('row.changed',['tableSlug'=>$data['table']['slug'],'row'=>$row]);
+        if ($newRows) workspace_publish_inserted_rows($data['table'],array_values($newRows),$user);
         ksort($results);
         $result = ['cells'=>array_values($results),'createdRows'=>(object)$newRows];
         wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$user,$request,wjson($result)]);

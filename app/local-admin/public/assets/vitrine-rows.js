@@ -147,6 +147,33 @@
     pending.set(number,task);return task;
   }
   let viewportPlan=null;
+  const pendingInsertions=new Map();
+  function paintInsertedTrips() {
+    if (!pendingInsertions.size) return;
+    const now=performance.now();
+    const viewportBottom=scroll.getBoundingClientRect().bottom;
+    const headerBottom=table.tHead.getBoundingClientRect().bottom;
+    for (const [id,expires] of pendingInsertions) {
+      if (expires<=now) {pendingInsertions.delete(id);continue;}
+      const row=cache.get(id);
+      if (!row?.isConnected) continue;
+      const bounds=row.getBoundingClientRect();
+      if (bounds.top>=viewportBottom || bounds.bottom<=headerBottom) continue;
+      pendingInsertions.delete(id);
+      row.dataset.tripRowInserted='';
+      setTimeout(()=>{delete row.dataset.tripRowInserted;},620);
+    }
+  }
+  function flashInsertedTrips(rows) {
+    const expires=performance.now()+5000;
+    for (const id of rows) {
+      if (Number.isSafeInteger(id) && id>0) pendingInsertions.set(id,expires);
+    }
+    paintInsertedTrips();
+    setTimeout(()=>{
+      for (const [id,until] of pendingInsertions) if (until<=expires) pendingInsertions.delete(id);
+    },5000);
+  }
   const removedRows=new Set();
   async function animateRemovedRows() {
     const marked=[];
@@ -185,6 +212,7 @@
     if(!ids.length){
       if (removedRows.size) await animateRemovedRows();
       viewportPlan=null;body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);stamp(tail,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');
+      if (plan) scroll.scrollTop=plan.top;
       window.dispatchEvent(new CustomEvent('vitrine-rows-updated'));
       return;
     }
@@ -228,6 +256,7 @@
         scroll.scrollTop=plan.top;
       }
       window.dispatchEvent(new CustomEvent('vitrine-rows-updated'));
+      paintInsertedTrips();
       if(plan?.focus && (!plan.focus.onClear || search?.value.trim()==='')) {
         const row=cache.get(plan.focus.row);
         const cell=(plan.focus.column && row?.querySelector('td[data-column="'+plan.focus.column+'"]:not([hidden])'))
@@ -253,7 +282,7 @@
     }
   }
   function queue(){if(!frame&&!viewportPlan)frame=requestAnimationFrame(()=>{frame=0;if(!viewportPlan)render();});}
-  scroll.addEventListener('scroll',queue,{passive:true});
+  scroll.addEventListener('scroll',()=>{paintInsertedTrips();queue();},{passive:true});
   const resize = () => {
     headHeight=table.querySelector('thead').getBoundingClientRect().height;
     first=-1;
@@ -463,7 +492,7 @@
         const top=target
           ? rowOffset(positions.get(String(target.row)))-Math.max(0,Math.min(target.offset,availableHeight()-height))
           : returnToEnd ? rowOffset(ids.length-1)+height-availableHeight()
-            : resetScroll ? 0 : preserveViewport ? scroll.scrollTop : rowOffset(newAnchor)+offset;
+            : resetScroll ? 0 : preserveViewport || anchor===undefined ? scroll.scrollTop : rowOffset(newAnchor)+offset;
         viewportPlan={top:Math.max(0,top),focus:target ?? (returnToEnd ? {row:ids.at(-1),onClear:true} : null)};
         await render();
         if(!target&&!returnToEnd&&chosenRow&&!chosen?.closest('[data-draft-slot]')&&!positions.has(chosenRow)){
@@ -517,6 +546,7 @@
 
   window.VitrineRows=Object.freeze({
     refreshManifest,
+    flashInsertedTrips,
     refreshTripDates,
     refreshFleetDocuments,
     applyFleetDocuments,

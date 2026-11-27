@@ -3566,10 +3566,10 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
 @media (prefers-reduced-motion: reduce) {
   .vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing]) { animation:none; }
 }
-.vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing]) > :is(th,td),
-.vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing]) > td.has-status-color,
-.vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing]) > td.has-status-color.is-current-cell,
-.vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing]) > td[data-edit-cell][data-vitrine-range] {
+.vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing],[data-trip-row-inserted]) > :is(th,td),
+.vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing],[data-trip-row-inserted]) > td.has-status-color,
+.vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing],[data-trip-row-inserted]) > td.has-status-color.is-current-cell,
+.vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing],[data-trip-row-inserted]) > td[data-edit-cell][data-vitrine-range] {
   --vitrine-range-fill:var(--p-error-fill);
   background:var(--p-error-fill) !important;
   color:var(--p-text) !important;

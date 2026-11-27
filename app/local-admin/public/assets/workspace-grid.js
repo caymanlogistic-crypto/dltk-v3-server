@@ -38,6 +38,10 @@
     if(envelope.event==='fleet.trip_documents.changed'&&patch.tableSlug===slug)window.VitrineRows?.refreshFleetDocuments(patch.row,patch.action==='clear').catch(e=>error(e.message));
     if (envelope.event==='row.changed' && patch.tableSlug===slug) {
       const options=slug==='vyvoz' && patch.action==='delete' ? {keepViewport:true,removedRow:patch.row} : undefined;
+      if (slug==='vyvoz' && Number.isSafeInteger(patch.actorId) && patch.actorId!==Number(document.body.dataset.workspaceUser)
+          && Array.isArray(patch.insertedRows)) {
+        window.VitrineRows?.flashInsertedTrips(patch.insertedRows);
+      }
       window.VitrineRows?.refreshManifest(options).catch(e=>error(e.message));
     }
     if(envelope.event==='catalog.changed'){

@@ -197,6 +197,10 @@ function workspace_transaction(callable $write): mixed {
     }
 }
 function workspace_event(string $type,array $payload): int {wquery('INSERT INTO outbox_events(event_type,payload) VALUES(?,?)',[$type,wjson($payload)]);return (int)workspace_db()->lastInsertId();}
+function workspace_publish_inserted_rows(array $table,array $rows,int $actorId): void {
+    workspace_event('row.changed',['tableSlug'=>$table['slug'],'row'=>$rows[0],
+        'insertedRows'=>$rows,'actorId'=>$actorId]);
+}
 function workspace_audit(array $e): int {
     $u=workspace_current_user();
     wquery('INSERT INTO change_history(actor_id,actor_name,table_id,record_id,row_num,field_key,column_label,before_value,after_value,action,category,operation_id,request_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',[$u['id'],$u['name'],$e['tableId']??null,$e['recordId']??null,$e['row']??null,$e['column']??null,$e['label']??null,wjson($e['before']??null),wjson($e['after']??null),$e['action']??'edit',$e['category']??'cell',$e['operationId']??bin2hex(random_bytes(12)),$e['requestId']??null]);return (int)workspace_db()->lastInsertId();
@@ -273,7 +277,9 @@ function workspace_api(string $path): never {
         $b=wbody();$t=workspace_table();workspace_require('table',(string)$t['id'],'edit',$t['id']);workspace_begin();try{
             if(($b['action']??'')==='create'){$num=workspace_create_record($t);}
             else{$num=(int)($b['row']??0);$r=wquery('SELECT * FROM records WHERE table_id=? AND row_num=? FOR UPDATE',[$t['id'],$num])->fetch();if(!$r)throw new ApiError('not_found','Строка не найдена.',404);$archived=($b['action']??'')==='archive';if(!in_array($b['action']??'',['archive','restore'],true))throw new ApiError('invalid_action','Неизвестное действие.');wquery('UPDATE records SET archived=? WHERE id=?',[(int)$archived,$r['id']]);workspace_audit(['tableId'=>$t['id'],'recordId'=>(int)$r['id'],'row'=>$num,'action'=>$archived?'archive':'restore','category'=>'row','before'=>['archived'=>(bool)$r['archived']],'after'=>['archived'=>$archived]]);}
-            workspace_event('row.changed',['tableSlug'=>$t['slug'],'row'=>$num]);workspace_db()->commit();json_response(['row'=>$num]);
+            if ($b['action']==='create') workspace_publish_inserted_rows($t,[$num],workspace_current_user()['id']);
+            else workspace_event('row.changed',['tableSlug'=>$t['slug'],'row'=>$num]);
+            workspace_db()->commit();json_response(['row'=>$num]);
         }catch(Throwable $e){if(workspace_db()->inTransaction())workspace_db()->rollBack();throw $e;}
     }
     throw new ApiError('not_found','Раздел API не найден.',404);

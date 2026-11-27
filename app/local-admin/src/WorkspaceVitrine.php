@@ -550,7 +550,10 @@ function vitrine_store(array $body): array {
         $status=$statusId?wquery('SELECT color FROM catalog_entries WHERE id=?',[$statusId])->fetch():null;$result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request,'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0)]+$derived+$orderResult+$catalogStyle+$unloadResult+$dropoffResult+$formulaResult+$fieldColorChange['result'];
         $dropoffEvent=$dropoffChanged ? ['dropoffDetails'=>array_diff_key($nextDropoff,['legacy'=>true])] : [];
         workspace_event('cell.changed',['tableSlug'=>$t['slug'],'row'=>$body['row'],'column'=>$key,'value'=>vitrine_compact_display($value,$body['compactKind']??null),'revision'=>$revision,'edited'=>$active,'statusId'=>$statusId,'statusColor'=>$status['color']??null,'original'=>$body['original'],'baseHash'=>hash('sha256',$r['baseline_json']),'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0),'actorId'=>$u['id'],'actorName'=>$u['name'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation]+$orderResult+$catalogStyle+$dropoffEvent+$formulaResult+$fieldColorChange['result']);
-        if($created || $key===$t['carrier_column'] || ($t['slug']==='vyvoz' && $key==='F'))workspace_event('row.changed',['tableSlug'=>$t['slug'],'row'=>$body['row']]);
+        if ($created) workspace_publish_inserted_rows($t,[$body['row']],$u['id']);
+        elseif ($key===$t['carrier_column'] || ($t['slug']==='vyvoz' && $key==='F')) {
+            workspace_event('row.changed',['tableSlug'=>$t['slug'],'row'=>$body['row']]);
+        }
         wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);return $result;
     });
 }
