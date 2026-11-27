@@ -118,7 +118,6 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
             (!$archive || !in_array($catalog['kind'],['clients','managers'],true)))) {
             workspace_assert_catalog_entry_unused($catalog['kind'],$cid,$old);
         }
-        $logists=$hasLogist?workspace_client_catalog_metadata('catalog_logists_'.$cid):[];
         $logistAccounts=$hasLogist?workspace_carrier_logist_accounts($cid):[];
         $beforeLogist=$old&&$hasLogist?(workspace_carrier_logist_values($cid)[$old['id']]??''):'';
         $beforeAccount=$old?(int)($logistAccounts[$old['id']]??0):0;
@@ -149,10 +148,8 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
         else{wquery('INSERT INTO catalog_entries(catalog_id,name,normalized,color,active) VALUES(?,?,?,?,?)',[$cid,$name,$norm,$color,(int)$active]);$id=(int)workspace_db()->lastInsertId();}
         if($managerChanged)workspace_client_set_manager($cid,$id,$manager);
         if($logistChanged){
-            $logists[$id]=$logist;
             if ($logistAccount) $logistAccounts[$id]=$logistAccount;
             else unset($logistAccounts[$id]);
-            wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',['catalog_logists_'.$cid,wjson((object)$logists)]);
             wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',['catalog_logist_accounts_'.$cid,wjson((object)$logistAccounts)]);
         }
         if($old&&!$edoOperator&&!$partyCatalog&&$catalog['kind']!=='status'&&$old['normalized']!==$norm)workspace_client_remember_alias($cid,$id,$old['normalized']);

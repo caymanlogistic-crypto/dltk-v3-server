@@ -191,15 +191,16 @@ function workspace_assert_employee_unused(array $employee): void {
         AND NOT EXISTS (SELECT 1 FROM workspace_meta m WHERE m.key=CONCAT('catalog_deleted_client_',l.client_id))",
         [$employee['id']])->fetchColumn() : 0;
     foreach (wquery("SELECT id,kind FROM catalogs WHERE kind IN ('clients','carriers')")->fetchAll() as $catalog) {
-        if ($accounts && $catalog['kind']==='clients') continue;
-        $assignments = $catalog['kind'] === 'clients' ? workspace_client_manager_values((int)$catalog['id'])
-            : workspace_client_catalog_metadata('catalog_logists_'.$catalog['id']);
-        $links=$catalog['kind']==='carriers' ? workspace_carrier_logist_accounts((int)$catalog['id']) : [];
-        foreach ($links as $carrierId=>$accountId) {
-            if ((int)$accountId===$employee['id'] && !workspace_row_deleted('catalog_deleted_client_',(int)$carrierId)) $count++;
-            unset($assignments[$carrierId]);
+        $catalogId=(int)$catalog['id'];
+        if ($catalog['kind']==='carriers') {
+            foreach (workspace_carrier_logist_accounts($catalogId) as $carrierId=>$accountId) {
+                if ((int)$accountId===$employee['id'] && !workspace_row_deleted('catalog_deleted_client_',(int)$carrierId)) $count++;
+            }
+        } elseif (!$accounts) {
+            foreach (workspace_client_manager_values($catalogId) as $name) {
+                if (is_string($name) && in_array(vitrine_status_key($name),$names,true)) $count++;
+            }
         }
-        foreach ($assignments as $name) if (is_string($name) && in_array(vitrine_status_key($name),$names,true)) $count++;
     }
     if ($count) throw new ApiError('entry_in_use','Сотрудник указан в справочниках клиентов или перевозчиков. Назначений — '.$count.'. Удалить его нельзя.',409);
     $records = (int)wquery("SELECT COUNT(*) FROM records WHERE

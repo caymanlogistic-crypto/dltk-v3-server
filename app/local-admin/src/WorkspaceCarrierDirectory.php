@@ -42,35 +42,48 @@ function workspace_carrier_logist_accounts(int $catalogId): array {
     return workspace_client_catalog_metadata('catalog_logist_accounts_'.$catalogId);
 }
 
-function workspace_carrier_logist_values(int $catalogId): array {
-    $values=workspace_client_catalog_metadata('catalog_logists_'.$catalogId);
-    $links=workspace_carrier_logist_accounts($catalogId);
-    if (!$links) return $values;
-    $accounts=array_column(workspace_employee_records(),null,'id');
-    foreach ($links as $carrierId=>$accountId) {
-        $account=$accounts[$accountId]??null;
-        if ($account && !workspace_employee_is_private($account)) $values[$carrierId]=$account['name'];
+function workspace_carrier_logist_people(): array {
+    $accounts=array_filter(workspace_employee_records(),
+        static fn(array $account): bool=>!workspace_employee_is_private($account));
+    $counts=array_count_values(array_map(static fn(array $account): string=>vitrine_catalog_key($account['name']),$accounts));
+    $people=[];
+    foreach ($accounts as $account) {
+        $id=$account['id'];
+        $name=$account['name'];
+        $suffix=' · №'.$id;
+        $label=$counts[vitrine_catalog_key($name)]===1 ? $name : mb_substr($name,0,160-mb_strlen($suffix)).$suffix;
+        $eligible=$account['active'] && (bool)array_intersect(
+            ['logist','directory_senior_logist'],array_column($account['roles'],'code'));
+        $people[$id]=['label'=>$label,'eligible'=>$eligible];
     }
-    return $values;
+    return $people;
+}
+
+function workspace_carrier_logist_choices(): array {
+    // Keep the standard select available even if no accounts can be assigned.
+    return ['',...array_column(array_filter(workspace_carrier_logist_people(),
+        static fn(array $person): bool=>$person['eligible']),'label')];
+}
+
+function workspace_carrier_logist_values(int $catalogId): array {
+    $links=workspace_carrier_logist_accounts($catalogId);
+    if (!$links) return [];
+    $people=workspace_carrier_logist_people();
+    return array_map(static fn($id): string=>$people[$id]['label']??'',$links);
 }
 
 function workspace_carrier_logist_input(int $catalogId,int $carrierId,string $label): array {
-    $legacy=workspace_client_catalog_metadata('catalog_logists_'.$catalogId)[$carrierId]??'';
-    $accountId=(int)(workspace_carrier_logist_accounts($catalogId)[$carrierId]??0);
     if ($label==='') return ['',0];
+    $accountId=(int)(workspace_carrier_logist_accounts($catalogId)[$carrierId]??0);
+    $key=vitrine_catalog_key($label);
     $matches=[];
-    foreach (workspace_employee_records() as $account) {
-        if (workspace_employee_is_private($account)) continue;
-        $id=$account['id'];
-        if ($id===$accountId && ($label===$legacy || $label===$account['name'])) {
-            return [$account['name'],$id];
+    foreach (workspace_carrier_logist_people() as $id=>$person) {
+        if (($id===$accountId || $person['eligible']) && vitrine_catalog_key($person['label'])===$key) {
+            $matches[$id]=$person['label'];
         }
-        if (!$account['active'] || !array_intersect(['logist','directory_senior_logist'],array_column($account['roles'],'code'))) continue;
-        if (vitrine_catalog_key($account['name'])===vitrine_catalog_key($label)) $matches[$id]=$account['name'];
     }
     if (count($matches)===1) return [reset($matches),array_key_first($matches)];
-    if ($label===$legacy) return [$legacy,$accountId];
-    throw new ApiError('invalid_logist','Укажите имя действующего логиста из учётных записей.');
+    throw new ApiError('invalid_logist','Выберите действующего логиста из учётных записей.');
 }
 
 function workspace_carrier_directory_values(int $catalogId): array {

@@ -19,7 +19,7 @@ function vitrine_catalog_links(array $table): array {
         'O'=>['kind'=>'fleet-vehicles','target'=>'P','source'=>'Из справочника автотранспорта','empty'=>'За машиной не закреплён водитель',
             'phoneTarget'=>'Q','phoneEmpty'=>'У водителя не указан телефон',
             'documentsTarget'=>'R','documentsEmpty'=>'У водителя нет данных для ПД','invalid'=>'Выберите машину из справочника автотранспорта.'],
-        'S'=>['kind'=>'carriers','target'=>'AM','meta'=>'catalog_logists_','source'=>'Из справочника перевозчиков','empty'=>'У перевозчика не указан логист','invalid'=>'Выберите перевозчика из справочника.'],
+        'S'=>['kind'=>'carriers','target'=>'AM','source'=>'Из справочника перевозчиков','empty'=>'У перевозчика не указан логист','invalid'=>'Выберите перевозчика из справочника.'],
         'T'=>['kind'=>'assignment-statuses','invalid'=>'Выберите статус поручения из справочника.'],
         'U'=>['kind'=>'etrn-statuses','invalid'=>'Выберите статус ЭТрН из справочника.'],
         'U2'=>['kind'=>'etrn-signing-statuses','invalid'=>'Выберите статус подписания ЭТРН из справочника.'],

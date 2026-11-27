@@ -73,6 +73,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $clientRequisites=$kind==='clients' ? workspace_client_requisites($id) : [];
     $emptyClientRequisites=array_fill_keys(array_keys(WORKSPACE_CLIENT_REQUISITE_LABELS),'');
     $carrierValues=$kind==='carriers' ? workspace_carrier_directory_values($id) : [];
+    $logistChoices=$kind==='carriers' && $canEdit && !$archive ? workspace_carrier_logist_choices() : [];
     $unload = $kind==='unload-points';
     $managers=$kind==='managers';
     $fleet=in_array($kind,WORKSPACE_FLEET_KINDS,true);
@@ -143,6 +144,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
             'singleLine'=>array_fill_keys(array_keys($values),true),'baseHash'=>workspace_catalog_directory_hash($id,$entryId),
             'edits'=>array_fill_keys(array_keys($values),['revision'=>(int)$entry['revision']])];
         if ($clientManagerCard) $row['kinds']['B']='client-managers';
+        if ($logistChoices) $row['choices']['E']=$logistChoices;
         if (workspace_catalog_has_palette($kind)) {
             if (workspace_is_document_status_catalog($kind)) $row['catalogFills']['B']=$entry['color'] ?? '';
             else $row['orderFill']=$entry['color'];
