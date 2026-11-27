@@ -20,6 +20,7 @@
   const dragButton='button[data-quick-row-drag]';
   const findRow=id=>body.querySelector('tr[data-row-number="'+id+'"]');
   const ownMoves=new Set();
+  const pendingMoves=new Map();
   let draggedDate;
 
   function sameDate(date,row) {
@@ -115,7 +116,9 @@
         body:JSON.stringify(move)});
       const result=await response.json();
       if (!response.ok) throw new Error(result.error?.message || 'Не удалось изменить порядок строк.');
-      await window.VitrineRows.refreshManifest(tripOrder ? {keepViewport:true} : undefined);
+      if (!result.changed) return;
+      rememberMove(moved);
+      await window.VitrineRows.refreshManifest({keepViewport:true});
       if (button && document.activeElement===document.body) {
         findRow(moved)?.querySelector(dragButton)?.focus({preventScroll:true});
       }
@@ -127,47 +130,38 @@
       body.removeAttribute('data-quick-order-saving');
     }
   }
-  if (tripOrder) {
-    const pendingMoves=new Map(),movingRows=new WeakMap();
-    function animateMoves() {
-      for (const [id,before] of pendingMoves) {
-        const row=findRow(id);
-        if (!row || row.getAttribute('aria-rowindex')===before.index) continue;
-        pendingMoves.delete(id);
-        clearTimeout(movingRows.get(row));
-        movingRows.delete(row);
-        row.removeAttribute('data-trip-row-reordered');
-        row.style.removeProperty('--vitrine-trip-row-shift');
-        const rect=row.getBoundingClientRect(),viewport=scroll.getBoundingClientRect();
-        if (rect.top>=viewport.bottom || rect.bottom<=scroll.querySelector('thead').getBoundingClientRect().bottom) continue;
-        const fallback=before.direction>0 ? -rect.height : rect.height;
-        const distance=before.top===null ? fallback : before.top-rect.top-scroll.scrollTop;
-        const start=Math.max(-scroll.clientHeight,Math.min(scroll.clientHeight,distance));
-        row.style.setProperty('--vitrine-trip-row-shift',start+'px');
-        row.setAttribute('data-trip-row-reordered','');
-        const timeout=setTimeout(()=>{
-          row.removeAttribute('data-trip-row-reordered');
-          row.style.removeProperty('--vitrine-trip-row-shift');
-          movingRows.delete(row);
-        },620);
-        movingRows.set(row,timeout);
-      }
+  function rememberMove(id,direction=0) {
+    const row=findRow(id);
+    const rect=row && window.VitrineRows.visibleRowRect(row);
+    const before={index:row?.getAttribute('aria-rowindex'),direction,
+      top:rect ? rect.top+scroll.scrollTop : null};
+    if (before.top===null && !direction) return;
+    pendingMoves.set(String(id),before);
+    setTimeout(()=>{if (pendingMoves.get(String(id))===before) pendingMoves.delete(String(id));},5000);
+  }
+  function animateMoves() {
+    for (const [id,before] of pendingMoves) {
+      const row=findRow(id);
+      if (!row || row.getAttribute('aria-rowindex')===before.index) continue;
+      pendingMoves.delete(id);
+      const rect=window.VitrineRows.visibleRowRect(row);
+      if (!rect) continue;
+      const shift=before.top===null ? -before.direction*rect.height : before.top-rect.top-scroll.scrollTop;
+      window.VitrineRows.moveRow(row,shift,Boolean(before.direction));
     }
-    window.addEventListener('vitrine-rows-updated',animateMoves);
+  }
+  if (tripOrder) {
     window.addEventListener('workspace:event',event=>{
       const move=event.detail?.data;
       if (event.detail?.event!=='trip.row.reordered' || move?.tableSlug!=='vyvoz' || !Number.isSafeInteger(move.row)) return;
       if (ownMoves.delete(move.requestId)) return;
-      const row=findRow(move.row);
-      const before={index:row?.getAttribute('aria-rowindex'),direction:move.direction,
-        top:row ? row.getBoundingClientRect().top+scroll.scrollTop : null};
-      pendingMoves.set(move.row,before);
-      setTimeout(()=>{if (pendingMoves.get(move.row)===before) pendingMoves.delete(move.row);},5000);
+      rememberMove(move.row,move.direction);
       window.VitrineRows.refreshManifest({keepViewport:true}).catch(error=>{
         window.PlanexNotifications.show({tone:'danger',message:error.message || 'Не удалось обновить порядок рейсов.'});
       });
     });
   }
+  window.addEventListener('vitrine-rows-updated',animateMoves);
   window.addEventListener('vitrine-rows-updated',decorate);
   decorate();
 })();

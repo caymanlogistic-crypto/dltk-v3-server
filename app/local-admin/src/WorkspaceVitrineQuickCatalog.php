@@ -61,21 +61,36 @@ function vitrine_quick_catalog_reorder(): never {
     if (!is_int($source) || !is_int($target) || $source===$target || !is_bool($after)) {
         throw new ApiError('invalid_order','Выберите две разные строки справочника.');
     }
-    unset($_GET['archive'],$_GET['q'],$_GET['client'],$_GET['partyRole']);
+    if (in_array($_GET['archive']??null,['1','all'],true)) {
+        throw new ApiError('invalid_order','Перенос доступен для активных записей.');
+    }
+    unset($_GET['q']);
     workspace_begin();
     try {
-        $current = workspace_directory_grid_data($catalog['directory'],[])['rowIds'];
-        if (!in_array($source,$current,true) || !in_array($target,$current,true)) {
+        $visible = workspace_directory_grid_data($catalog['directory'],[])['rowIds'];
+        if (!in_array($source,$visible,true) || !in_array($target,$visible,true)) {
             throw new ApiError('not_found','Строка справочника больше не доступна.',404);
         }
-        $next = array_values(array_filter($current,static fn(int $row): bool=>$row!==$source));
+        $next = array_values(array_filter($visible,static fn(int $row): bool=>$row!==$source));
         $position = array_search($target,$next,true)+(int)$after;
         array_splice($next,$position,0,[$source]);
-        if ($next!==$current) {
+        $changed = $next!==$visible;
+        if ($changed) {
+            if (isset($_GET['client']) || isset($_GET['partyRole'])) {
+                unset($_GET['client'],$_GET['partyRole']);
+                $all = workspace_directory_grid_data($catalog['directory'],[])['rowIds'];
+                $scoped = array_fill_keys($visible,true);
+                $index = 0;
+                foreach ($all as &$row) {
+                    if (isset($scoped[$row])) $row = $next[$index++];
+                }
+                unset($row);
+                $next = $all;
+            }
             $key = workspace_directory_row_order_key($catalog['id'] ?: $catalog['directory']);
             wquery('INSERT INTO workspace_meta(`key`,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
                 [$key,wjson($next)]);
-            workspace_audit(['label'=>'Порядок строк справочника','before'=>array_search($source,$current,true)+1,
+            workspace_audit(['label'=>'Порядок строк справочника','before'=>array_search($source,$visible,true)+1,
                 'after'=>$position+1,'row'=>$source,'action'=>'reorder','category'=>'catalog-order']);
         }
         workspace_db()->commit();
@@ -83,7 +98,7 @@ function vitrine_quick_catalog_reorder(): never {
         if (workspace_db()->inTransaction()) workspace_db()->rollBack();
         throw $error;
     }
-    json_response(['saved'=>true]);
+    json_response(['saved'=>true,'changed'=>$changed]);
 }
 
 function vitrine_quick_catalog_options(): never {

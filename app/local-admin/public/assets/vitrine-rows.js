@@ -10,7 +10,9 @@
   const dayDraftRows=new Map();
   const dayRefills=new Map();
   const localDateEdits=new Set();
-  const tripDateMotions=new WeakMap();
+  const rowMotions=new WeakMap();
+  const rowFlashes=new WeakMap();
+  const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
   const empty=document.getElementById('vitrine-empty');
   const directoryRowCount=document.querySelector('[data-directory-row-count]');
   const search=document.querySelector('.vitrine-catalog-search input[type="search"]');
@@ -123,8 +125,6 @@
       const slot=dateLayout.draft(key);
       const count=slot ? dayRefills.get(slot.key) : null;
       if (!row.isConnected || !count || slot.slot<2-count) continue;
-      row.removeAttribute('data-trip-draft-arrival');
-      void row.offsetWidth;
       row.dataset.tripDraftArrival='';
       const animation=row.getAnimations().find(item=>item.animationName==='vitrine-trip-draft-arrival');
       if (animation) animation.finished.then(
@@ -135,16 +135,53 @@
     }
     for (const key of painted) dayRefills.delete(key);
   }
+  function rowViewport() {
+    return {top:table.tHead.getBoundingClientRect().bottom,bottom:scroll.getBoundingClientRect().bottom};
+  }
+  function visibleRowRect(row,viewport=rowViewport()) {
+    const rect=row.getBoundingClientRect();
+    return rect.bottom>viewport.top && rect.top<viewport.bottom ? rect : null;
+  }
+  function moveRow(row,shift,remote=false) {
+    if (remote) {
+      row.setAttribute('data-trip-row-reordered','');
+      const flash={};
+      rowFlashes.set(row,flash);
+      setTimeout(()=>{
+        if (rowFlashes.get(row)!==flash) return;
+        rowFlashes.delete(row);
+        row.removeAttribute('data-trip-row-reordered');
+      },620);
+    }
+    if (reducedMotion.matches || Math.abs(shift)<1) return;
+    const limit=scroll.clientHeight;
+    const start=Math.max(-limit,Math.min(limit,shift));
+    row.style.setProperty('--vitrine-row-shift',start+'px');
+    row.setAttribute('data-vitrine-row-moving','');
+    const motion={};
+    rowMotions.set(row,motion);
+    const cleanup=()=>{
+      if (rowMotions.get(row)!==motion) return;
+      rowMotions.delete(row);
+      row.removeAttribute('data-vitrine-row-moving');
+      row.style.removeProperty('--vitrine-row-shift');
+    };
+    const animation=row.getAnimations().find(item=>item.animationName==='vitrine-row-shift');
+    if (animation) {
+      animation.currentTime=0;
+      animation.play();
+      animation.finished.then(cleanup,cleanup);
+    } else cleanup();
+  }
   function tripDateOrigins(focus) {
     const origins=new Map();
-    const header=table.tHead.getBoundingClientRect().bottom;
-    const bottom=scroll.getBoundingClientRect().bottom;
+    const viewport=rowViewport();
     for (const row of body.querySelectorAll('[data-vitrine-row]:not([data-trip-draft])')) {
       const key=row.dataset.rowNumber;
       const index=positions.get(key);
       const date=dateLayout.keyAt(index);
-      const rect=row.getBoundingClientRect();
-      if (date && rect.bottom>header && rect.top<bottom) {
+      const rect=date && visibleRowRect(row,viewport);
+      if (rect) {
         const id=Number(key);
         origins.set(id,{date,top:rect.top,offset:rowOffset(index),remote:!localDateEdits.has(id)});
       }
@@ -157,33 +194,16 @@
   }
   function animateTripDateMoves(moves) {
     if (!moves?.size) return;
-    const header=table.tHead.getBoundingClientRect().bottom;
-    const bottom=scroll.getBoundingClientRect().bottom;
+    const viewport=rowViewport();
     for (const [id,origin] of moves) {
       const row=cache.get(id);
       if (!row?.isConnected) continue;
-      row.removeAttribute('data-trip-date-moving');
-      const rect=row.getBoundingClientRect();
-      if (rect.bottom<=header || rect.top>=bottom) continue;
+      const rect=visibleRowRect(row,viewport);
+      if (!rect) continue;
       const targetOffset=rowOffset(positions.get(String(id)));
       const fallback=targetOffset>=origin.offset ? -height : height;
       const delta=origin.top-rect.top;
-      const shift=Math.max(-scroll.clientHeight,Math.min(scroll.clientHeight,Math.abs(delta)>1 ? delta : fallback));
-      row.style.setProperty('--vitrine-trip-date-shift',shift+'px');
-      void row.offsetWidth;
-      row.dataset.tripDateMoving=origin.remote ? 'remote' : 'local';
-      const motion={};
-      tripDateMotions.set(row,motion);
-      const cleanup=()=>{
-        if (tripDateMotions.get(row)!==motion) return;
-        tripDateMotions.delete(row);
-        row.removeAttribute('data-trip-date-moving');
-        row.style.removeProperty('--vitrine-trip-date-shift');
-      };
-      const animation=row.getAnimations().find(item=>item.animationName==='vitrine-trip-row-move');
-      if (origin.remote) setTimeout(cleanup,620);
-      else if (animation) animation.finished.then(cleanup,()=>{});
-      else cleanup();
+      moveRow(row,Math.abs(delta)>1 ? delta : fallback,origin.remote);
     }
   }
   async function fetchRows(wanted, search){
@@ -697,6 +717,8 @@
 
   window.VitrineRows=Object.freeze({
     refreshManifest,
+    moveRow,
+    visibleRowRect,
     flashInsertedTrips,
     refreshTripDates,
     refreshFleetDocuments,
