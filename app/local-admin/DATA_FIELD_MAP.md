@@ -50,7 +50,7 @@
 | AJ Места | Работает. Целое cargo-places | 25 | Целое количество от 1 до 10 000. | Компактная маска. |
 | AK Характеристики | Работает. Многострочное поле | Груз на поддонах.\nВерх не нагружать. | Свободный текст с переносами, до 20 000 символов. | Хранятся как текст. Исходный заголовок «Характер груза» переименован. Игнорирует старые списки выбора. |
 | AL Менеджер | Работает. Вычисляемое | Учебный менеджер | Менеджеры выбранного клиента из B. Назначения меняются в «Клиентах». | `client_manager_links.manager_id` и `manager_profiles`. Legacy fallback в workspace_meta. |
-| AM Логист | Работает. Вычисляемое | Учебный логист | Логист выбранного перевозчика из S. Назначение меняется в «Перевозчиках». | `workspace_meta.catalog_logists_<id справочника>`. |
+| AM Логист | Работает. Вычисляемое | Учебный логист | ФИО из учётной записи логиста выбранного перевозчика из S. Назначение меняется в «Перевозчиках». | `workspace_meta.catalog_logist_accounts_<id справочника>` связывает ID перевозчика с ID учётной записи. |
 
 Места реализации: `WorkspaceVitrine.php::vitrine_data`, `WorkspaceVitrineCatalogLinks.php::vitrine_catalog_links`, `vitrine-editor.js::open/save`, `VitrineClipboard.php::vitrine_compact_input`, `Vitrine.php::vitrine_require_* / vitrine_validate_paste`, `WorkspaceTripMargin.php`, `WorkspaceMarginRules.php`, `WorkspaceDropoffPoints.php`, `vitrine-dropoff.js`, `WorkspaceFleetTripDocuments.php`, `WorkspaceClientManagers.php`, `WorkspaceCarrierDirectory.php`, `WorkspaceEdoCounterparties.php`. Общее правило для необязательных полей — явная очистка возвращает пустое. Используемые справочники и текущие ссылки защищены от удаления.
 
