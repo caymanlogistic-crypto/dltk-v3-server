@@ -42,9 +42,6 @@ function vitrine_save_range(?string $directory, array $body): array {
             foreach ($draftSlots as $slot) {
                 $firstCell=reset($targets[$slot]);
                 $date=workspace_trip_day_draft_value($draftData['table'],$slot,$firstCell['draftAnchor']??null);
-                if ($date!==null && isset($targets[$slot]['F'])) {
-                    throw new ApiError('trip_day_date','Дата новой строки подставляется из группы.');
-                }
                 foreach ($targets[$slot] as $cell) {
                     if ($cell['revision']!==0 || !hash_equals($draft['baseHash'],$cell['baseHash'])) {
                         throw new ApiError('revision_conflict','Шаблон новой строки изменился. Обновите таблицу.',409);
@@ -128,7 +125,10 @@ function vitrine_save_range(?string $directory, array $body): array {
                         'after'=>$result['revision'],'hash'=>$result['baseHash']];
                 }
             } catch (ApiError $error) {
-                $label = $row<0 ? 'Новая строка '.abs($row).', столбец '.$column : $column.($directoryRows[$row]['rowLabel']??$row);
+                $day=workspace_trip_day_draft_date($row);
+                $label = $row<0
+                    ? 'Новая строка '.($day===null ? abs($row) : 'на '.vitrine_compact_display($day,'date')).', столбец '.$column
+                    : $column.($directoryRows[$row]['rowLabel']??$row);
                 throw new ApiError($error->publicCode,$label.' · '.$error->publicMessage,$error->httpStatus);
             }
             $results[$index] = ['row'=>$row,'column'=>$column,'result'=>$result];

@@ -9,6 +9,8 @@
   const dateLayout=window.VitrineTripDateGroups?.create(ids,Boolean(dayDraftTemplate));
   const dayDraftRows=new Map();
   const dayRefills=new Map();
+  const localDateEdits=new Set();
+  const tripDateMotions=new WeakMap();
   const empty=document.getElementById('vitrine-empty');
   const directoryRowCount=document.querySelector('[data-directory-row-count]');
   const search=document.querySelector('.vitrine-catalog-search input[type="search"]');
@@ -104,9 +106,6 @@
       cell.dataset.row=key;
       cell.tabIndex=-1;
     }
-    const date=row.querySelector('td[data-column="F"]');
-    date.dataset.readonlyCell='Дата новой строки подставляется из группы.';
-    date.setAttribute('aria-readonly','true');
     return row;
   }
   function mountedDayDraft(key) {
@@ -135,6 +134,57 @@
       painted.add(slot.key);
     }
     for (const key of painted) dayRefills.delete(key);
+  }
+  function tripDateOrigins(focus) {
+    const origins=new Map();
+    const header=table.tHead.getBoundingClientRect().bottom;
+    const bottom=scroll.getBoundingClientRect().bottom;
+    for (const row of body.querySelectorAll('[data-vitrine-row]:not([data-trip-draft])')) {
+      const key=row.dataset.rowNumber;
+      const index=positions.get(key);
+      const date=dateLayout.keyAt(index);
+      const rect=row.getBoundingClientRect();
+      if (date && rect.bottom>header && rect.top<bottom) {
+        const id=Number(key);
+        origins.set(id,{date,top:rect.top,offset:rowOffset(index),remote:!localDateEdits.has(id)});
+      }
+    }
+    if (focus?.originalDate) {
+      origins.set(focus.row,{date:focus.originalDate,top:focus.screenTop,
+        offset:focus.startScroll+focus.offset,remote:false});
+    }
+    return origins;
+  }
+  function animateTripDateMoves(moves) {
+    if (!moves?.size) return;
+    const header=table.tHead.getBoundingClientRect().bottom;
+    const bottom=scroll.getBoundingClientRect().bottom;
+    for (const [id,origin] of moves) {
+      const row=cache.get(id);
+      if (!row?.isConnected) continue;
+      row.removeAttribute('data-trip-date-moving');
+      const rect=row.getBoundingClientRect();
+      if (rect.bottom<=header || rect.top>=bottom) continue;
+      const targetOffset=rowOffset(positions.get(String(id)));
+      const fallback=targetOffset>=origin.offset ? -height : height;
+      const delta=origin.top-rect.top;
+      const shift=Math.max(-scroll.clientHeight,Math.min(scroll.clientHeight,Math.abs(delta)>1 ? delta : fallback));
+      row.style.setProperty('--vitrine-trip-date-shift',shift+'px');
+      void row.offsetWidth;
+      row.dataset.tripDateMoving=origin.remote ? 'remote' : 'local';
+      const motion={};
+      tripDateMotions.set(row,motion);
+      const cleanup=()=>{
+        if (tripDateMotions.get(row)!==motion) return;
+        tripDateMotions.delete(row);
+        row.removeAttribute('data-trip-date-moving');
+        row.style.removeProperty('--vitrine-trip-date-shift');
+      };
+      const animation=row.getAnimations().find(item=>item.animationName==='vitrine-trip-row-move');
+      if (origin.remote) setTimeout(cleanup,620);
+      else if (animation) animation.finished.then(cleanup,()=>{});
+      else cleanup();
+    }
   }
   async function fetchRows(wanted, search){
     const url=window.VitrineGridScope.url('/api/vitrine/rows',{rowFilters:true,ids:wanted,search});
@@ -304,6 +354,7 @@
       window.dispatchEvent(new CustomEvent('vitrine-rows-updated'));
       paintInsertedTrips();
       animateDayRefills();
+      animateTripDateMoves(plan?.dateMoves);
       if(plan?.focus && (!plan.focus.onClear || search?.value.trim()==='')) {
         const row=cache.get(plan.focus.row);
         const cell=(plan.focus.column && row?.querySelector('td[data-column="'+plan.focus.column+'"]:not([hidden])'))
@@ -491,32 +542,39 @@
     }
   }
   window.addEventListener('vitrine-editor-closed',()=>{for(const row of cache.values())for(const patch of catalogPatches.values())applyCatalogPatch(row,patch);});
-  let refreshTask=null,refreshAgain=false,manifestDeferred=false,createdFocus=null,keepAbsoluteTop=false;
+  let refreshTask=null,refreshAgain=false,manifestDeferred=false,createdFocus=null,keepAbsoluteTop=false,manifestWriteEpoch=0;
+  function rememberTripFocus(focus) {
+    manifestWriteEpoch++;
+    const headBottom=table.tHead.getBoundingClientRect().bottom;
+    const screenTop=focus.origin.getBoundingClientRect().top;
+    const originalDate=focus.origin.closest('tr')?.dataset.tripDraftDate
+      ?? dateLayout?.keyAt(positions.get(String(focus.row)));
+    createdFocus={...focus,offset:screenTop-headBottom,originalDate,screenTop,startScroll:scroll.scrollTop};
+  }
   async function refreshManifest({focus=null,keepViewport=false,removedRow=null,filledDrafts=[]}={}){
     keepAbsoluteTop ||= keepViewport;
+    if (filledDrafts.length) manifestWriteEpoch++;
     for (const key of filledDrafts) {
       const slot=dateLayout?.draft(String(key));
       if (!slot) continue;
       dayRefills.set(slot.key,Math.min(2,(dayRefills.get(slot.key)??0)+1));
     }
     if (removedRow!==null && positions.has(String(removedRow))) removedRows.add(Number(removedRow));
-    if(focus) {
-      const headBottom=table.tHead.getBoundingClientRect().bottom;
-      const offset=focus.origin.getBoundingClientRect().top-headBottom;
-      createdFocus={...focus,offset};
-    }
+    if(focus) rememberTripFocus(focus);
     if(window.VitrineGrid?.editing()){manifestDeferred=true;return;}
     if(refreshTask){refreshAgain=true;return refreshTask;}
+    let requestedEpoch=manifestWriteEpoch;
     refreshTask=(async()=>{
       do{
         refreshAgain=false;
+        requestedEpoch=manifestWriteEpoch;
         const query=requestedSearch;
         const manifestUrl=()=>window.VitrineGridScope.url('/api/workspace/manifest',{rowFilters:true,search:requestedSearch});
         const urlRequested=manifestUrl();
         const response=await fetch(urlRequested,{credentials:'same-origin'});
-        if(query!==requestedSearch||urlRequested!==manifestUrl()){refreshAgain=true;continue;}
+        if(query!==requestedSearch||urlRequested!==manifestUrl()||requestedEpoch!==manifestWriteEpoch){refreshAgain=true;continue;}
         const result=await response.json();
-        if(query!==requestedSearch||urlRequested!==manifestUrl()){refreshAgain=true;continue;}
+        if(query!==requestedSearch||urlRequested!==manifestUrl()||requestedEpoch!==manifestWriteEpoch){refreshAgain=true;continue;}
         if(search&&search.value.trim()!==query)continue;
         if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось обновить список строк.');
         if(!Array.isArray(result.rowIds)||result.rowIds.some(id=>!Number.isInteger(id)))throw new Error('Некорректный список строк.');
@@ -526,21 +584,33 @@
         const searchChanged=query!==appliedSearch;
         const tripFilter=tripFilterKey(new URL(urlRequested,location.href).searchParams);
         const filterChanged=tripFilter!==appliedTripFilter;
-        const target=createdFocus && next.includes(createdFocus.row) ? createdFocus : null;
-        if(target)createdFocus=null;
+        const candidate=createdFocus && next.includes(createdFocus.row) ? createdFocus : null;
+        if(candidate)createdFocus=null;
         const preserveViewport=keepAbsoluteTop;
         keepAbsoluteTop=false;
-        if(!searchChanged && !filterChanged && !target && next.join(',')===ids.join(',')
-          && (!dateLayout || dateLayout.agrees(nextDateGroups))) {
+        const structureChanged=next.join(',')!==ids.join(',') || (dateLayout && !dateLayout.agrees(nextDateGroups));
+        if(!searchChanged && !filterChanged && (!candidate || candidate.dateChange) && !structureChanged) {
+          localDateEdits.clear();
           animateDayRefills();
           continue;
         }
         const anchorIndex=Math.max(0,Math.min(ids.length-1,viewportIndex()));
         const anchor=ids[anchorIndex],offset=scroll.scrollTop-rowOffset(anchorIndex);
+        const anchorDate=dateLayout?.keyAt(anchorIndex);
         const chosen=table.querySelector('td.is-current-cell'),chosenRow=chosen?.dataset.row,chosenColumn=chosen?.dataset.column;
         const oldPositions=document.body.hasAttribute('data-vitrine-catalog') ? new Map(positions) : null;
+        const dateMoves=dateLayout && !searchChanged && !filterChanged && (structureChanged || candidate)
+          ? tripDateOrigins(candidate) : null;
         dateLayout?.replace(next,nextDateGroups);
         ids=next;positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
+        if (dateMoves) {
+          for (const [id,origin] of dateMoves) {
+            const index=positions.get(String(id));
+            if (index===undefined || dateLayout.keyAt(index)===origin.date) dateMoves.delete(id);
+          }
+        }
+        localDateEdits.clear();
+        const target=candidate && (!candidate.dateChange || dateMoves?.has(candidate.row)) ? candidate : null;
         manifestVersion++;generation++;navigationGeneration++;navigation=null;pending.clear();loaded.clear();first=last=-1;
         const allowed=new Set(ids);
         for(const id of cache.keys())if(searchChanged||!allowed.has(id)||oldPositions&&oldPositions.get(String(id))!==positions.get(String(id)))cache.delete(id);
@@ -556,24 +626,37 @@
         if (resetScroll) startPadding=endPadding=0;
         const returnToEnd=openAtLastRow && resetScroll && !query && ids.length>0
           && (searchChanged || tripFilter===noTripFilter);
-        const newAnchor=resetScroll?0:positions.get(String(anchor))??Math.min(anchorIndex,Math.max(ids.length-1,0));
+        const anchorPosition=positions.get(String(anchor));
+        const anchorMoved=anchorDate && anchorPosition!==undefined && dateLayout.keyAt(anchorPosition)!==anchorDate;
+        const newAnchor=resetScroll?0:anchorPosition??Math.min(anchorIndex,Math.max(ids.length-1,0));
         const top=target
           ? rowOffset(positions.get(String(target.row)))-Math.max(0,Math.min(target.offset,availableHeight()-height))
           : returnToEnd ? rowOffset(ids.length-1)+height-availableHeight()
-            : resetScroll ? 0 : preserveViewport || anchor===undefined ? scroll.scrollTop : rowOffset(newAnchor)+offset;
-        viewportPlan={top:Math.max(0,top),focus:target ?? (returnToEnd ? {row:ids.at(-1),onClear:true} : null)};
+            : resetScroll ? 0 : preserveViewport || anchor===undefined || anchorMoved ? scroll.scrollTop : rowOffset(newAnchor)+offset;
+        viewportPlan={top:Math.max(0,top),focus:target ?? (returnToEnd ? {row:ids.at(-1),onClear:true} : null),dateMoves};
         await render();
         if(!target&&!returnToEnd&&chosenRow&&!chosen?.closest('[data-draft-slot]')&&!positions.has(chosenRow)){
           const candidate=body.querySelector('td[data-column="'+chosenColumn+'"]:not([hidden])')||table.querySelector('tbody td[data-edit-cell]:not([hidden])');
           if(candidate)window.VitrineGrid?.select(candidate);
         }
       }while(refreshAgain);
-    })().finally(()=>{refreshTask=null;createdFocus=null;dayRefills.clear();});
+    })().finally(()=>{
+      refreshTask=null;
+      if (!manifestDeferred && requestedEpoch===manifestWriteEpoch) {
+        createdFocus=null;
+        dayRefills.clear();
+      }
+    });
     return refreshTask;
   }
   let tripDateFrame=0;
-  function refreshTripDates() {
-    if(!dateLayout||tripDateFrame)return;
+  function refreshTripDates(cell,follow) {
+    if (!dateLayout) return;
+    const row=Number(cell.dataset.row);
+    localDateEdits.add(row);
+    if (follow && cell.isConnected) rememberTripFocus({row,column:'F',origin:cell,dateChange:true});
+    else manifestWriteEpoch++;
+    if (tripDateFrame) return;
     tripDateFrame=requestAnimationFrame(()=>{
       tripDateFrame=0;
       refreshManifest().catch(report);

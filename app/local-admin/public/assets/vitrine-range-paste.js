@@ -94,7 +94,6 @@
         for (const [c,column] of columns.entries()) {
           const cell=cellAt(row,column);
           const {value,source:ref}=copiedRow[c%copiedRow.length];
-          if (column==='F' && row.hasAttribute('data-trip-draft-date')) continue;
           if (row.hasAttribute('data-trip-draft') && value.trim()==='') continue;
           if (ref?.column===column && cell?.dataset.derivedFrom?.split(' ').some(primary=>{
             const offset=columns.indexOf(primary);
@@ -115,9 +114,7 @@
           changes.push({...change,payload:{...payload(cell,value),...(ref ? {source:ref} : {})}});
         }
       }
-      if (!changes.length) throw new Error(anchor.dataset.column==='F' && anchor.closest('[data-trip-draft-date]')
-        ? 'Дата новой строки подставляется из группы. Заполните другое поле рейса.'
-        : 'В буфере нет данных для новых строк.');
+      if (!changes.length) throw new Error('В буфере нет данных для новых строк.');
       const {saved,createdRows}=await send('pasteRange',changes);
       const history=[];
       let blocked=false;

@@ -246,9 +246,6 @@ function vitrine_table_cell(mixed $body, ?array $data=null, ?array $pasteSourceR
     foreach ($data['rows'] as $row) if ($row['rowIndex'] === $body['row']) $current = $row;
     if ($current === null) throw new ApiError('row_not_visible','Строка больше не входит в текущую выборку. Обновите страницу.',409);
     $dayDraft=workspace_trip_day_draft_date($body['row'])!==null;
-    if ($dayDraft && $body['column']==='F') {
-        throw new ApiError('trip_day_date','Дата новой строки подставляется из группы.');
-    }
     $clear=($body['editAction']??null)==='clear';
     if ($clear && ($body['value']!=='' || $body['reset'] || isset($body['paste']) ||
         array_key_exists('dropoffDetails',$body) || array_key_exists('orderStatus',$body) || array_key_exists('fieldColorStatus',$body))) {

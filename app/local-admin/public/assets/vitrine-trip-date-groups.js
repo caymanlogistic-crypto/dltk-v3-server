@@ -87,6 +87,7 @@
       replace,remove,rowsWithDividers,
       get rowKeys(){return rowKeys;},
       rowIndex:key=>rowPositions.get(key),
+      keyAt:index=>keys[index],
       draft:key=>slots.get(key),
       agrees: next=>JSON.stringify(next)===JSON.stringify(markers),
       units: (index,includeDivider=false)=>index+(before[index]??0)+Number(includeDivider && starts.has(index)),
