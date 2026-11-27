@@ -87,7 +87,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="workspace-table" content="<?= $escape($currentTable['slug']) ?>">
   <meta name="vitrine-load-error" content="<?= $escape($error ?? '') ?>">
   <title><?= $escape($currentTable['title']) ?> — ЛК ДЛТК</title>
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=unified-1'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=unified-2'),ENT_QUOTES,'UTF-8') ?>">
   <?php if ($loginArrival): ?>
   <link rel="expect" href="#workspace" blocking="render">
   <?php endif; ?>
@@ -113,9 +113,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if ($isAvtovyvoz && !$rowArchive): ?>
   <script defer<?= $arrivalBlocking ?> src="<?= $escape($viewUrl('/assets/vitrine-trip-date-groups.js')) ?>"></script>
   <?php endif; ?>
-  <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js?v=2'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if ($canReorderCatalogRows || $showTripRowOrder): ?>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-order.js')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-order.js?v=2')) ?>"></script>
   <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-range.js')) ?>"></script>
