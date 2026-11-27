@@ -12,7 +12,7 @@ ROOT = Path('/srv/dltk-v3-test')
 ADMIN = ROOT / 'shared/private/mysql-admin.cnf'
 CONFIG = ROOT / 'shared/runtime.ini'
 SCHEMA = 'dltk_v3_test'
-TABLES = ('manager_profiles', 'client_manager_links', 'unload_points',
+TABLES = ('manager_profiles', 'client_manager_links', 'client_account_manager_links', 'unload_points',
           'unload_point_contacts', 'unload_point_origins')
 PHP_PACKAGES = ('php8.4-xml', 'php8.4-zip')
 HERE = Path(__file__).resolve().parent
@@ -83,7 +83,7 @@ def main():
     if not args.apply:
         return
     install_php()
-    for filename in ('manager_directory.sql', 'unload_points.sql'):
+    for filename in ('manager_directory.sql', 'client_account_managers.sql', 'unload_points.sql'):
         query((HERE / filename).read_text(encoding='utf-8'))
     for table in TABLES:
         quote = chr(96)

@@ -145,10 +145,13 @@ function workspace_directory_excel_payload(array $schema,array $values,?array $o
         $key=mb_strtolower($name);
         $payload['name']=$name;
         if ($kind==='clients') {
-            $payload['manager']=workspace_client_validate_manager($values['B']);
             $payload['clientRequisites']=workspace_client_validate_requisites($values);
-            if ($payload['manager']!==($old['values']['B']??'') && workspace_manager_catalog_id()) {
-                workspace_client_manager_ids($payload['manager']);
+            if ($values['B']!==($old['values']['B']??'')) {
+                $accounts=workspace_client_account_managers_enabled();
+                $payload['manager']=workspace_client_validate_manager($values['B'],$accounts);
+                if ($accounts || workspace_manager_catalog_id()) {
+                    workspace_client_manager_ids($payload['manager'],(int)$schema['id'],$old ? (int)$old['id'] : null);
+                }
             }
         }
         if ($kind==='carriers') {

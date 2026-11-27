@@ -186,8 +186,12 @@ function workspace_assert_employee_unused(array $employee): void {
         throw new ApiError('entry_in_use','Свою учётную запись нельзя отправить в архив.',409);
     }
     $names = array_map('vitrine_status_key',[$employee['name'],$employee['login']]);
-    $count = 0;
+    $accounts=workspace_client_account_managers_enabled();
+    $count=$accounts ? (int)wquery("SELECT COUNT(*) FROM client_account_manager_links l WHERE l.account_id=?
+        AND NOT EXISTS (SELECT 1 FROM workspace_meta m WHERE m.key=CONCAT('catalog_deleted_client_',l.client_id))",
+        [$employee['id']])->fetchColumn() : 0;
     foreach (wquery("SELECT id,kind FROM catalogs WHERE kind IN ('clients','carriers')")->fetchAll() as $catalog) {
+        if ($accounts && $catalog['kind']==='clients') continue;
         $assignments = $catalog['kind'] === 'clients' ? workspace_client_manager_values((int)$catalog['id'])
             : workspace_client_catalog_metadata('catalog_logists_'.$catalog['id']);
         foreach ($assignments as $name) if (is_string($name) && in_array(vitrine_status_key($name),$names,true)) $count++;

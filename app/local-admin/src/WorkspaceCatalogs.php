@@ -51,7 +51,7 @@ function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
         throw new ApiError('invalid_color','Выберите цвет из палитры.');
     }
     $hasManager=$catalog['kind']==='clients'&&array_key_exists('manager',$b);
-    $manager=$hasManager?workspace_client_validate_manager($b['manager']):'';
+    $manager=$hasManager?workspace_client_validate_manager($b['manager'],workspace_client_account_managers_enabled()):'';
     $clientRequisites=[];
     if ($catalog['kind']==='clients' && array_key_exists('clientRequisites',$b)) {
         if (!is_array($b['clientRequisites'])) throw new ApiError('invalid_client_requisites','Проверьте реквизиты клиента.');

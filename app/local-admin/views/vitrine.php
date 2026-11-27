@@ -145,7 +145,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-unload-points.js')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['clientManagers'])): ?>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-managers.js')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-managers.js?v=2')) ?>"></script>
   <?php endif; ?>
   <?php if ($clientCatalog || $directory === 'entries'): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-catalog.js')) ?>"></script>

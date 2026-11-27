@@ -45,15 +45,14 @@ function workspace_client_grid_model(): array {
     $unloadCatalog=workspace_unload_catalog_id();
     $canViewUnload=$unloadCatalog && workspace_can('catalog',(string)$unloadCatalog,'view');
     $columns=[['letter'=>'A','label'=>'Клиент'],['letter'=>'B','label'=>'Менеджер']];
-    $managerCatalog=workspace_manager_catalog_id();
-    $canViewManagers=$managerCatalog && workspace_can('catalog',(string)$managerCatalog,'view');
+    $canViewManagers=workspace_client_manager_card_available();
     if ($canViewManagers) $columns[1]['kind']='client-managers';
     if ($canViewUnload) $columns[]=['letter'=>'C','label'=>'Точки выгрузки','kind'=>'client-unload-points'];
     foreach (WORKSPACE_CLIENT_REQUISITE_LABELS as $letter=>$label) $columns[]=compact('letter','label');
     return [
         'id'=>0, 'catalogId'=>(int)$catalog['id'], 'catalogKind'=>'clients', 'slug'=>'catalog-clients', 'title'=>'Клиенты',
         'columns'=>$columns,'unloadCatalogId'=>$canViewUnload ? $unloadCatalog : null,
-        'managerCatalogId'=>$canViewManagers ? $managerCatalog : null,
+        'hasManagerCard'=>$canViewManagers,
     ];
 }
 
@@ -100,7 +99,7 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
         $rowIds[] = $entryId;
         if ($requested === null ? count($rows) >= 100 : !isset($requested[$entryId])) continue;
         if ($canViewUnload) $values['C']=workspace_client_unload_count_label($pointCounts[$entryId]??0);
-        $kinds = ['A'=>'text','B'=>$table['managerCatalogId']?'client-managers':'text'];
+        $kinds = ['A'=>'text','B'=>$table['hasManagerCard']?'client-managers':'text'];
         $version = ['revision'=>(int)$entry['revision']];
         $rows[] = [
             'rowIndex'=>$entryId, 'rowLabel'=>count($rowIds), 'values'=>$values,
@@ -108,7 +107,7 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
             'kinds'=>$kinds, 'rowActions'=>$canEdit, 'archived'=>!(bool)$entry['active'],
             'singleLine'=>array_fill_keys(array_keys($values),true),
             'edits'=>array_fill_keys(['A','B',...array_keys(WORKSPACE_CLIENT_REQUISITE_LABELS)],$version),
-            'readOnly'=>workspace_manager_catalog_id() && !$table['managerCatalogId']
+            'readOnly'=>workspace_manager_catalog_id() && !$table['hasManagerCard']
                 ? ['B'=>'Менеджеры назначаются из справочника.'] : [],
         ];
     }
@@ -117,8 +116,9 @@ function workspace_client_grid_data(?array $requestedRows = null): array {
         'catalogGrid'=>['id'=>$catalogId, 'archive'=>$archive, 'showAll'=>$showAll, 'archiveRows'=>true,'search'=>$search, 'canEdit'=>$canEdit, 'syncLabel'=>$syncLabel,
             'clientFilter'=>$clientFilter,
             'clientUnloadCatalog'=>$canViewUnload ? $unloadCatalog : null,
-            'clientManagers'=>$table['managerCatalogId'],
-            'draftFields'=>array_diff_key(workspace_directory_draft_fields('clients'),workspace_manager_catalog_id() ? ['B'=>true] : [])],
+            'clientManagers'=>$table['hasManagerCard'],
+            'draftFields'=>array_diff_key(workspace_directory_draft_fields('clients'),
+                (workspace_client_account_managers_enabled() || workspace_manager_catalog_id()) ? ['B'=>true] : [])],
         'table'=>$table,
         'sheetTitle'=>$table['title'],
         'columns'=>$table['columns'],
@@ -145,12 +145,7 @@ function workspace_client_grid_edit(array $body, bool $pasteCheck = false): arra
     if (!is_int($body['row'] ?? null) || !in_array($body['column'] ?? null, ['A','B',...array_keys(WORKSPACE_CLIENT_REQUISITE_LABELS)], true) || !is_string($body['value'] ?? null)) {
         throw new ApiError('invalid_edit', 'Некорректные данные ячейки справочника.');
     }
-    if ($body['column']==='B' && ($managerCatalog=workspace_manager_catalog_id())) {
-        if ($pasteCheck || ($body['editAction']??null)!=='clear' || $body['value']!=='') {
-            throw new ApiError('manager_editor','Откройте список менеджеров из ячейки.');
-        }
-        workspace_require('catalog',(string)$managerCatalog,'view');
-    }
+    if ($body['column']==='B') workspace_client_guard_manager_cell($body,$pasteCheck);
     $entry = wquery('SELECT id,name,active,revision FROM catalog_entries WHERE id=? AND catalog_id=?', [$body['row'], $catalogId])->fetch();
     if (!$entry || !$entry['active']) throw new ApiError('not_found', 'Активная запись справочника не найдена.', 404);
     $column = $body['column'];

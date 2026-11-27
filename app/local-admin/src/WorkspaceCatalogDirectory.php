@@ -68,6 +68,8 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $canEdit = workspace_can('catalog',(string)$id,'edit');
     $choices = workspace_directory_palette_options();
     $clientManagers=$kind==='clients' ? workspace_client_manager_values($id) : [];
+    $clientManagerCard=$kind==='clients' && workspace_client_account_managers_enabled() &&
+        (int)(workspace_client_grid_catalog()['id']??0)===$id;
     $clientRequisites=$kind==='clients' ? workspace_client_requisites($id) : [];
     $emptyClientRequisites=array_fill_keys(array_keys(WORKSPACE_CLIENT_REQUISITE_LABELS),'');
     $carrierValues=$kind==='carriers' ? workspace_carrier_directory_values($id) : [];
@@ -140,6 +142,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         $row = ['rowIndex'=>$entryId,'rowLabel'=>count($rowIds),'values'=>$values,'rowActions'=>$canEdit,
             'singleLine'=>array_fill_keys(array_keys($values),true),'baseHash'=>workspace_catalog_directory_hash($id,$entryId),
             'edits'=>array_fill_keys(array_keys($values),['revision'=>(int)$entry['revision']])];
+        if ($clientManagerCard) $row['kinds']['B']='client-managers';
         if (workspace_catalog_has_palette($kind)) {
             if (workspace_is_document_status_catalog($kind)) $row['catalogFills']['B']=$entry['color'] ?? '';
             else $row['orderFill']=$entry['color'];
@@ -210,7 +213,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     return ['table'=>$model,'columns'=>$model['columns'],'rows'=>$rows,'rowIds'=>$rowIds,'palette'=>workspace_palette(),
         'catalogGrid'=>['id'=>$id,'archive'=>$archive,'showAll'=>$showAll,'search'=>$search,'canEdit'=>$canEdit,
             'syncLabel'=>$canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($id) : null,
-            'standaloneCard'=>$kind==='carriers',
+            'standaloneCard'=>$kind==='carriers','clientManagers'=>$clientManagerCard,
             'hasDetails'=>(bool)$details,'unkeyedCount'=>(int)($details['unkeyedCount'] ?? 0),
             'unloadPoints'=>$unload,'partyRoles'=>$partyRoles,'partyRole'=>$roleFilter,
             'relatedLabel'=>$clientCatalog ? 'Открыть клиента' : null,
@@ -221,6 +224,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
                 : match (true) {
                     $managers=>workspace_manager_draft_fields($managerRoles),
                     $fleet=>workspace_fleet_draft_fields($kind),
+                    $clientManagerCard=>array_diff_key(workspace_directory_draft_fields('clients'),['B'=>true]),
                     default=>workspace_directory_draft_fields('entries',catalogKind:$kind),
                 }]];
 }
@@ -246,6 +250,8 @@ function workspace_catalog_directory_edit(array $body, bool $pasteCheck = false)
     $entry = wquery('SELECT * FROM catalog_entries WHERE catalog_id=? AND id=? AND active=TRUE',[$id,$body['row']])->fetch();
     if (!$entry) throw new ApiError('not_found','Запись не найдена.',404);
     $kind = $model['catalogKind'];
+    if ($kind==='clients' && $column==='B' && workspace_client_account_managers_enabled() &&
+        (int)(workspace_client_grid_catalog()['id']??0)===$id) workspace_client_guard_manager_cell($body,$pasteCheck);
     if ($kind==='fleet-drivers' && isset(workspace_driver_directory_fields()[$column])) {
         throw new ApiError('forbidden','Реквизит доступен для просмотра.',403);
     }
