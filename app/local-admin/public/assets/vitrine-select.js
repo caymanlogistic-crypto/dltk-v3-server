@@ -2,6 +2,7 @@
 (() => {
   if (window.VitrineSelect) return;
   const instances = new Set();
+  const pasteOptions = new WeakMap();
   let sequence = 0;
   document.addEventListener('click', event => {
     for (const instance of instances) if (!instance.element.contains(event.target)) instance.close();
@@ -15,6 +16,12 @@
   observer.observe(document.documentElement, {childList:true,subtree:true});
 
   window.VitrineSelect = Object.freeze({
+    canPasteOption: field => pasteOptions.has(field),
+    pasteOption: (field,value) => pasteOptions.get(field)?.(value) ?? false,
+    vehicleSearchKey: value => value.toUpperCase()
+      .replace(/^\s*([АВЕІКМНОРСТХABEIKMHOPCTX]{2})\s*\p{Pd}\s*([0-9])\s+([0-9]{4})\s*$/u,'$1 $3-$2')
+      .replace(/[АВЕІКМНОРСТУХ]/g,
+      letter => 'ABEIKMHOPCTYX'['АВЕІКМНОРСТУХ'.indexOf(letter)]).replace(/[\s\p{Pd}]+/gu,''),
     create(sourceOptions, initialValue = '', {searchable = false, searchKey = value => value, showLabels = false, showColorSwatches = false} = {}) {
       const withSwatches = showColorSwatches || sourceOptions.some(option => Object.hasOwn(option, 'color'));
       const normalizeOptions = items => items.map(option => ({value:String(option.value ?? ''),label:String(option.label ?? option.value ?? ''),color:option.color,search:String(option.search ?? '')}));
@@ -115,6 +122,13 @@
         if (!searchable) field.dispatchEvent(new Event('input',{bubbles:true})); field.dispatchEvent(new Event('change',{bubbles:true}));
         field.focus({preventScroll:true});
       }
+      if (!searchable) pasteOptions.set(field,value => {
+        const query = normalize(value);
+        const matches = options.filter(option=>normalize(option.label)===query || normalize(option.value)===query);
+        if (matches.length!==1) return false;
+        choose(options.indexOf(matches[0]));
+        return true;
+      });
       field.addEventListener('click',event => {
         event.stopPropagation();
         if (!opened) open();

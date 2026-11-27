@@ -9,6 +9,8 @@
   const directoryRowCount=document.querySelector('[data-directory-row-count]');
   const search=document.querySelector('.vitrine-catalog-search input[type="search"]');
   let appliedSearch=search?.value.trim() ?? '', requestedSearch=appliedSearch;
+  const hasTripFilter=params=>['tripStatus','tripClient'].some(key=>params.has(key));
+  let appliedTripFilter=hasTripFilter(new URLSearchParams(location.search));
   const draftIndex=cell=>drafts.indexOf(cell.closest?.('[data-draft-slot]'));
   const rowIndex=cell=>positions.get(cell.dataset.row) ?? ids.length+draftIndex(cell);
   function setCounts() {
@@ -28,6 +30,8 @@
   const pageSize=Number(table.dataset.rowPageSize)||100,cache=new Map(),loaded=new Map(),pending=new Map();
   const compactWindow=table.hasAttribute('data-row-page-size');
   const openAtLastRow=table.hasAttribute('data-open-at-last-row');
+  const openUnfiltered=openAtLastRow && !appliedSearch && !appliedTripFilter;
+  const centerOnLogin=openUnfiltered && table.hasAttribute('data-center-on-login');
   const bufferBefore=compactWindow ? 6 : 20;
   const bufferAfter=compactWindow ? 12 : 20;
   const refillMargin=compactWindow ? 3 : 5;
@@ -138,23 +142,22 @@
     })().finally(()=>{if(pending.get(number)===task)pending.delete(number);});
     pending.set(number,task);return task;
   }
-  let focusLastRow=openAtLastRow && initial.length>0;
+  let focusLastRow=openUnfiltered && initial.length>0;
   function stamp(spacer,size){spacer.hidden=size===0;spacer.firstElementChild.style.setProperty('--spacer-height',size+'px');}
   const availableHeight=()=>scroll.clientHeight-headHeight;
-  // Extra space lets the final row reach the middle even in a one-row table.
-  const endPadding=()=>openAtLastRow ? Math.max(0,(availableHeight()-height)/2) : 0;
-  const startPadding=()=>openAtLastRow ? Math.max(0,availableHeight()/2-(ids.length-.5)*height) : 0;
-  const rowOffset=index=>startPadding()+index*height;
-  const viewportIndex=()=>Math.max(0,Math.min(ids.length-1,Math.floor((scroll.scrollTop-startPadding())/height)));
+  // Only the login arrival adds space to center the last row of a short table.
+  let endPadding=centerOnLogin ? Math.max(0,(availableHeight()-height)/2) : 0;
+  let startPadding=centerOnLogin ? Math.max(0,availableHeight()/2-(ids.length-.5)*height) : 0;
+  const rowOffset=index=>startPadding+index*height;
+  const viewportIndex=()=>Math.max(0,Math.min(ids.length-1,Math.floor((scroll.scrollTop-startPadding)/height)));
   function stampEnd(end) {
-    const padding=endPadding();
-    stamp(bottom,(ids.length-end)*height+(tripDraftBody ? 0 : padding));
-    if(tripDraftBody)stamp(tail,Math.max(0,padding-drafts.length*height));
+    stamp(bottom,(ids.length-end)*height+(tripDraftBody ? 0 : endPadding));
+    if(tripDraftBody)stamp(tail,Math.max(0,endPadding-drafts.length*height));
   }
-  async function render(forceIndex=null){
+  async function render(){
     if(window.VitrineGrid?.editing())return;
     if(!ids.length){body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);stamp(tail,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');return;}
-    const visible=Math.max(1,Math.ceil(availableHeight()/height)),viewportStart=forceIndex??viewportIndex(),viewportEnd=Math.min(ids.length,viewportStart+visible+1);
+    const visible=Math.max(1,Math.ceil(availableHeight()/height)),viewportStart=viewportIndex(),viewportEnd=Math.min(ids.length,viewportStart+visible+1);
     if(first>=0&&(first===0||viewportStart>=first+refillMargin)&&(last===ids.length||viewportEnd<=last-refillMargin))return;
     const start=Math.max(0,Math.min(ids.length-1,viewportStart-bufferBefore));
     const end=Math.min(ids.length,compactWindow ? viewportEnd+bufferAfter : start+visible+bufferBefore+bufferAfter);
@@ -207,6 +210,45 @@
   window.addEventListener('vitrine-statuses-updated',()=>loaded.clear());
   window.addEventListener('vitrine-cell-selected',()=>{navigation=null;});
   window.addEventListener('vitrine-columns-updated',()=>{for(const spacer of [top,bottom,tail])spacer.firstElementChild.colSpan=visibleColumns().length+1;first=-1;queue();});
+  const rangeRows=()=>[...ids.map(String),...drafts.map(row=>row.dataset.rowNumber)];
+  function cachedRangeRows(keys){
+    return keys.map(key=>Number(key)>0 ? cache.get(Number(key)) : drafts.find(row=>row.dataset.rowNumber===key));
+  }
+  async function readRangeRows(keys){
+    const version=manifestVersion;
+    const rows=cachedRangeRows(keys);
+    const missing=keys.filter((_,index)=>!rows[index]).map(Number);
+    const fresh=new Map();
+    for (let offset=0;offset<missing.length;offset+=100) {
+      const page=await fetchRows(missing.slice(offset,offset+100),appliedSearch);
+      for (const row of page.rows) fresh.set(row.dataset.rowNumber,row);
+    }
+    if (version!==manifestVersion) throw new Error('Состав таблицы изменился. Выберите диапазон заново.');
+    const resolved=cachedRangeRows(keys).map((row,index)=>row??fresh.get(keys[index]));
+    if (resolved.some(row=>!row)) throw new Error('Не удалось загрузить диапазон таблицы.');
+    return resolved;
+  }
+  let rangeReveal=0;
+  async function revealRangeEnd(key,column){
+    const ticket=++rangeReveal;
+    const index=positions.get(key);
+    if (index!==undefined) {
+      ensureVisible(index);
+      await render();
+    }
+    if (ticket!==rangeReveal) return;
+    const row=cachedRangeRows([key])[0];
+    const cell=row?.querySelector('td[data-column="'+column+'"]');
+    if (cell?.isConnected) window.VitrineGrid.reveal(cell);
+  }
+  function invalidateRangeRows(keys){
+    for (const key of keys) {
+      const index=positions.get(String(key));
+      if (index===undefined || cache.get(Number(key))?.isConnected) continue;
+      cache.delete(Number(key));
+      loaded.delete(Math.floor(index/pageSize));
+    }
+  }
   function visibleColumns(){return Array.from(table.querySelectorAll('thead th[data-column]:not([hidden])')).map(node=>node.dataset.column);}
   function ensureVisible(index){
     const available=availableHeight(),offset=rowOffset(index);
@@ -314,16 +356,20 @@
       do{
         refreshAgain=false;
         const query=requestedSearch;
-        const response=await fetch(window.VitrineGridScope.url('/api/workspace/manifest',{rowFilters:true,search:query}),{credentials:'same-origin'});
-        if(query!==requestedSearch){refreshAgain=true;continue;}
+        const manifestUrl=()=>window.VitrineGridScope.url('/api/workspace/manifest',{rowFilters:true,search:requestedSearch});
+        const urlRequested=manifestUrl();
+        const response=await fetch(urlRequested,{credentials:'same-origin'});
+        if(query!==requestedSearch||urlRequested!==manifestUrl()){refreshAgain=true;continue;}
         const result=await response.json();
-        if(query!==requestedSearch){refreshAgain=true;continue;}
+        if(query!==requestedSearch||urlRequested!==manifestUrl()){refreshAgain=true;continue;}
         if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось обновить список строк.');
         if(!Array.isArray(result.rowIds)||result.rowIds.some(id=>!Number.isInteger(id)))throw new Error('Некорректный список строк.');
         if(window.VitrineGrid?.editing()){manifestDeferred=true;return;}
         const next=[...new Set(result.rowIds)];
         const searchChanged=query!==appliedSearch;
-        if(!searchChanged && next.join(',')===ids.join(','))continue;
+        const tripFilter=hasTripFilter(new URL(urlRequested,location.href).searchParams);
+        const filterChanged=tripFilter!==appliedTripFilter;
+        if(!searchChanged && !filterChanged && next.join(',')===ids.join(','))continue;
         const anchorIndex=Math.max(0,Math.min(ids.length-1,viewportIndex()));
         const anchor=ids[anchorIndex],offset=scroll.scrollTop-rowOffset(anchorIndex);
         const chosen=table.querySelector('td.is-current-cell'),chosenRow=chosen?.dataset.row,chosenColumn=chosen?.dataset.column;
@@ -338,10 +384,13 @@
           if(query)url.searchParams.set('q',query);else url.searchParams.delete('q');
           history.replaceState(history.state,'',url);
         }
+        appliedTripFilter=tripFilter;
         setCounts();
-        const newAnchor=searchChanged?0:positions.get(String(anchor))??Math.min(anchorIndex,Math.max(ids.length-1,0));
-        scroll.scrollTop=searchChanged?0:Math.max(0,rowOffset(newAnchor)+offset);
-        await render(newAnchor);
+        const resetScroll=searchChanged || filterChanged;
+        if (resetScroll) startPadding=endPadding=0;
+        const newAnchor=resetScroll?0:positions.get(String(anchor))??Math.min(anchorIndex,Math.max(ids.length-1,0));
+        scroll.scrollTop=resetScroll?0:Math.max(0,rowOffset(newAnchor)+offset);
+        await render();
         if(chosenRow&&!chosen?.closest('[data-draft-slot]')&&!positions.has(chosenRow)){
           const candidate=body.querySelector('td[data-column="'+chosenColumn+'"]:not([hidden])')||table.querySelector('tbody td[data-edit-cell]:not([hidden])');
           if(candidate)window.VitrineGrid?.select(candidate);
@@ -388,6 +437,12 @@
     refreshFleetDocuments,
     applyFleetDocuments,
     exportRows,
+    rangeRows,
+    cachedRangeRows,
+    readRangeRows,
+    revealRangeEnd,
+    invalidateRangeRows,
+    visibleColumns,
     replaceUnloadChoices(groups,clients){
       for (const row of cache.values()) {
         const client=row.querySelector('td[data-column="B"]');
@@ -400,9 +455,9 @@
         address.dataset.choices=JSON.stringify(groups[id ? 'id:'+id : 'name:'+name]??[]);
       }
     },
-    filterDirectory(query){
+    filterDirectory(query,{force=false}={}){
       requestedSearch=query;
-      if(query!==appliedSearch||refreshTask)return refreshManifest();
+      if(force||query!==appliedSearch||refreshTask)return refreshManifest();
     },
     catalogPatch(patch){
       if(!patch.catalogId||!patch.id||typeof patch.name!=='string')return;
@@ -429,13 +484,20 @@
     get total(){return ids.length;}
   });
   if(tripDraftBody)tripDraftBody.append(tail);
-  if(openAtLastRow && initial.length){
+  if(openUnfiltered && initial.length){
     stamp(top,rowOffset(initialStart));
     stampEnd(ids.length);
     body.prepend(top);
     body.append(bottom);
-    scroll.scrollTop=Math.max(0,rowOffset(ids.length-1)+(height-availableHeight())/2);
+    const alignment=centerOnLogin ? (height-availableHeight())/2 : height-availableHeight();
+    scroll.scrollTop=Math.max(0,rowOffset(ids.length-1)+alignment);
     lastScrollTop=scroll.scrollTop;
+  }
+  if (table.hasAttribute('data-center-on-login')) {
+    const url=new URL(location.href);
+    url.searchParams.delete('from');
+    url.searchParams.delete('viewport');
+    history.replaceState(history.state,'',url);
   }
   render();
 })();

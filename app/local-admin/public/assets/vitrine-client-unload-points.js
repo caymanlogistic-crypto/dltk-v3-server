@@ -28,7 +28,9 @@
   function action(text,run,cls='vitrine-client-relations-cell') {
     const button=node('button',text,cls);
     button.type='button';
-    button.addEventListener('click',()=>run(button));
+    const activate=()=>run(button);
+    if (cls==='vitrine-client-relations-cell') window.VitrineClientRelationsKeyboard.bindCellActivation(button,activate);
+    else button.addEventListener('click',activate);
     return button;
   }
   async function request(body=null) {

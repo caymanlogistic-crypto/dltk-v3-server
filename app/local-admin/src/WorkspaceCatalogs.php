@@ -8,6 +8,7 @@ require_once __DIR__.'/WorkspaceClientTransfer.php';
 require_once __DIR__.'/WorkspacePickupTransfer.php';
 require_once __DIR__.'/WorkspaceDropoffPoints.php';
 require_once __DIR__.'/WorkspaceCarrierDirectory.php';
+require_once __DIR__.'/WorkspaceCarrierFleet.php';
 require_once __DIR__.'/WorkspaceEdoOperators.php';
 require_once __DIR__.'/WorkspaceEdoCounterparties.php';
 require_once __DIR__.'/WorkspaceMarginRules.php';
@@ -38,15 +39,7 @@ function workspace_catalog_validate_name(string $value): string {
 }
 
 function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
-    workspace_begin();
-    try {
-        $result=workspace_catalog_write($b,$deleteReason);
-        workspace_db()->commit();
-        return $result;
-    } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
-        throw $error;
-    }
+    return workspace_transaction(static fn()=>workspace_catalog_write($b,$deleteReason));
 }
 
 function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
@@ -195,6 +188,7 @@ function workspace_catalogs_endpoint(string $method): never {
     if(!in_array($method,['GET','POST'],true))throw new ApiError('method','Метод не поддерживается.',405);
     if($method==='POST'){
         $b=wbody();
+        if (($b['action']??'')==='save_carrier_fleet') json_response(workspace_carrier_fleet_save($b));
         if (($b['action']??'')==='save_client_managers') {
             if (!is_int($b['clientId']??null)) throw new ApiError('invalid_edit','Выберите клиента.');
             json_response(workspace_client_manager_card($b['clientId'],$b));
@@ -234,6 +228,7 @@ function workspace_catalogs_endpoint(string $method): never {
         json_response(workspace_client_unload_points($clientId));
     }
     $id=(int)($_GET['id']??0);$catalog=null;foreach(workspace_catalogs() as $c)if($c['id']===$id)$catalog=$c;if(!$catalog)throw new ApiError('not_found','Справочник не найден.',404);
+    if (isset($_GET['carrierFleet'])) json_response(workspace_carrier_fleet_card($id,(int)$_GET['carrierFleet']));
     if (isset($_GET['unloadContacts'])) {
         json_response(workspace_unload_contacts($id,(int)$_GET['unloadContacts']));
     }

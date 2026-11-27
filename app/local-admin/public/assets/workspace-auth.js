@@ -1,7 +1,26 @@
 'use strict';
 (() => {
+  function passwordVisibility(password,toggle) {
+    function setVisible(visible) {
+      password.type = visible ? 'text' : 'password';
+      toggle.setAttribute('aria-label',visible ? 'Скрыть пароль' : 'Показать пароль');
+    }
+    toggle.addEventListener('click',() => setVisible(password.type === 'password'));
+    toggle.closest('dialog')?.addEventListener('close',() => setVisible(false));
+    toggle.hidden = false;
+    return setVisible;
+  }
+  window.DltkPasswordVisibility = passwordVisibility;
+
   const form = document.getElementById('workspace-login');
-  if (!form) return;
+  if (!form) {
+    for (const wrapper of document.querySelectorAll('.auth-password')) {
+      const input = wrapper.querySelector('input');
+      const toggle = wrapper.querySelector('.auth-password-toggle');
+      if (input && toggle) passwordVisibility(input,toggle);
+    }
+    return;
+  }
 
   const button = form.querySelector('button[type="submit"]');
   const spinner = button.querySelector('.auth-submit-spinner');
@@ -10,13 +29,7 @@
   const password = form.querySelector('#workspace-password');
   const passwordToggle = form.querySelector('.auth-password-toggle');
 
-  function setPasswordVisible(visible) {
-    password.type = visible ? 'text' : 'password';
-    passwordToggle.setAttribute('aria-label', visible ? 'Скрыть пароль' : 'Показать пароль');
-  }
-
-  passwordToggle.addEventListener('click', () => setPasswordVisible(password.type === 'password'));
-  passwordToggle.hidden = false;
+  const setPasswordVisible = passwordVisibility(password,passwordToggle);
 
   function setPending(pending) {
     button.disabled = pending;

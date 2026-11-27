@@ -20,7 +20,7 @@ function workspace_manager_entries(int $catalogId): array {
 
 function workspace_manager_values(array $row): array {
     return ['A'=>$row['surname'],'B'=>$row['name'],'C'=>$row['patronymic'],
-        'D'=>workspace_employee_role_names()[$row['role_code']??'']??$row['role_name'],'E'=>$row['phone'],'F'=>$row['email']];
+        'D'=>workspace_employee_role_names()[$row['role_code']??'']??$row['role_name'],'E'=>workspace_phone_display($row['phone']),'F'=>$row['email']];
 }
 
 function workspace_manager_draft_fields(array $roles): array {
@@ -30,12 +30,12 @@ function workspace_manager_draft_fields(array $roles): array {
         'E'=>['type'=>'text','maxLength'=>100],'F'=>['type'=>'email']];
 }
 
-function workspace_manager_validate(array $values): array {
+function workspace_manager_validate(array $values,?string $previousPhone=null): array {
     $surname=workspace_unload_text($values['A']??'',160);
     $name=workspace_unload_text($values['B']??'',160);
     $patronymic=workspace_unload_text($values['C']??'',160);
     $role=workspace_manager_roles()[$values['D']??'']??null;
-    $phone=workspace_unload_text($values['E']??'',100);
+    $phone=workspace_phone_storage($values['E']??'',$previousPhone);
     $email=workspace_unload_text($values['F']??'',254);
     if ($name==='') throw new ApiError('invalid_manager','Укажите имя менеджера.');
     if (!$role) throw new ApiError('invalid_role','Выберите роль из справочника.');
@@ -50,7 +50,7 @@ function workspace_manager_write(int $catalogId,array $values,?int $entryId=null
         if ($entryId) wquery('SELECT id FROM catalog_entries WHERE catalog_id=? AND id=? FOR UPDATE',[$catalogId,$entryId]);
         $old=$entryId ? (array_column(workspace_manager_entries($catalogId),null,'id')[$entryId]??null) : null;
         if ($entryId && (!$old || !$old['active'] || (int)$old['revision']!==$revision)) workspace_directory_conflict();
-        $manager=workspace_manager_validate($values);
+        $manager=workspace_manager_validate($values,$old['phone']??null);
         $key=hash('sha256',implode("\n",array_map('vitrine_catalog_key',[$manager['surname'],$manager['name'],$manager['patronymic']])));
         $revision=$old ? (int)$old['revision']+1 : 1;
         if ($old) {
@@ -74,13 +74,5 @@ function workspace_manager_write(int $catalogId,array $values,?int $entryId=null
 }
 
 function workspace_manager_save(int $catalogId,array $values,?int $entryId=null,?int $revision=null): array {
-    workspace_begin();
-    try {
-        $result=workspace_manager_write($catalogId,$values,$entryId,$revision);
-        workspace_db()->commit();
-        return $result;
-    } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
-        throw $error;
-    }
+    return workspace_transaction(static fn()=>workspace_manager_write($catalogId,$values,$entryId,$revision));
 }

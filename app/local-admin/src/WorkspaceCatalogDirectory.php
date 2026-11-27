@@ -18,15 +18,22 @@ function workspace_catalog_directory_model(): array {
         'container-types'=>['A'=>'Тип контейнера'],
         'unload-points'=>['A'=>'Клиент','B'=>'Адрес','C'=>'Контакты'],
         'dropoff-points'=>['A'=>'Точка сдачи','B'=>'Адрес','C'=>'Контакты','D'=>'Постоянная инструкция'],
-        'fleet-drivers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Телефон','E'=>'Доп. телефон'],
+        'fleet-drivers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Телефон','E'=>'Доп. телефон']+
+            array_map(static fn(array $field): string=>$field[0], workspace_driver_directory_fields()),
         'fleet-vehicles'=>['B'=>'Марка тягача','A'=>'Госномер тягача',
             'I'=>'Марка полуприцепа','H'=>'Госномер полуприцепа']+workspace_fleet_driver_columns()+workspace_fleet_document_labels(),
         'managers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Роль','E'=>'Телефон','F'=>'Email'],
         default=>['A'=>'Название'],
     };
+    $driverFields=$catalog['kind']==='fleet-drivers' ? workspace_driver_directory_fields() : [];
     $columns = [];
     foreach ($labels as $letter=>$label) {
         $column=compact('letter','label');
+        $kind=$catalog['kind'];
+        if (($kind==='managers' && $letter==='E') ||
+            (in_array($kind,WORKSPACE_FLEET_KINDS,true) && in_array($letter,workspace_fleet_phone_columns($kind),true))) {
+            $column['compactInput']='phone';
+        }
         if ($catalog['kind']==='margin-rules') {
             $column['kind']=$column['compactInput']=workspace_margin_rule_inputs()[$letter];
         }
@@ -35,6 +42,10 @@ function workspace_catalog_directory_model(): array {
             $column['derivedEmptyLabel']='Оператор ЭДО не определён';
         }
         if ($catalog['kind']==='fleet-vehicles' && isset(workspace_fleet_document_fields()[$letter])) $column['export']=false;
+        if (isset($driverFields[$letter])) {
+            $column['export']=false;
+            $column['readOnly']='Реквизит доступен для просмотра.';
+        }
         $columns[]=$column;
     }
     if ($catalog['kind']==='unload-points') $columns[2]['kind']='unload-contacts';
@@ -114,7 +125,11 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         }
         if ($kind==='fleet-vehicles') unset($values['C']);
         if ($roleFilter!=='' && $values[$roleFilter]!=='Да') continue;
-        if ($search !== '' && mb_stripos(implode(' ',$values),$search) === false) continue;
+        if ($search !== '' && mb_stripos(implode(' ',$values),$search) === false) {
+            $plateQuery=$kind==='fleet-vehicles' ? workspace_fleet_plate_key($search) : '';
+            if ($plateQuery==='' || (!str_contains(workspace_fleet_plate_key($values['A']),$plateQuery)
+                && !str_contains(workspace_fleet_plate_key($values['H']),$plateQuery))) continue;
+        }
         $rowIds[] = $entryId;
         if ($requested === null ? count($rows)>=100 : !isset($requested[$entryId])) continue;
         $row = ['rowIndex'=>$entryId,'rowLabel'=>count($rowIds),'values'=>$values,'rowActions'=>$canEdit,
@@ -169,11 +184,21 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         }
         $rows[] = $row;
     }
+    if ($kind==='fleet-drivers') {
+        $documents=workspace_driver_directory_requisites(array_column($rows,'rowIndex'));
+        foreach ($rows as &$row) {
+            $values=$documents[$row['rowIndex']]??[];
+            $row['values']+=$values;
+            $row['singleLine']+=array_fill_keys(array_keys($values),true);
+        }
+        unset($row);
+    }
     $details = wquery("SELECT COALESCE(JSON_LENGTH(JSON_EXTRACT(value,'$.unkeyed')),0) AS unkeyedCount
         FROM workspace_meta WHERE `key`=?",['catalog_details_'.$id])->fetch();
     return ['table'=>$model,'columns'=>$model['columns'],'rows'=>$rows,'rowIds'=>$rowIds,'palette'=>workspace_palette(),
         'catalogGrid'=>['id'=>$id,'archive'=>$archive,'showAll'=>$showAll,'search'=>$search,'canEdit'=>$canEdit,
             'syncLabel'=>$canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($id) : null,
+            'standaloneCard'=>$kind==='carriers',
             'hasDetails'=>(bool)$details,'unkeyedCount'=>(int)($details['unkeyedCount'] ?? 0),
             'unloadPoints'=>$unload,'partyRoles'=>$partyRoles,'partyRole'=>$roleFilter,
             'relatedLabel'=>$clientCatalog ? 'Открыть клиента' : null,
@@ -194,10 +219,13 @@ function workspace_catalog_directory_hash(int $catalogId,int $entryId): string {
 
 function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method','Метод не поддерживается.',405);
+    json_response(workspace_catalog_directory_edit(wbody(),$pasteCheck));
+}
+
+function workspace_catalog_directory_edit(array $body, bool $pasteCheck = false): array {
     $model = workspace_catalog_directory_model();
     $id = $model['catalogId'];
     workspace_require('catalog',(string)$id,'edit');
-    $body = wbody();
     $column = $body['column'] ?? '';
     if (!is_int($body['row'] ?? null) || !is_string($body['value'] ?? null)
         || !in_array($column,array_column($model['columns'],'letter'),true)) {
@@ -206,10 +234,13 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
     $entry = wquery('SELECT * FROM catalog_entries WHERE catalog_id=? AND id=? AND active=TRUE',[$id,$body['row']])->fetch();
     if (!$entry) throw new ApiError('not_found','Запись не найдена.',404);
     $kind = $model['catalogKind'];
+    if ($kind==='fleet-drivers' && isset(workspace_driver_directory_fields()[$column])) {
+        throw new ApiError('forbidden','Реквизит доступен для просмотра.',403);
+    }
     if (in_array($kind,WORKSPACE_FLEET_KINDS,true)) {
         $isFleet=$kind==='fleet-vehicles';
         if ($isFleet && isset(workspace_fleet_document_fields()[$column]) && ($column!=='P' || !isset($body['fleetGroup']))) {
-            workspace_fleet_document_cell($body,$pasteCheck);
+            return workspace_fleet_document_cell($body,$pasteCheck);
         }
         $profile=workspace_fleet_entries($kind,$id)[$body['row']]??null;
         if (!$profile) throw new ApiError('not_found','Запись не найдена.',404);
@@ -229,8 +260,8 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         }
         $values=array_replace($oldValues,$changes);
         if ($isFleet && isset($changes['H']) && $values['I']===$oldValues['I']
-            && workspace_fleet_trailer_key($values['H'])!==workspace_fleet_trailer_key($oldValues['H'])) {
-            $key=workspace_fleet_trailer_key($values['H']);
+            && workspace_fleet_trailer_profile_key($values['H'])!==workspace_fleet_trailer_profile_key($oldValues['H'])) {
+            $key=workspace_fleet_trailer_profile_key($values['H']);
             $values['I']=$key ? (string)wquery('SELECT brand FROM fleet_trailer_profiles WHERE plate_key=?',[$key])->fetchColumn() : '';
         }
         if ($isFleet && array_intersect_key($changes,array_flip(['D','E','F']))) {
@@ -241,8 +272,13 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
             }
         }
         if ($pasteCheck) {
-            workspace_fleet_values_validated($kind,$values);
-            json_response(['accepted'=>true]);
+            $validated=workspace_fleet_values_validated($kind,$values,$oldValues);
+            $response=['accepted'=>true];
+            if ($isFleet && in_array($column,['A','H'],true)) {
+                $plate=$validated['values'][$column];
+                $response['editorValue']=workspace_fleet_plate_format($plate,$column==='H')??$plate;
+            }
+            return $response;
         }
         $baseHash=workspace_catalog_directory_hash($id,$body['row']);
         if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
@@ -258,7 +294,7 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
             }
         }
         $value=$result['values'][$column]??$result['fleetDocuments']['values'][$column]??'';
-        json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);
+        return $result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false];
     }
     if ($kind==='managers') {
         $manager=array_column(workspace_manager_entries($id),null,'id')[$body['row']]??null;
@@ -267,26 +303,26 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         $values[$column]=$body['value'];
         $baseHash=workspace_catalog_directory_hash($id,$body['row']);
         if ($pasteCheck) {
-            workspace_manager_validate($values);
-            json_response(['accepted'=>true]);
+            workspace_manager_validate($values,$manager['phone']);
+            return ['accepted'=>true];
         }
         if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
         $result=workspace_manager_save($id,$values,$body['row'],$body['revision']);
         $value=$result['values'][$column];
-        json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);
+        return $result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false];
     }
     if ($kind==='dropoff-points') {
         $values=['A'=>$entry['name']]+(workspace_dropoff_profiles($id)[$body['row']]??workspace_dropoff_profile([]));
         $values[$column]=$body['value'];
         $name=workspace_catalog_validate_name($values['A']);
         $profile=workspace_dropoff_profile($values);
-        if ($pasteCheck) json_response(['accepted'=>true]);
+        if ($pasteCheck) return ['accepted'=>true];
         $baseHash=workspace_catalog_directory_hash($id,$body['row']);
         if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
         $result=workspace_catalog_save(['catalogId'=>$id,'id'=>$body['row'],'revision'=>$body['revision'],
             'name'=>$name,'dropoffProfile'=>$profile]);
         $value=($profile+['A'=>$name])[$column];
-        json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);
+        return $result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false];
     }
     if ($kind==='unload-points') {
         if ($column==='A') throw new ApiError('fixed_unload_client','У сохранённой точки нельзя изменить клиента.',409);
@@ -297,8 +333,8 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
             $baseHash=workspace_catalog_directory_hash($id,$body['row']);
             if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
             $saved=workspace_unload_contacts($id,$body['row'],['revision'=>$body['revision'],'contacts'=>[]]);
-            json_response(['value'=>$saved['summary'],'original'=>$saved['summary'],'revision'=>$saved['revision'],
-                'baseHash'=>$baseHash,'edited'=>false]);
+            return ['value'=>$saved['summary'],'original'=>$saved['summary'],'revision'=>$saved['revision'],
+                'baseHash'=>$baseHash,'edited'=>false];
         }
         $point=workspace_unload_points($id)[$body['row']]??null;
         if (!$point) throw new ApiError('not_found','Точка выгрузки не найдена.',404);
@@ -306,12 +342,12 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         $baseHash=workspace_catalog_directory_hash($id,$body['row']);
         if ($pasteCheck) {
             workspace_unload_validate_point($values,$point);
-            json_response(['accepted'=>true]);
+            return ['accepted'=>true];
         }
         if (($body['baseHash']??null)!==$baseHash || !is_int($body['revision']??null)) workspace_directory_conflict();
         $result=workspace_unload_save_point($id,$values,$body['row'],$body['revision']);
         $value=$result['values'][$column];
-        json_response($result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false]);
+        return $result+['value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false];
     }
     if (in_array([$kind,$column],[['carriers','D'],['edo-counterparties','E']],true)) {
         throw new ApiError('derived_field','Оператор определяется по идентификатору ЭДО.',403);
@@ -354,9 +390,9 @@ function workspace_catalog_directory_cell(bool $pasteCheck = false): never {
         $value=$payload['carrierDetails'][$field];
         if ($column==='C') $updatedValues=['D'=>workspace_carrier_edo_operator($value)];
     } else $payload[$kind === 'clients' ? 'manager' : 'logist'] = $value = workspace_client_validate_manager($value);
-    if ($pasteCheck) json_response(['accepted'=>true]);
+    if ($pasteCheck) return ['accepted'=>true];
     $baseHash = workspace_catalog_directory_hash($id,$body['row']);
     if (($body['baseHash'] ?? null) !== $baseHash || !is_int($body['revision'] ?? null)) workspace_directory_conflict();
-    json_response(workspace_catalog_save($payload+['revision'=>$body['revision']])+[
-        'value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false,'orderFill'=>$fill,'values'=>$updatedValues]+$catalogStyle);
+    return workspace_catalog_save($payload+['revision'=>$body['revision']])+[
+        'value'=>$value,'original'=>$value,'baseHash'=>$baseHash,'edited'=>false,'orderFill'=>$fill,'values'=>$updatedValues]+$catalogStyle;
 }

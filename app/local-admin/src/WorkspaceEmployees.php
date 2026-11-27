@@ -147,15 +147,7 @@ function workspace_employee_profile_value(string $field, mixed $value): string {
 }
 
 function workspace_employee_save(array $input, bool $cellEdit = false, ?string $deleteReason=null): array {
-    workspace_begin();
-    try {
-        $result=workspace_employee_write($input,$cellEdit,$deleteReason);
-        workspace_db()->commit();
-        return $result;
-    } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
-        throw $error;
-    }
+    return workspace_transaction(static fn()=>workspace_employee_write($input,$cellEdit,$deleteReason));
 }
 
 function workspace_employee_write(array $input, bool $cellEdit = false, ?string $deleteReason=null, bool $privateRoster=false): array {

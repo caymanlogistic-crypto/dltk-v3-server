@@ -74,6 +74,24 @@ function vitrine_catalog_values(array $link): array {
     return is_array($map)?$map:[];
 }
 
+function vitrine_catalog_reference_label(array $reference,?array $link): string {
+    if (($link['kind']??null)!=='edo-counterparties' || $reference['catalogId']!==$link['id']) return $reference['name'];
+    return workspace_edo_party_label($reference['name'],workspace_edo_party_profiles($link['id'])[$reference['id']]??[]);
+}
+
+function vitrine_apply_catalog_dependents(array &$values,array $references,array $links,array $names,array $dependentValues): void {
+    foreach ($links as $source=>$link) {
+        if ($link['kind']==='edo-counterparties') {
+            $reference=$references[$source]??null;
+            if (!$reference || $reference['catalogId']!==$link['id']) continue;
+            $entryId=$reference['id'];
+        } else {
+            $entryId=$names[$source][vitrine_catalog_key($values[$source]??'')]??0;
+        }
+        $values[$link['target']]=$dependentValues[$source][$entryId]??'';
+    }
+}
+
 function vitrine_catalog_uses_cell_fill(string $kind): bool {
     return $kind==='terminals-main' || workspace_is_document_status_catalog($kind);
 }
@@ -87,14 +105,34 @@ function vitrine_find_catalog_entry(int $catalog,string $name,bool $includeArchi
     return $alias?wquery('SELECT id,name,color FROM catalog_entries WHERE catalog_id=? AND id=?',[$catalog,$alias])->fetch():false;
 }
 
-function vitrine_find_unload_point(array $table,array $record,array $values,int $catalogId,string $value): ?array {
-    $clientRef=wquery("SELECT entry_id FROM record_references WHERE record_id=? AND field_key='B'",[$record['id']])->fetchColumn();
-    $clientName=workspace_string($values['B']??'');
+function vitrine_find_fleet_vehicle(int $catalog,string $value): array|false {
+    $key=workspace_fleet_trip_vehicle_key($value);
+    $entry=vitrine_find_catalog_entry($catalog,$value,normalized:$key);
+    if (!preg_match('/^([ABEIKMHOPCTX]{2})([0-9]{4})([0-9])$/D',$key,$belarusian)) return $entry;
+    if ($entry && workspace_fleet_plate_key($entry['name'])===$key) return $entry;
+    // Older entries may keep the two printed lines in order or use Cyrillic І in their index.
+    [, $series,$number,$region]=$belarusian;
+    $ordered=$series.$region.$number;
+    $olderKeys=array_diff(array_unique([$ordered,str_replace('I','І',$key),str_replace('I','І',$ordered)]),[$key]);
+    foreach ($olderKeys as $olderKey) {
+        $entry=vitrine_find_catalog_entry($catalog,$value,normalized:$olderKey);
+        if ($entry && workspace_fleet_plate_key($entry['name'])===$key) return $entry;
+    }
+    return false;
+}
+
+function vitrine_unload_client_key(array $table,string $clientName,int $clientId=0): string {
     $clientCatalog=vitrine_catalog_links($table)['B']['id']??0;
-    $clientId=$clientRef ? (int)$clientRef : ($clientCatalog?(int)(vitrine_find_catalog_entry($clientCatalog,$clientName,true)['id']??0):0);
-    $clientKey=workspace_unload_client_key($clientId?:null,$clientName);
+    if (!$clientId && $clientCatalog) $clientId=(int)(vitrine_find_catalog_entry($clientCatalog,$clientName,true)['id']??0);
+    return workspace_unload_client_key($clientId?:null,$clientName);
+}
+
+function vitrine_find_unload_point(array $table,array $record,array $values,int $catalogId,string $value,int $pointId=0): ?array {
+    $clientRef=(int)wquery("SELECT entry_id FROM record_references WHERE record_id=? AND field_key='B'",[$record['id']])->fetchColumn();
+    $clientKey=vitrine_unload_client_key($table,workspace_string($values['B']??''),$clientRef);
     $input=vitrine_catalog_key($value);
     foreach (workspace_unload_points($catalogId) as $point) {
+        if ($pointId && (int)$point['id']!==$pointId) continue;
         if (!$point['active'] || $point['review_required'] || $point['client']==='') continue;
         if ($input!==vitrine_catalog_key($point['address'])) continue;
         $key=workspace_unload_client_key($point['client_id']===null?null:(int)$point['client_id'],$point['client']);
@@ -110,10 +148,11 @@ function vitrine_catalog_original_value(array $record,string $column): string {
 }
 
 function vitrine_derived_catalog_columns(array $links): array {
-    $columns=array_column(array_filter($links,static fn(array $link): bool=>isset($link['target'])),null,'target');
-    foreach ($links as $link) {
+    $columns=[];
+    foreach ($links as $source=>$link) {
+        if (isset($link['target'])) $columns[$link['target']]=$link+['field'=>$source];
         foreach (['phone','documents'] as $field) {
-            if (isset($link[$field.'Target'])) $columns[$link[$field.'Target']]=['source'=>$link['source'],'empty'=>$link[$field.'Empty']];
+            if (isset($link[$field.'Target'])) $columns[$link[$field.'Target']]=['source'=>$link['source'],'empty'=>$link[$field.'Empty'],'field'=>$source];
         }
     }
     return $columns;
@@ -182,7 +221,7 @@ function vitrine_catalog_options(array $t,array $links): array {
     return [$boundChoices,$boundCatalogs,$entriesByName];
 }
 
-function vitrine_update_catalog_value(array $table,array $record,array &$values,string $column,string $value,string $previous,array $user,string $action,string $request,string $operation,bool $requireEdit=true): ?array {
+function vitrine_update_catalog_value(array $table,array $record,array &$values,string $column,string $value,string $previous,array $user,string $action,string $request,string $operation,bool $requireEdit=true,?string $shown=null): ?array {
     $old=wquery('SELECT value,revision,active FROM cell_versions WHERE record_id=? AND field_key=? FOR UPDATE',[$record['id'],$column])->fetch();
     $baseline=json_decode($record['baseline_json'],true);
     $metadata=$record['metadata_zlib']?blob_json($record['metadata_zlib']):[];
@@ -196,7 +235,7 @@ function vitrine_update_catalog_value(array $table,array $record,array &$values,
     $values[$column]=$value;
     wquery("INSERT INTO cell_versions(record_id,field_key,value,revision,active) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE value=VALUES(value),revision=VALUES(revision),active=VALUES(active)",[$record['id'],$column,$value,$revision,(int)$edited]);
     workspace_audit(['tableId'=>$table['id'],'recordId'=>(int)$record['id'],'row'=>(int)$record['row_num'],'column'=>$column,'label'=>next_label($table['columns'],$column),'before'=>$previous!==$value?$previous:$before,'after'=>$value,'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
-    $patch=['tableSlug'=>$table['slug'],'row'=>(int)$record['row_num'],'column'=>$column,'value'=>$value,'revision'=>$revision,'edited'=>$edited,'original'=>$original,'baseHash'=>hash('sha256',$record['baseline_json']),'actorId'=>$user['id'],'actorName'=>$user['name'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation];
+    $patch=['tableSlug'=>$table['slug'],'row'=>(int)$record['row_num'],'column'=>$column,'value'=>$shown??$value,'revision'=>$revision,'edited'=>$edited,'original'=>$original,'baseHash'=>hash('sha256',$record['baseline_json']),'actorId'=>$user['id'],'actorName'=>$user['name'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation];
     if ($column==='K') $patch['referenceId']=0;
     workspace_event('cell.changed',$patch);
     return $patch;

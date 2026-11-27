@@ -2,16 +2,43 @@
 declare(strict_types=1);
 
 function workspace_fleet_trailer_key(string $plate): string {
+    // Keep the existing classification of standalone trailer entries.
     $key=workspace_fleet_plate_key($plate);
     return preg_match('/^[ABEKMHOPCTYX]{2}[0-9]{6,7}$/D',$key) ? $key : '';
 }
 
+function workspace_fleet_plate_format(string $plate,bool $trailer=false): ?string {
+    $value=workspace_fleet_plate_compact($plate);
+    $russian='[АВЕКМНОРСТУХABEKMHOPCTYX]';
+    $belarusian='[АВЕІКМНОРСТХABEIKMHOPCTX]';
+    $patterns=$trailer ? [
+        "/^({$russian}{2}[0-9]{4})([0-9]{2,3})$/uD"=>'$1 $2',
+        "/^({$belarusian})([0-9]{4})({$belarusian})([0-9])$/uD"=>'$1 $2 $3-$4',
+    ] : [
+        "/^({$russian})([0-9]{3})({$russian}{2})([0-9]{2,3})$/uD"=>'$1 $2 $3 $4',
+    ];
+    $patterns += [
+        "/^({$belarusian}{2})([0-9]{4})([0-9])$/uD"=>'$1 $2-$3',
+        "/^([0-9]{4})({$belarusian}{2})([0-9])$/uD"=>'$1 $2-$3',
+    ];
+    foreach ($patterns as $pattern=>$format) {
+        if (preg_match($pattern,$value)) return preg_replace($pattern,$format,$value);
+    }
+    $key=workspace_fleet_plate_key($plate);
+    $kazakh=$trailer ? '/^([0-9]{2})([A-Z]{3})([0-9]{2})$/D' : '/^([0-9]{3})([A-Z]{2,3})([0-9]{2})$/D';
+    return preg_match($kazakh,$key,$parts) ? implode(' ',array_slice($parts,1)) : null;
+}
+
+function workspace_fleet_trailer_profile_key(string $plate): string {
+    return workspace_fleet_plate_format($plate,true)!==null ? workspace_fleet_plate_key($plate) : '';
+}
+
 function workspace_fleet_trailer_values(array $values): array {
-    $plate=mb_strtoupper(workspace_unload_text($values['H']??'',28));
-    $brand=workspace_unload_text($values['I']??'',160);
-    $key=workspace_fleet_trailer_key($plate);
+    $plate=mb_strtoupper(workspace_unload_text(workspace_fleet_plate_reorder($values['H']??''),28));
+    $brand=mb_strtoupper(workspace_unload_text($values['I']??'',160));
+    $key=workspace_fleet_trailer_profile_key($plate);
     if (($plate!=='' || $brand!=='') && $key==='') {
-        throw new ApiError('invalid_trailer','Укажите госномер полуприцепа в формате АВ123477.');
+        throw new ApiError('invalid_trailer','Проверьте госномер полуприцепа. Например: АА1234 77, А 1234 В-7 или 24 ANM 01.');
     }
     return ['key'=>$key,'plate'=>$plate,'brand'=>$brand];
 }
@@ -29,16 +56,17 @@ function workspace_fleet_write_trailer(int $vehicle,array $trailer): void {
 }
 
 function workspace_fleet_trip_vehicle_label(string $tractor,?string $trailer): string {
-    return $trailer ? $tractor.' / '.$trailer : $tractor;
+    $tractor=workspace_fleet_plate_format($tractor)??$tractor;
+    return $trailer ? $tractor.' / '.(workspace_fleet_plate_format($trailer,true)??$trailer) : $tractor;
 }
 
 function workspace_fleet_trip_vehicle_key(string $value): string {
     [$tractor,$trailer]=array_pad(explode(' / ',$value,2),2,'');
-    return workspace_fleet_plate_key($trailer!=='' && !workspace_fleet_trailer_key($trailer) ? $value : $tractor);
+    return workspace_fleet_plate_key($trailer!=='' && !workspace_fleet_trailer_profile_key($trailer) ? $value : $tractor);
 }
 
 function workspace_fleet_retired_kind(string $kind): bool {
-    return in_array($kind,['fleet-drivers','transport','drivers-detailed','drivers-legacy'],true)
+    return in_array($kind,['transport','drivers-detailed','drivers-legacy'],true)
         && workspace_fleet_catalog('fleet-vehicles')>0;
 }
 
@@ -70,6 +98,44 @@ function workspace_fleet_document_labels(): array {
         'K'=>'Серия и номер ВУ','L'=>'Дата выдачи ВУ','M'=>'ВУ действует до'];
 }
 
+function workspace_driver_directory_fields(): array {
+    return [
+        'F'=>['Дата рождения','birth_date'],
+        'G'=>['Серия и номер паспорта','passport_number'],
+        'H'=>['Кем выдан паспорт','passport_issuer'],
+        'I'=>['Дата выдачи паспорта','passport_issued'],
+        'J'=>['Код подразделения','passportDepartment'],
+        'K'=>['Серия и номер ВУ','license_number'],
+        'L'=>['Дата выдачи ВУ','license_issued'],
+        'M'=>['ВУ действует до','license_expires'],
+        'N'=>['ИНН','inn'],
+    ];
+}
+
+function workspace_driver_directory_requisites(array $ids): array {
+    if (!$ids) return [];
+    $slots=implode(',',array_fill(0,count($ids),'?'));
+    $source=wquery("SELECT e.id,d.birth_date,d.passport_number,d.passport_issuer,d.passport_issued,
+        d.license_number,d.license_issued,d.license_expires,m.value AS imported
+        FROM catalog_entries e LEFT JOIN fleet_driver_documents d ON d.driver_id=e.id
+        LEFT JOIN workspace_meta m ON m.`key`=CONCAT('driver_import_details_',e.id)
+        WHERE e.id IN ($slots)",$ids)->fetchAll();
+    $values=[];
+    $fields=workspace_driver_directory_fields();
+    foreach ($source as $driver) {
+        $imported=json_decode($driver['imported']??'{}',true)??[];
+        foreach ($fields as $column=>[, $field]) {
+            $value=(string)($driver[$field]??$imported[$field]??'');
+            if ($value!=='' && in_array($column,['F','I','L','M'],true)) {
+                $value=implode('.',array_reverse(explode('-',$value)));
+            }
+            if ($field==='passport_number') $value=workspace_fleet_passport_format($value)??$value;
+            $values[(int)$driver['id']][$column]=$value;
+        }
+    }
+    return $values;
+}
+
 function workspace_fleet_document_fields(): array {
     return ['J'=>'passport_number','N'=>'passport_issuer','O'=>'passport_issued','P'=>'birth_date',
         'K'=>'license_number','L'=>'license_issued','M'=>'license_expires'];
@@ -77,6 +143,14 @@ function workspace_fleet_document_fields(): array {
 
 function workspace_fleet_document_text_limits(): array {
     return ['passport_number'=>50,'passport_issuer'=>400,'license_number'=>80];
+}
+
+function workspace_fleet_passport_format(string $value): ?string {
+    $key=preg_replace('/[\s-]+/u','',mb_strtoupper(trim($value)));
+    if ($key==='') return '';
+    if (preg_match('/^([0-9]{2})([0-9]{2})([0-9]{6})$/D',$key,$parts)) return "$parts[1] $parts[2] $parts[3]";
+    if (preg_match('/^(\p{L}{2})([0-9]{7})$/uD',$key,$parts)) return "$parts[1] $parts[2]";
+    return preg_match('/^[0-9]{9}$/D',$key) ? $key : null;
 }
 
 function workspace_fleet_document_target(int $vehicle): array {
@@ -103,6 +177,7 @@ function workspace_fleet_document_state(int $vehicle,int $driver,bool $editable,
     $textLimits=workspace_fleet_document_text_limits();
     foreach (workspace_fleet_document_fields() as $column=>$field) {
         $value=(string)($data[$field]??'');
+        if ($field==='passport_number') $value=workspace_fleet_passport_format($value)??$value;
         $values[$column]=!isset($textLimits[$field]) && $value!=='' ? implode('.',array_reverse(explode('-',$value))) : $value;
     }
     return ['values'=>$values,'revision'=>(int)($data['revision']??0),'baseHash'=>hash('sha256',"fleet-documents:$vehicle:$driver"),
@@ -124,15 +199,14 @@ function workspace_fleet_document_date(string $value,bool $fullYear=false): ?str
     return $value;
 }
 
-function workspace_fleet_document_cell(array $body,bool $pasteCheck): never {
+function workspace_fleet_document_cell(array $body,bool $pasteCheck): array {
     $driverCatalog=(string)workspace_fleet_catalog('fleet-drivers');
     workspace_require('catalog',$driverCatalog,'view');
     workspace_require('catalog',$driverCatalog,'edit');
     $vehicle=$body['row'];
     $column=$body['column'];
     $values=workspace_fleet_edit_values($body);
-    workspace_begin();
-    try {
+    return workspace_transaction(static function() use ($body,$vehicle,$column,$values,$pasteCheck) {
         $target=workspace_fleet_document_target($vehicle);
         $driver=(int)$target['driver_id'];
         $previous=workspace_fleet_documents($driver);
@@ -141,20 +215,14 @@ function workspace_fleet_document_cell(array $body,bool $pasteCheck): never {
             workspace_directory_conflict();
         }
         $next=workspace_fleet_validate_documents($previous,$values);
-        if ($pasteCheck) {
-            workspace_db()->rollBack();
-            json_response(['accepted'=>true]);
-        }
+        if ($pasteCheck) return ['accepted'=>true];
         $next=workspace_fleet_store_documents($driver,$previous,$next);
-        workspace_db()->commit();
+
         $result=workspace_fleet_document_state($vehicle,$driver,true,$next);
         $shown=$result['values'][$column];
-        json_response(['value'=>$shown,'original'=>$shown,'baseHash'=>$result['baseHash'],'revision'=>$result['revision'],
-            'edited'=>false,'fleetDocumentEdit'=>true,'fleetDocuments'=>$result]);
-    } catch (Throwable $error) {
-        if (workspace_db()->inTransaction()) workspace_db()->rollBack();
-        throw $error;
-    }
+        return ['value'=>$shown,'original'=>$shown,'baseHash'=>$result['baseHash'],'revision'=>$result['revision'],
+            'edited'=>false,'fleetDocumentEdit'=>true,'fleetDocuments'=>$result];
+    });
 }
 
 function workspace_fleet_validate_documents(array $previous,array $values): array {
@@ -173,6 +241,13 @@ function workspace_fleet_validate_documents(array $previous,array $values): arra
         } else {
             if (mb_strlen($value)>$limit || preg_match('/[\x00-\x1F]/u',$value)) {
                 throw new ApiError('invalid_documents','Проверьте длину и формат данных документов.');
+            }
+            if ($field==='passport_number') {
+                $original=(string)($previous[$field]??'');
+                $normalized=workspace_fleet_passport_format($value);
+                if ($value===(workspace_fleet_passport_format($original)??$original)) $value=$original;
+                elseif ($normalized!==null) $value=$normalized;
+                else throw new ApiError('invalid_documents','Введите 10 цифр, 9 цифр или две буквы и 7 цифр номера паспорта.');
             }
             $next[$field]=$value;
         }

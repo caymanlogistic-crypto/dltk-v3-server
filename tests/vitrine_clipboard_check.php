@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__).'/app/local-admin/src/VitrineClipboard.php';
+require dirname(__DIR__).'/app/local-admin/src/WorkspaceFleet.php';
+require dirname(__DIR__).'/app/local-admin/src/WorkspaceFleetDetails.php';
 $checks = 0;
 function verify(bool $condition, string $name): void {
     global $checks;
@@ -106,4 +108,20 @@ foreach ([''=>'', '0'=>'0','999'=>'999','1 000'=>'1 000','50 000'=>'50 000','50 
     verify($formatted===$expected,'Weights stay formatted for existing rows '.$input);
     verify(vitrine_weight_in_range($formatted)===in_array($expected,['','1 000','50 000'],true),'Weight range boundary '.$input);
 }
+foreach ([
+    ['а123аа77','аа1234197','А 123 АА 77 / АА1234 197','A123AA77','AA1234197'],
+    ['ав1234‑7','а1234в7','АВ 1234-7 / А 1234 В-7','AB12347','A1234B7'],
+    ['007авк19','01anm01','007 ABK 19 / 01 ANM 01','007ABK19','01ANM01'],
+] as [$tractor,$trailer,$display,$tractorKey,$trailerKey]) {
+    verify(workspace_fleet_trip_vehicle_label($tractor,$trailer)===$display,'Vehicle and trailer format '.$display);
+    verify(workspace_fleet_trip_vehicle_key($display)===$tractorKey,'Trip keeps tractor lookup key '.$display);
+    verify(workspace_fleet_trailer_profile_key($trailer)===$trailerKey,'Profile matches trailer '.$display);
+    verify(workspace_fleet_trailer_key($tractor)==='','Tractor remains visible '.$display);
+}
+verify(workspace_fleet_trailer_profile_key('АВ1234-7')==='AB12347'
+    && workspace_fleet_trailer_key('АВ1234-7')==='','Belarusian trailer profile format does not hide a matching tractor entry');
+verify(workspace_fleet_plate_format('1234ів7',true)==='1234 ІВ-7','Belarusian two-row trailer and letter І');
+verify(workspace_fleet_trailer_profile_key("АІ-7\n1234")==='AI12347'
+    && workspace_fleet_plate_format('АІ-7 1234',true)==='АІ 1234-7','Belarusian type 3 keeps its region after reading both lines');
+verify(workspace_fleet_trailer_profile_key('ABCD')==='','Trailer requires letters, digits and region');
 echo 'PASS '.$checks." clipboard format checks\n";

@@ -128,7 +128,7 @@ function workspace_client_manager_card(int $clientId,?array $body=null): array {
             $label=implode(' ',array_filter([$surname,$entry['name'],$patronymic],'strlen'));
             $options[$id]=['id'=>$id,'name'=>$entry['name'],'label'=>$label,'active'=>(bool)$entry['active']];
             if (in_array($id,$detailsIds,true)) {
-                $options[$id]+=['phone'=>$entry['phone'],'email'=>$entry['email'],'surname'=>$entry['surname'],
+                $options[$id]+=['phone'=>workspace_phone_display($entry['phone']),'email'=>$entry['email'],'surname'=>$entry['surname'],
                     'patronymic'=>$entry['patronymic'],'revision'=>(int)$entry['revision']];
             }
         }

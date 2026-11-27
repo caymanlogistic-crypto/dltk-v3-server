@@ -13,6 +13,54 @@ function workspace_fleet_phone_number(string $value): ?string {
     return null;
 }
 
+function workspace_phone_digits_display(string $value): ?string {
+    if (!preg_match('/^[0-9]{1,17}$/D',$value)) return null;
+    $explicitInternational=str_starts_with($value,'00');
+    if (!$explicitInternational) {
+        $recognized=workspace_fleet_phone_number($value);
+        if ($recognized!==null) return $recognized;
+    }
+    $number=$explicitInternational ? substr($value,2) : $value;
+    if (!preg_match('/^[1-9][0-9]{6,14}$/D',$number)) return null;
+    if (str_starts_with($number,'7')) {
+        if (!preg_match('/^7([0-9]{3})([0-9]{3})([0-9]{2})([0-9]{2})$/D',$number,$parts)) return null;
+        return "+7 ($parts[1]) $parts[2] $parts[3] $parts[4]";
+    }
+    if (str_starts_with($number,'375')) return workspace_fleet_phone_number('+'.$number);
+    return '+'.$number;
+}
+
+function workspace_phone_paste_digits(string $value): ?string {
+    $value=preg_replace('/^[ \t\r\n\x{00A0}\x{2009}\x{202F}]+|[ \t\r\n\x{00A0}\x{2009}\x{202F}]+$/u','',$value);
+    if ($value==='') return '';
+    if ($value===null || !preg_match('/^\+?[0-9(). \x{00A0}\x{2009}\x{202F}\-–—]+$/uD',$value)) return null;
+    $digits=preg_replace('/[^0-9]/','',$value);
+    if ($digits==='') return null;
+    $knownCode=preg_match('/^(?:7[0-9]{10}|375[0-9]{9})$/D',$digits);
+    return str_starts_with($value,'+') && !$knownCode ? '00'.$digits : $digits;
+}
+
+function workspace_phone_display(string $value): string {
+    $digits=workspace_phone_paste_digits($value);
+    return ($digits===null ? null : workspace_phone_digits_display($digits)) ?? $value;
+}
+
+function workspace_phone_storage(mixed $value, ?string $previous=null): string {
+    if (!is_string($value) || mb_strlen($value)>100) {
+        throw new ApiError('phone_format','Укажите один полный номер телефона с кодом страны.');
+    }
+    if ($previous!==null) {
+        $shown=workspace_phone_display($previous);
+        $singleLine=str_replace(["\r","\n"],'',$shown);
+        if ($value===$previous || $value===$singleLine || ($value!=='' && $value===trim($shown))) return $previous;
+    }
+    $digits=workspace_phone_paste_digits($value);
+    if ($digits==='') return '';
+    $shown=$digits===null ? null : workspace_phone_digits_display($digits);
+    if ($shown===null) throw new ApiError('phone_format','Укажите один полный номер телефона с кодом страны.');
+    return '+'.preg_replace('/[^0-9]/','',$shown);
+}
+
 function workspace_fleet_phone_list(string $value): ?array {
     $value=preg_replace('/\b(?:телефоны?\s+водителя|контактный\s+телефон|тел(?:ефон)?|моб(?:ильный)?|раб(?:очий)?|лич(?:ный)?|сот(?:овый)?|водитель|доп(?:олнительный)?\s+телефон)\b[.:\s№]*/iu',' ',trim($value));
     $parts=preg_split('/[,;\/\r\n]+|\s+(?=\+)/u',trim($value),-1,PREG_SPLIT_NO_EMPTY);
@@ -36,6 +84,11 @@ function workspace_fleet_phone_list(string $value): ?array {
         $numbers=array_merge($numbers,reset($pairs));
     }
     return array_values(array_unique($numbers));
+}
+
+function workspace_fleet_trip_phone_display(string $value): string {
+    $numbers=workspace_fleet_phone_list($value);
+    return $numbers ? implode(', ',$numbers) : workspace_phone_display($value);
 }
 
 function workspace_fleet_phone_input(string $value): string {

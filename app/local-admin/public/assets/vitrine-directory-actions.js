@@ -65,7 +65,7 @@
     else window.VitrineGrid.select(cell);
   });
   table.addEventListener('keydown', event => {
-    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+    if (!(event.altKey && event.shiftKey && event.key === 'F10')) return;
     const cell = event.target.closest('td[data-edit-cell]');
     const button = cell?.parentElement.querySelector(triggerSelector);
     if (!button || window.VitrineGrid.editing()) return;

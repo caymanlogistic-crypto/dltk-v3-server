@@ -15,7 +15,8 @@ $path = static fn(string $value): string => $escape(app_url_path($value));
   <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=unified-1'),ENT_QUOTES,'UTF-8') ?>">
   <script defer src="<?= $path('/assets/workspace-paths.js') ?>"></script>
   <script defer src="<?= $path('/assets/vitrine-notifications.js') ?>"></script>
-  <script defer src="<?= $path('/assets/workspace-auth.js?v=4') ?>"></script>
+  <script defer src="<?= $path('/assets/vitrine-clipboard-menu.js') ?>"></script>
+  <script defer src="<?= $path('/assets/workspace-auth.js?v=5') ?>"></script>
   <script src="<?= $path('/assets/vitrine-theme.js') ?>"></script>
 </head>
 <body class="vitrine auth-page">
@@ -39,13 +40,7 @@ $path = static fn(string $value): string => $escape(app_url_path($value));
           <label class="field-label" for="workspace-password">Пароль</label>
           <div class="auth-password">
             <input class="field-input" id="workspace-password" name="password" type="password" autocomplete="current-password" required maxlength="256">
-            <button class="auth-password-toggle" type="button" aria-label="Показать пароль" aria-controls="workspace-password" hidden>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/>
-                <circle cx="12" cy="12" r="2.75"/>
-                <path class="auth-password-slash" d="m4 4 16 16"/>
-              </svg>
-            </button>
+            <?php $passwordEyeField='workspace-password'; require __DIR__.'/password-eye.php'; ?>
           </div>
         </div>
       </div>

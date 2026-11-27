@@ -3,7 +3,7 @@ declare(strict_types=1);
 require_once __DIR__.'/WorkspaceVitrineCatalogLinks.php';
 
 const WORKSPACE_AVTOVYVOZ_PAGE_SIZE = 32;
-const WORKSPACE_AVTOVYVOZ_DRAFT_ROWS = 10;
+const WORKSPACE_AVTOVYVOZ_DRAFT_ROWS = 40;
 
 function vitrine_requested_records(array $table, array $wanted, bool $archive, bool $checkArchiveWindow): array {
     if (!$wanted) return [];
@@ -54,24 +54,24 @@ function vitrine_trip_driver_card(int $number,bool $archive): array {
     return ['sections'=>$sections];
 }
 
+function vitrine_trip_compact_inputs(array $columns): array {
+    $compactInputs=[];
+    $labels=array_column($columns,'label','letter');
+    foreach (['F'=>['дата','date'],'G'=>['время','time'],'H'=>['номер ктк','container'],
+        'J'=>['вес (брутто)','weight'],'W'=>['км','distance'],'X'=>['доход','money'],
+        'Y'=>['расход','money'],'Z'=>['маржа','money']] as $letter=>[$label,$kind]) {
+        if (mb_strtolower(trim($labels[$letter]??''))===$label) $compactInputs[$letter]=$kind;
+    }
+    foreach (['AH'=>'cargo-value','AI'=>'weight','AJ'=>'cargo-places'] as $letter=>$kind) {
+        if (isset($labels[$letter])) $compactInputs[$letter]=$kind;
+    }
+    return $compactInputs;
+}
+
 function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $t=workspace_table();$columns=array_values(array_filter($t['columns'],fn($f)=>workspace_can('field',$f['letter'],'view',$t['id'])));
     $isAvtovyvoz=$t['slug']==='vyvoz';
-    $compactInputs=[];
-    if($t['slug']==='vyvoz'){
-        $labels=array_column($columns,'label','letter');
-        if(mb_strtolower(trim($labels['F']??''))==='дата')$compactInputs['F']='date';
-        if(mb_strtolower(trim($labels['G']??''))==='время')$compactInputs['G']='time';
-        if(mb_strtolower(trim($labels['H']??''))==='номер ктк')$compactInputs['H']='container';
-        if(mb_strtolower(trim($labels['J']??''))==='вес (брутто)')$compactInputs['J']='weight';
-        if(mb_strtolower(trim($labels['W']??''))==='км')$compactInputs['W']='distance';
-        foreach (['X'=>'доход','Y'=>'расход','Z'=>'маржа'] as $letter=>$label) {
-            if (mb_strtolower(trim($labels[$letter]??''))===$label) $compactInputs[$letter]='money';
-        }
-        foreach (['AH'=>'cargo-value','AI'=>'weight','AJ'=>'cargo-places'] as $letter=>$kind) {
-            if (isset($labels[$letter])) $compactInputs[$letter]=$kind;
-        }
-    }
+    $compactInputs=$isAvtovyvoz ? vitrine_trip_compact_inputs($columns) : [];
     $slots=array_column(array_filter($columns,static fn(array $column): bool=>mb_strtolower(trim($column['label']))==='слот'),null,'letter');
     $singleLine=array_fill_keys(array_column(array_filter($columns,
         static fn(array $column): bool=>mb_strtolower(trim($column['label']))==='релиз'),'letter'),true);
@@ -80,7 +80,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
     $derivedByColumn=vitrine_derived_catalog_columns($links);
     $showMargin=isset($compactInputs['Z']) && workspace_trip_margin_enabled($t);
     if ($showMargin) {
-        $derivedByColumn['Z']=['source'=>'Доход минус расход','empty'=>'Укажите доход и расход'];
+        $derivedByColumn['Z']=['source'=>'Доход минус расход','empty'=>'Укажите доход и расход','field'=>'X Y'];
     }
     $documentsColumn=$links['O']['documentsTarget']??null;
     $canViewDocuments=$documentsColumn!==null && workspace_fleet_trip_documents_can_view($t['id']);
@@ -96,6 +96,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
             $link=$derivedByColumn[$column['letter']];
             $column['derivedSource']=$link['source'];
             $column['derivedEmptyLabel']=$link['empty'];
+            $column['derivedFrom']=$link['field'];
         }
     }
     unset($column);
@@ -187,7 +188,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         foreach($columns as $f){$key=$f['letter'];$cell=$raw[(string)column_number($key)]??[];$kinds[$key]=$key==='A'?'status':(mb_strtolower(trim($f['label']))==='время'?'time':vitrine_clipboard_kind($cell,$key));
             if(!$raw){$kinds[$key]=match(mb_strtolower($f['label'])){'дата'=>'date','время'=>'time',default=>$key==='A'?'status':'text'};}
             if (isset($compactInputs[$key])) $kinds[$key]=$compactInputs[$key];
-            if (in_array($key,['I','K','M','O','T','U',...$partyColumns],true) && isset($links[$key])) $kinds[$key]='text';
+            if (in_array($key,['E','I','K','M','O','T','U',...$partyColumns],true) && isset($links[$key])) $kinds[$key]='text';
             if (isset($slots[$key])) $kinds[$key]='slot';
             if (isset($singleLine[$key])) $kinds[$key]='text';
             if ($t['slug']==='vyvoz' && $key==='AK') $kinds[$key]='text';
@@ -202,10 +203,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
         $rowEdits=[];foreach($edits[(int)$r['id']]??[] as $key=>$e){$values[$key]=$e['active']?$e['value']:($baseline[$key]??'');$rowEdits[$key]=['revision'=>(int)$e['revision'],'conflict'=>false,'value'=>$values[$key],'active'=>(bool)$e['active']];}
         foreach($refs[(int)$r['id']]??[] as $key=>$ref) {
             if (isset($links['O']) && in_array($key,['O','P',$links['O']['phoneTarget'],$documentsColumn],true)) continue;
-            if (($links[$key]['kind']??null)==='edo-counterparties' && $ref['catalogId']===$links[$key]['id']) {
-                $profile=workspace_edo_party_profiles($ref['catalogId'])[$ref['id']]??[];
-                $values[$key]=workspace_edo_party_label($ref['name'],$profile);
-            } else $values[$key]=$ref['name'];
+            $values[$key]=vitrine_catalog_reference_label($ref,$links[$key]??null);
         }
         if ($documentsColumn!==null) {
             if (!$canViewDocuments) {
@@ -218,9 +216,11 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
             if (isset($values[$key])) $values[$key] = vitrine_slot_input($values[$key]) ?? $values[$key];
         }
         foreach ($compactInputs as $key=>$kind) {
-            if (vitrine_compact_integer_bounds($kind)!==null && isset($values[$key])) {
-                $values[$key]=vitrine_compact_input($values[$key],$kind)??$values[$key];
-            }
+            if (isset($values[$key])) $values[$key]=vitrine_compact_display($values[$key],$kind);
+        }
+        $phoneColumn=$links['O']['phoneTarget']??null;
+        if ($phoneColumn!==null && isset($values[$phoneColumn])) {
+            $values[$phoneColumn]=workspace_fleet_trip_phone_display($values[$phoneColumn]);
         }
         if ($showMargin) {
             foreach (['X','Y'] as $key) {
@@ -232,15 +232,7 @@ function vitrine_data(?array $requestedRows=null,bool $archive=false): array {
             }
             $values['Z']=workspace_trip_margin($values);
         }
-        foreach($dependentLinks as $source=>$link){
-            if ($link['kind']==='edo-counterparties') {
-                $ref=$refs[(int)$r['id']][$source]??null;
-                if ($ref && $ref['catalogId']===$link['id']) $values[$link['target']]=$dependentValues[$source][$ref['id']]??'';
-                continue;
-            }
-            $entryId=$entriesByName[$source][vitrine_catalog_key($values[$source]??'')]??null;
-            $values[$link['target']]=$dependentValues[$source][$entryId]??'';
-        }
+        vitrine_apply_catalog_dependents($values,$refs[(int)$r['id']]??[],$dependentLinks,$entriesByName,$dependentValues);
         $choices=array_diff_key(array_replace($choices,$boundChoices),$slots,$singleLine,$compactInputs);
         if ($unloadLink) {
             $point=$unloadPoints[$refs[(int)$r['id']]['K']['id']??0]??null;
@@ -292,8 +284,8 @@ function vitrine_store(array $body): array {
     vitrine_require_manual_field($t,$body['column']);
     workspace_require('table',(string)$t['id'],'edit',$t['id']);workspace_require('field',$body['column'],'edit',$t['id']);$u=workspace_current_user();$request=$body['requestId']??bin2hex(random_bytes(16));
     if(!is_string($request)||!preg_match('/^[a-zA-Z0-9_.:-]{8,100}$/D',$request))throw new ApiError('invalid_request','Некорректный идентификатор сохранения.');
-    workspace_begin();try{
-        $cached=wquery('SELECT result FROM request_deduplication WHERE user_id=? AND request_id=?',[$u['id'],$request])->fetchColumn();if($cached){workspace_db()->commit();return json_decode($cached,true);}
+    return workspace_transaction(static function() use ($body,$t,$u,$request) {
+        $cached=wquery('SELECT result FROM request_deduplication WHERE user_id=? AND request_id=?',[$u['id'],$request])->fetchColumn();if($cached){return json_decode($cached,true);}
         $created=[];
         if ($body['row']<0) {
             if ($t['slug']!=='vyvoz' || $body['row'] < -WORKSPACE_AVTOVYVOZ_DRAFT_ROWS || $body['revision']!==0 ||
@@ -314,6 +306,8 @@ function vitrine_store(array $body): array {
             workspace_margin_rule_check_expense($t['id'],$values,$value);
         }
         $reference=null;$binding=null;$entry=null;$links=vitrine_catalog_links($t);$link=$links[$key]??null;
+        $copiedUnload=$body['copiedUnload']??null;
+        $historicalUnload=false;
         $dropoffResult=[];$dropoffChanged=false;
         if ($key==='M' && ($link['kind']??null)==='dropoff-points') {
             $priorPoint=(int)wquery("SELECT entry_id FROM record_references WHERE record_id=? AND field_key='M'",[$r['id']])->fetchColumn();
@@ -354,8 +348,21 @@ function vitrine_store(array $body): array {
                 $value=workspace_edo_party_label($partyName,$partyProfiles[$reference]);
             } elseif (!$party && $value!=='') {
                 $unload=$link['kind']==='unload-points';
-                $entry=$unload ? ($body['reset']?null:vitrine_find_unload_point($t,$r,$values,$binding,$value))
-                    : vitrine_find_catalog_entry($binding,$value,normalized:$key==='O'?workspace_fleet_trip_vehicle_key($value):null);
+                $entry=match (true) {
+                    $unload=>$body['reset']?null:vitrine_find_unload_point($t,$r,$values,$binding,$value,$copiedUnload['pointId']??0),
+                    $key==='O'=>vitrine_find_fleet_vehicle($binding,$value),
+                    default=>vitrine_find_catalog_entry($binding,$value),
+                };
+                if ($unload && $copiedUnload && !$copiedUnload['pointId']) {
+                    $clientName=workspace_string($values['B']??'');
+                    $clientId=(int)wquery("SELECT entry_id FROM record_references WHERE record_id=? AND field_key='B'",[$r['id']])->fetchColumn();
+                    $sourceClient=vitrine_unload_client_key($t,$copiedUnload['client'],$copiedUnload['clientId']);
+                    if (($clientName!=='' || $clientId) && vitrine_unload_client_key($t,$clientName,$clientId)!==$sourceClient) {
+                        throw new ApiError('invalid_reference',$link['invalid']);
+                    }
+                    $historicalUnload=!$entry || workspace_unload_primary($entry)!==$copiedUnload['contact'];
+                    if ($historicalUnload) $entry=null;
+                }
                 if ($key==='O' && $entry && workspace_fleet_trailer_key($entry['name'])) $entry=false;
                 if($entry){
                     $reference=(int)$entry['id'];
@@ -364,7 +371,8 @@ function vitrine_store(array $body): array {
                             WHERE l.vehicle_id=?',[$reference])->fetchColumn();
                         if (!$body['reset']) $value=workspace_fleet_trip_vehicle_label($entry['name'],$trailer ?: null);
                     } else $value=$unload?$entry['address']:$entry['name'];
-                }elseif(!$body['reset']&&($unload||$value!==$before)){
+                } elseif (!$body['reset'] && ($unload || $value!==$before) &&
+                    !$historicalUnload && !($link['kind']==='terminals-main' && !empty($body['legacyTerminalPaste']))) {
                     throw new ApiError('invalid_reference',$link['invalid']);
                 }
             }
@@ -406,13 +414,15 @@ function vitrine_store(array $body): array {
                 $unloadChanged=$unloadChanged || $patch!==null;
                 if ($patch && workspace_can('field',$column,'view',$t['id'])) $unloadResult['unloadCells'][]=$patch;
             }
+            if ($unloadChanged && isset($body['rangeEdit'])) $unloadResult['unloadChanged']=true;
         }
         $dependentPatch=$phonePatch=null;
         $documentsChanged=false;
-        if(isset($link['target'])&&($clear||$reference||$value!==$before||(!empty($party)&&$body['reset'])||(in_array($key,['K','O'],true)&&$body['reset']))){
+        if(isset($link['target'])&&($clear||$reference||$historicalUnload||$value!==$before||(!empty($party)&&$body['reset'])||(in_array($key,['K','O'],true)&&$body['reset']))){
             if ($key==='K') {
                 $previous=workspace_string($values['L']??'');
-                $next=$resetUnload && $sameClient ? vitrine_catalog_original_value($r,'L') : ($entry?workspace_unload_primary($entry):'');
+                $next=$historicalUnload ? $copiedUnload['contact'] :
+                    ($resetUnload && $sameClient ? vitrine_catalog_original_value($r,'L') : ($entry?workspace_unload_primary($entry):''));
             } elseif ($key==='O') {
                 $previous=workspace_string($values['P']??'');
                 $assigned=$reference ? workspace_fleet_assigned_driver($reference) : null;
@@ -422,7 +432,7 @@ function vitrine_store(array $body): array {
                 $phoneColumn=$link['phoneTarget'];
                 $phones=$body['reset'] ? vitrine_catalog_original_value($r,$phoneColumn) : ($assigned['phones']??'');
                 $phonePatch=vitrine_update_catalog_value($t,$r,$values,$phoneColumn,$phones,
-                    workspace_string($values[$phoneColumn]??''),$u,$action,$request,$operation,false);
+                    workspace_string($values[$phoneColumn]??''),$u,$action,$request,$operation,false,workspace_fleet_trip_phone_display($phones));
                 $documentsChanged=workspace_fleet_trip_documents_save($t,$r,(int)($assigned['id']??0),
                     $body['reset'],$action,$request,$operation);
             } elseif (!empty($party)) {
@@ -447,22 +457,23 @@ function vitrine_store(array $body): array {
         $derived=$created+($dependentPatch&&workspace_can('field',$link['target'],'view',$t['id'])?['dependentCell'=>$dependentPatch]:[]);
         if ($phonePatch && workspace_can('field',$phonePatch['column'],'view',$t['id'])) $derived['dependentCells']=[$phonePatch];
         if ($documentsChanged) $derived['fleetDocumentsChanged']=true;
-        if($before===$value && !$orderChanged && !$dropoffChanged){
+        $writeValue=$before!==$value || ($historicalUnload && workspace_string($values[$key]??'')!==$value);
+        if(!$writeValue && !$orderChanged && !$dropoffChanged){
             $result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request]+$derived+$orderResult+$catalogStyle+$unloadResult+$dropoffResult;
             if($link&&$reference){
                 wquery('INSERT INTO record_references VALUES(?,?,?) ON DUPLICATE KEY UPDATE entry_id=VALUES(entry_id)',[$r['id'],$key,$reference]);
                 $result+=['referenceId'=>$reference,'catalogId'=>(int)$binding];
             }
-            if($link && ($clear||((!empty($party)||in_array($key,['K','O'],true))&&$body['reset']))){
+            if($link && ($clear||$historicalUnload||((!empty($party)||in_array($key,['K','O'],true))&&$body['reset']))){
                 wquery('DELETE FROM record_references WHERE record_id=? AND field_key=?',[$r['id'],$key]);
                 $result+=['referenceId'=>0,'catalogId'=>(int)$binding];
             }
             if($dependentPatch || $phonePatch || $unloadChanged)wquery('UPDATE records SET values_json=?,updated_at=UTC_TIMESTAMP(6) WHERE id=?',[wjson($values),$r['id']]);
-            wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);workspace_db()->commit();return $result;
+            wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);return $result;
         }
         $updateMargin=$before!==$value && in_array($key,['X','Y'],true) && workspace_trip_margin_enabled($t);
         $previousMargin=$updateMargin ? workspace_trip_margin($values) : '';
-        $revision++;if($before!==$value)$values[$key]=$value;$statusId=$key==='A'?($body['statusId']??null):null;
+        $revision++;if($writeValue)$values[$key]=$value;$statusId=$key==='A'?($body['statusId']??null):null;
         if ($updateMargin && ($margin=workspace_trip_margin($values))!==$previousMargin) {
             $marginPatch=vitrine_update_catalog_value($t,$r,$values,'Z',$margin,$previousMargin,$u,$action,$request,$operation,false);
             if ($marginPatch && workspace_can('field','Z','view',$t['id'])) $derived['dependentCells'][]=$marginPatch;
@@ -470,7 +481,7 @@ function vitrine_store(array $body): array {
         if($statusId){$valid=wquery("SELECT e.id FROM catalog_entries e JOIN catalog_bindings b ON b.catalog_id=e.catalog_id WHERE e.id=? AND e.active=TRUE AND b.table_id=? AND b.field_key='A'",[$statusId,$t['id']])->fetchColumn();if(!$valid)throw new ApiError('invalid_status','Статус не принадлежит справочнику этой таблицы.');}
         wquery('UPDATE records SET values_json=?,updated_at=UTC_TIMESTAMP(6) WHERE id=?',[wjson($values),$r['id']]);
         wquery('INSERT INTO cell_versions(record_id,field_key,value,revision,active,status_id) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE value=VALUES(value),revision=VALUES(revision),active=VALUES(active),status_id=VALUES(status_id)',[$r['id'],$key,$value,$revision,(int)$active,$statusId]);
-        if($key!=='A' && ($before!==$value || $reference)){wquery('DELETE FROM record_references WHERE record_id=? AND field_key=?',[$r['id'],$key]);if($reference)wquery('INSERT INTO record_references VALUES(?,?,?)',[$r['id'],$key,$reference]);}
+        if($key!=='A' && ($writeValue || $reference || $historicalUnload)){wquery('DELETE FROM record_references WHERE record_id=? AND field_key=?',[$r['id'],$key]);if($reference)wquery('INSERT INTO record_references VALUES(?,?,?)',[$r['id'],$key,$reference]);}
         $label=next_label($t['columns'],$key);
         if ($orderChanged) workspace_audit(['tableId'=>$t['id'],'recordId'=>(int)$r['id'],'row'=>$body['row'],'column'=>'B','label'=>'Статус заказа','before'=>workspace_client_order_status($oldOrderStatus)['label'],'after'=>workspace_client_order_status($nextOrderStatus)['label'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
         if ($before!==$value) workspace_audit(['tableId'=>$t['id'],'recordId'=>(int)$r['id'],'row'=>$body['row'],'column'=>$key,'label'=>$label,'before'=>$before,'after'=>$value,'action'=>$action,'requestId'=>$request,'operationId'=>$operation]);
@@ -480,8 +491,8 @@ function vitrine_store(array $body): array {
         if ($key==='M' && !$clear && $value===$before && !$reference && !empty($priorPoint)) $reference=$priorPoint;
         $status=$statusId?wquery('SELECT color FROM catalog_entries WHERE id=?',[$statusId])->fetch():null;$result=['revision'=>$revision,'value'=>$value,'edited'=>$active,'requestId'=>$request,'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0)]+$derived+$orderResult+$catalogStyle+$unloadResult+$dropoffResult;
         $dropoffEvent=$dropoffChanged ? ['dropoffDetails'=>array_diff_key($nextDropoff,['legacy'=>true])] : [];
-        workspace_event('cell.changed',['tableSlug'=>$t['slug'],'row'=>$body['row'],'column'=>$key,'value'=>$value,'revision'=>$revision,'edited'=>$active,'statusId'=>$statusId,'statusColor'=>$status['color']??null,'original'=>$body['original'],'baseHash'=>hash('sha256',$r['baseline_json']),'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0),'actorId'=>$u['id'],'actorName'=>$u['name'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation]+$orderResult+$catalogStyle+$dropoffEvent);
+        workspace_event('cell.changed',['tableSlug'=>$t['slug'],'row'=>$body['row'],'column'=>$key,'value'=>vitrine_compact_display($value,$body['compactKind']??null),'revision'=>$revision,'edited'=>$active,'statusId'=>$statusId,'statusColor'=>$status['color']??null,'original'=>$body['original'],'baseHash'=>hash('sha256',$r['baseline_json']),'referenceId'=>(int)($reference??0),'catalogId'=>(int)($binding??0),'actorId'=>$u['id'],'actorName'=>$u['name'],'action'=>$action,'requestId'=>$request,'operationId'=>$operation]+$orderResult+$catalogStyle+$dropoffEvent);
         if($created || $key===$t['carrier_column'])workspace_event('row.changed',['tableSlug'=>$t['slug'],'row'=>$body['row']]);
-        wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);workspace_db()->commit();return $result;
-    }catch(Throwable $e){if(workspace_db()->inTransaction())workspace_db()->rollBack();throw $e;}
+        wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$u['id'],$request,wjson($result)]);return $result;
+    });
 }

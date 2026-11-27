@@ -18,9 +18,12 @@ function workspace_employee_grid_values(array $employee): array {
 
 function workspace_employee_grid_endpoint(bool $pasteCheck = false): never {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') throw new ApiError('method','Метод не поддерживается.',405);
+    json_response(workspace_employee_grid_edit(wbody(),$pasteCheck));
+}
+
+function workspace_employee_grid_edit(array $body, bool $pasteCheck = false): array {
     $scope = workspace_employee_editor_scope();
     if ($scope === null) throw new ApiError('forbidden','Редактирование доступно администратору.',403);
-    $body = wbody();
     if (!is_int($body['row'] ?? null) || $body['row']<1 || !in_array($body['column'] ?? null,['A','B','C','D','E'],true)
         || !is_string($body['value'] ?? null)) {
         throw new ApiError('invalid_edit','Некорректные данные ячейки сотрудника.');
@@ -42,7 +45,7 @@ function workspace_employee_grid_endpoint(bool $pasteCheck = false): never {
         $field = ['A'=>'name','B'=>'login','D'=>'email'][$column];
         $changes[$field] = workspace_employee_profile_value($field,$value);
     }
-    if ($pasteCheck) json_response(['accepted'=>true]);
+    if ($pasteCheck) return ['accepted'=>true];
 
     $baseHash = $body['baseHash'] ?? null;
     if (!is_string($baseHash) || !preg_match('/^[0-9a-f]{64}$/D',$baseHash)) {
@@ -50,9 +53,9 @@ function workspace_employee_grid_endpoint(bool $pasteCheck = false): never {
     }
     $saved = workspace_employee_save(['id'=>$employee['id'],'revision'=>$baseHash]+$changes,cellEdit:true);
     $value = workspace_employee_grid_values($saved)[$column];
-    json_response([
+    return [
         'value'=>$value, 'original'=>$value, 'edited'=>false,
         'revision'=>$saved['authVersion'], 'baseHash'=>workspace_employee_revision($saved),
         'reauthenticate'=>$column === 'B' && $saved['id'] === workspace_current_user()['id'] && $saved['login'] !== $employee['login'],
-    ]);
+    ];
 }

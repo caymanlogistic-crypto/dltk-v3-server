@@ -22,25 +22,42 @@
     return value;
   }
 
-  function bindDigits(field, {maxDigits, placeholder, format, read}) {
+  function bindDigits(field, {maxDigits, placeholder, format, read, digitsOnlyPaste, phone}) {
     field.inputMode = 'numeric';
     field.placeholder = placeholder;
 
+    // Keep the typed digits while showing a country prefix inferred from the number.
+    let phoneDraft;
     function setValue(digits,caret) {
       field.value = format(digits);
+      if (phone) phoneDraft={value:field.value,digits};
       const positions = Array.from(field.value.matchAll(/[0-9]/g));
-      const next = caret ? (positions[caret-1]?.index ?? field.value.length-1)+1 : (positions[0]?.index ?? 0);
+      const visibleCaret=phone && caret ? Math.max(0,caret+positions.length-digits.length) : caret;
+      const next = visibleCaret ? (positions[visibleCaret-1]?.index ?? field.value.length-1)+1 : (positions[0]?.index ?? 0);
       field.setSelectionRange(next,next);
     }
-    const digitOffset = position => digitsOnly(field.value.slice(0,position)).length;
+    const fieldDigits=()=>{
+      if (!phone) return digitsOnly(field.value);
+      return field.value===phoneDraft?.value ? phoneDraft.digits : read(field.value)||digitsOnly(field.value);
+    };
+    const digitOffset=position=>{
+      const visible=digitsOnly(field.value.slice(0,position)).length;
+      return phone && position>0 ? Math.max(0,visible+fieldDigits().length-digitsOnly(field.value).length) : visible;
+    };
+    if (phone) field.form?.addEventListener('reset',()=>{phoneDraft=undefined;});
 
     field.addEventListener('beforeinput',event=>{
       const start = digitOffset(field.selectionStart);
       const end = digitOffset(field.selectionEnd);
-      const digits = digitsOnly(field.value);
+      const digits=fieldDigits();
       if (event.inputType === 'insertText' && (event.data === null || !/^[0-9]+$/.test(event.data)
           || digits.length-end+start+event.data.length>maxDigits)) {
         event.preventDefault();
+        return;
+      }
+      if (phone && event.inputType === 'insertText') {
+        event.preventDefault();
+        setValue(digits.slice(0,start)+event.data+digits.slice(end),start+event.data.length);
         return;
       }
       if (event.inputType !== 'deleteContentBackward' && event.inputType !== 'deleteContentForward') return;
@@ -52,15 +69,17 @@
     });
     field.addEventListener('input',()=>{
       const position = digitOffset(field.selectionStart);
-      setValue(digitsOnly(field.value).slice(0,maxDigits),position);
+      setValue(fieldDigits().slice(0,maxDigits),position);
     });
+    if (digitsOnlyPaste || phone) field.addEventListener('drop',event=>event.preventDefault());
     field.addEventListener('paste',event=>{
       event.preventDefault();
-      const value = read(event.clipboardData.getData('text/plain'));
+      const text=event.clipboardData.getData('text/plain');
+      const value=digitsOnlyPaste ? (/^[0-9]+$/.test(text) ? text : '') : read(text);
       if (!value) return;
       const start = digitOffset(field.selectionStart);
       const end = digitOffset(field.selectionEnd);
-      const digits = digitsOnly(field.value), next = digits.slice(0,start)+value+digits.slice(end);
+      const digits=fieldDigits(), next = digits.slice(0,start)+value+digits.slice(end);
       if (next.length>maxDigits) return;
       setValue(next,start+value.length);
       field.dispatchEvent(new InputEvent('input',{inputType:'insertFromPaste',bubbles:true}));
@@ -74,6 +93,41 @@
     if (local) return local.slice(1).join('');
     const iso = input.match(/^20([0-9]{2})-([0-9]{2})-([0-9]{2})$/);
     return iso ? iso.slice(1).reverse().join('') : '';
+  }
+
+  function readDocumentDate(value) {
+    const input=value.trim();
+    if (/^[0-9]{1,8}$/.test(input)) return input;
+    const local=/^([0-9]{2})\.([0-9]{2})\.([0-9]{4})$/.exec(input);
+    if (local) return local.slice(1).join('');
+    const iso=/^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(input);
+    return iso ? iso.slice(1).reverse().join('') : '';
+  }
+
+  function readPhone(value) {
+    const input=value.trim();
+    if (!/^\+?[0-9(). \u00a0\u2009\u202f\-–—]+$/.test(input)) return '';
+    const digits=digitsOnly(input);
+    if (!digits) return '';
+    const knownCode=/^(?:7[0-9]{10}|375[0-9]{9})$/.test(digits);
+    return input.startsWith('+') && !knownCode ? '00'+digits : digits;
+  }
+
+  function formatPhone(digits) {
+    const explicit=digits.startsWith('00');
+    const number=explicit ? digits.slice(2) : digits;
+    const belarus=number.match(/^375([1-4][0-9])([0-9]{3})([0-9]{2})([0-9]{2})$/)
+      || (!explicit && number.match(/^810375([1-4][0-9])([0-9]{3})([0-9]{2})([0-9]{2})$/))
+      || (!explicit && number.match(/^80(25|29|33|44)([0-9]{3})([0-9]{2})([0-9]{2})$/));
+    if (belarus) return '+375 ('+belarus[1]+') '+belarus.slice(2).join(' ');
+    const local=number.match(/^7([0-9]{3})([0-9]{3})([0-9]{2})([0-9]{2})$/)
+      || (!explicit && number.match(/^8?([3489][0-9]{2})([0-9]{3})([0-9]{2})([0-9]{2})$/));
+    if (local) return '+7 ('+local[1]+') '+local.slice(2).join(' ');
+    return explicit && /^[1-9][0-9]{6,14}$/.test(number) ? '+'+number : digits;
+  }
+
+  function bindPhone(field) {
+    bindDigits(field,{maxDigits:17,placeholder:'79160000000',format:formatPhone,read:readPhone,phone:true});
   }
 
   function validDate(digits) {
@@ -130,7 +184,7 @@
   }
 
   function mask(maxDigits,placeholder,format,read) {
-    return {format,read,bind:field=>bindDigits(field,{maxDigits,placeholder,format,read})};
+    return {format,read,bind:(field,{digitsOnlyPaste=false}={})=>bindDigits(field,{maxDigits,placeholder,format,read,digitsOnlyPaste})};
   }
   window.VitrineSlot = Object.freeze({
     ...mask(maxDigits,'с 00 до 12 - 25.10.26',format,read),requestLabel,isRequest
@@ -138,6 +192,8 @@
   window.VitrineCompactInput = Object.freeze({
     date:{...mask(6,'25.10.26',digits=>digits.match(/.{1,2}/g)?.join('.') ?? '',readDate),
       valid:validDate,invalidMessage:'Введите действительную дату в формате ДДММГГ.'},
+    documentDate:mask(8,'ДД.ММ.ГГГГ',digits=>[digits.slice(0,2),digits.slice(2,4),digits.slice(4)].filter(Boolean).join('.'),readDocumentDate),
+    phone:{format:formatPhone,read:readPhone,bind:bindPhone},
     time:mask(4,'08:00',digits=>digits.length>2
       ? digits.slice(0,-2)+':'+digits.slice(-2) : digits,readTime),
     weight:mask(15000,'25 990',formatInteger,readInteger),
