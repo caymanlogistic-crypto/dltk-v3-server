@@ -17,10 +17,9 @@ function workspace_directory_rows_endpoint(string $directory, array $body): neve
     } elseif (!is_int($body['row'] ?? null) || $body['row'] < 1 || !is_int($body['revision'] ?? null)) {
         throw new ApiError('invalid_row','Выберите сохранённую строку.');
     }
-    $result = match ($directory) {
+    $result = workspace_order_status_directory($directory)!==null ? workspace_order_status_row_action($body,$directory) : match ($directory) {
         'employees' => workspace_employee_row_action($body),
         'roles' => workspace_role_row_action($body),
-        'client-order-statuses' => workspace_order_status_row_action($body),
         default => workspace_catalog_row_action($directory,$body),
     };
     json_response($result);
@@ -77,11 +76,18 @@ function workspace_catalog_row_action(string $directory, array $body): array {
         if ($kind==='edo-counterparties') $payload['edoParty']=workspace_edo_party_profile($values);
         if ($kind==='edo-operators') $payload['operatorCode']=workspace_edo_operator_code($values['A']??'');
         if ($kind==='dropoff-points') $payload['dropoffProfile']=workspace_dropoff_profile($values);
+        if ($kind==='container-types') $payload['containerRule']=workspace_container_type_input($values,workspace_container_type_profile($name));
         if (workspace_catalog_has_palette($kind)) {
             $color=$values['B']??'';
             $payload['color']=workspace_is_document_status_catalog($kind) && $color==='' ? null : workspace_directory_color($color);
         }
-        if ($kind === 'clients' && isset($values['B'])) $payload['manager'] = $values['B'];
+        if ($kind === 'clients') {
+            if (trim($values['B']??'')!=='') $payload['manager'] = $values['B'];
+            $payload['clientRequisites']=array_filter(
+                array_intersect_key($values,WORKSPACE_CLIENT_REQUISITE_LABELS),
+                static fn(string $value): bool=>trim($value)!==''
+            );
+        }
         if ($kind==='carriers') {
             $payload['carrierDetails']=workspace_carrier_details(['B'=>$values['B']??'','edoId'=>$values['C']??'']);
             $payload['logist']=$values['E']??'';
@@ -180,11 +186,21 @@ function workspace_assert_employee_unused(array $employee): void {
         throw new ApiError('entry_in_use','Свою учётную запись нельзя отправить в архив.',409);
     }
     $names = array_map('vitrine_status_key',[$employee['name'],$employee['login']]);
-    $count = 0;
+    $accounts=workspace_client_account_managers_enabled();
+    $count=$accounts ? (int)wquery("SELECT COUNT(*) FROM client_account_manager_links l WHERE l.account_id=?
+        AND NOT EXISTS (SELECT 1 FROM workspace_meta m WHERE m.key=CONCAT('catalog_deleted_client_',l.client_id))",
+        [$employee['id']])->fetchColumn() : 0;
     foreach (wquery("SELECT id,kind FROM catalogs WHERE kind IN ('clients','carriers')")->fetchAll() as $catalog) {
-        $assignments = $catalog['kind'] === 'clients' ? workspace_client_manager_values((int)$catalog['id'])
-            : workspace_client_catalog_metadata('catalog_logists_'.$catalog['id']);
-        foreach ($assignments as $name) if (is_string($name) && in_array(vitrine_status_key($name),$names,true)) $count++;
+        $catalogId=(int)$catalog['id'];
+        if ($catalog['kind']==='carriers') {
+            foreach (workspace_carrier_logist_accounts($catalogId) as $carrierId=>$accountId) {
+                if ((int)$accountId===$employee['id'] && !workspace_row_deleted('catalog_deleted_client_',(int)$carrierId)) $count++;
+            }
+        } elseif (!$accounts) {
+            foreach (workspace_client_manager_values($catalogId) as $name) {
+                if (is_string($name) && in_array(vitrine_status_key($name),$names,true)) $count++;
+            }
+        }
     }
     if ($count) throw new ApiError('entry_in_use','Сотрудник указан в справочниках клиентов или перевозчиков. Назначений — '.$count.'. Удалить его нельзя.',409);
     $records = (int)wquery("SELECT COUNT(*) FROM records WHERE

@@ -38,7 +38,7 @@ function workspace_table_row_action(array $body): array {
         }
         workspace_audit(['category'=>'row','label'=>'Строка','tableId'=>$table['id'],'recordId'=>(int)$record['id'],
             'row'=>$row,'before'=>['archived'=>$wasArchived],'after'=>$after,'action'=>$action]);
-        workspace_event('row.changed',['tableSlug'=>$table['slug'],'row'=>$row]);
+        workspace_event('row.changed',['tableSlug'=>$table['slug'],'row'=>$row,'action'=>$action]);
         workspace_db()->commit();
         return ['name'=>$name];
     } catch (Throwable $error) {

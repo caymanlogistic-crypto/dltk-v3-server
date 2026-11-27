@@ -7,15 +7,15 @@ function workspace_catalog_directory_model(): array {
     if (!$catalog || workspace_fleet_retired_kind($catalog['kind'])) throw new ApiError('not_found','Справочник не найден.',404);
     workspace_require('catalog',(string)$id,'view');
     $labels = match ($catalog['kind']) {
-        'clients'=>['A'=>'Клиент','B'=>'Менеджер'],
+        'clients'=>['A'=>'Клиент','B'=>'Менеджер']+WORKSPACE_CLIENT_REQUISITE_LABELS,
         'carriers'=>['A'=>'Перевозчик','B'=>'ИНН','C'=>'Идентификатор ЭДО','D'=>'Оператор ЭДО','E'=>'Логист'],
         'edo-operators'=>['A'=>'Код','B'=>'Оператор ЭДО'],
         'edo-counterparties'=>['A'=>'Название','B'=>'ИНН','C'=>'КПП','D'=>'ОГРН','E'=>'Оператор ЭДО','F'=>'ID ЭДО']+workspace_edo_party_roles(),
         'margin-rules'=>['A'=>'Дата начала','B'=>'Минимум, %','C'=>'Минимум, ₽'],
         'status'=>['A'=>'Статус','B'=>'Цвет'],
-        'assignment-statuses','etrn-statuses'=>['A'=>'Статус','B'=>'Цвет'],
+        'assignment-statuses','etrn-statuses','etrn-signing-statuses'=>['A'=>'Статус','B'=>'Цвет'],
         'terminals-main'=>['A'=>'Терминал','B'=>'Цвет'],
-        'container-types'=>['A'=>'Тип контейнера'],
+        'container-types'=>['A'=>'Тип контейнера','B'=>'Цвет типа','C'=>'Порог веса, кг','D'=>'Цвет превышения'],
         'unload-points'=>['A'=>'Клиент','B'=>'Адрес','C'=>'Контакты'],
         'dropoff-points'=>['A'=>'Точка сдачи','B'=>'Адрес','C'=>'Контакты','D'=>'Постоянная инструкция'],
         'fleet-drivers'=>['A'=>'Фамилия','B'=>'Имя','C'=>'Отчество','D'=>'Телефон','E'=>'Доп. телефон']+
@@ -37,6 +37,7 @@ function workspace_catalog_directory_model(): array {
         if ($catalog['kind']==='margin-rules') {
             $column['kind']=$column['compactInput']=workspace_margin_rule_inputs()[$letter];
         }
+        if ($kind==='container-types' && $letter==='C') $column['kind']=$column['compactInput']='weight';
         if (in_array([$catalog['kind'],$letter],[['carriers','D'],['edo-counterparties','E']],true)) {
             $column['derivedSource']='По идентификатору ЭДО';
             $column['derivedEmptyLabel']='Оператор ЭДО не определён';
@@ -67,7 +68,12 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $canEdit = workspace_can('catalog',(string)$id,'edit');
     $choices = workspace_directory_palette_options();
     $clientManagers=$kind==='clients' ? workspace_client_manager_values($id) : [];
+    $clientManagerCard=$kind==='clients' && workspace_client_account_managers_enabled() &&
+        (int)(workspace_client_grid_catalog()['id']??0)===$id;
+    $clientRequisites=$kind==='clients' ? workspace_client_requisites($id) : [];
+    $emptyClientRequisites=array_fill_keys(array_keys(WORKSPACE_CLIENT_REQUISITE_LABELS),'');
     $carrierValues=$kind==='carriers' ? workspace_carrier_directory_values($id) : [];
+    $logistChoices=$kind==='carriers' && $canEdit && !$archive ? workspace_carrier_logist_choices() : [];
     $unload = $kind==='unload-points';
     $managers=$kind==='managers';
     $fleet=in_array($kind,WORKSPACE_FLEET_KINDS,true);
@@ -79,6 +85,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     $roleFilter=is_string($_GET['partyRole']??null) && isset($partyRoles[$_GET['partyRole']]) ? $_GET['partyRole'] : '';
     $marginRules=$kind==='margin-rules' ? workspace_margin_rule_profiles($id) : [];
     $dropoffProfiles=$kind==='dropoff-points' ? workspace_dropoff_profiles($id) : [];
+    $containerRules=$kind==='container-types' ? workspace_container_type_rules($id) : [];
     $showAll=$managers && ($_GET['archive'] ?? '')==='all';
     $managerRoles=$managers ? array_keys(workspace_manager_roles()) : [];
     $clientCatalog=$unload ? workspace_client_grid_catalog() : null;
@@ -117,8 +124,9 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         };
         if ($unload) $values['C']=workspace_unload_contact_summary(workspace_unload_primary($entry),(int)$entry['contact_count']);
         if ($kind==='dropoff-points') $values+=($dropoffProfiles[$entryId]??workspace_dropoff_profile([]));
+        if ($kind==='container-types') $values+=workspace_container_type_rule_values($containerRules[$entryId]);
         if (workspace_catalog_has_palette($kind)) $values['B'] = $palette[$entry['color']] ?? '';
-        if ($kind==='clients') $values['B'] = $clientManagers[$entryId] ?? '';
+        if ($kind==='clients') $values+=['B'=>$clientManagers[$entryId] ?? '']+($clientRequisites[$entryId]??[])+$emptyClientRequisites;
         if ($kind==='carriers') $values+=($carrierValues[$entryId]??workspace_carrier_values([]));
         if ($driverCatalog && !$showDocuments) {
             $values=array_replace($values,array_fill_keys(array_keys(workspace_fleet_driver_columns()),''));
@@ -135,11 +143,20 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
         $row = ['rowIndex'=>$entryId,'rowLabel'=>count($rowIds),'values'=>$values,'rowActions'=>$canEdit,
             'singleLine'=>array_fill_keys(array_keys($values),true),'baseHash'=>workspace_catalog_directory_hash($id,$entryId),
             'edits'=>array_fill_keys(array_keys($values),['revision'=>(int)$entry['revision']])];
+        if ($clientManagerCard) $row['kinds']['B']='client-managers';
+        if ($logistChoices) $row['choices']['E']=$logistChoices;
         if (workspace_catalog_has_palette($kind)) {
             if (workspace_is_document_status_catalog($kind)) $row['catalogFills']['B']=$entry['color'] ?? '';
             else $row['orderFill']=$entry['color'];
             $row['choices']['B']=$choices;
             $row['requiredChoices']['B']=!workspace_is_document_status_catalog($kind);
+        }
+        if ($kind==='container-types') {
+            $rule=$containerRules[$entryId];
+            $row['choices']['B']=$row['choices']['D']=$choices;
+            $row['catalogFills']['B']=$rule['typeColor']??'';
+            $row['catalogFills']['D']=$rule['warningColor']??'';
+            $row['kinds']['C']='weight';
         }
         foreach ($partyRoles as $column=>$_label) {
             $row['choices'][$column]=workspace_edo_party_role_choices();
@@ -198,7 +215,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
     return ['table'=>$model,'columns'=>$model['columns'],'rows'=>$rows,'rowIds'=>$rowIds,'palette'=>workspace_palette(),
         'catalogGrid'=>['id'=>$id,'archive'=>$archive,'showAll'=>$showAll,'search'=>$search,'canEdit'=>$canEdit,
             'syncLabel'=>$canEdit && function_exists('workspace_catalog_source_label') ? workspace_catalog_source_label($id) : null,
-            'standaloneCard'=>$kind==='carriers',
+            'standaloneCard'=>$kind==='carriers','clientManagers'=>$clientManagerCard,
             'hasDetails'=>(bool)$details,'unkeyedCount'=>(int)($details['unkeyedCount'] ?? 0),
             'unloadPoints'=>$unload,'partyRoles'=>$partyRoles,'partyRole'=>$roleFilter,
             'relatedLabel'=>$clientCatalog ? 'Открыть клиента' : null,
@@ -209,6 +226,7 @@ function workspace_catalog_directory_data(?array $requestedRows): array {
                 : match (true) {
                     $managers=>workspace_manager_draft_fields($managerRoles),
                     $fleet=>workspace_fleet_draft_fields($kind),
+                    $clientManagerCard=>array_diff_key(workspace_directory_draft_fields('clients'),['B'=>true]),
                     default=>workspace_directory_draft_fields('entries',catalogKind:$kind),
                 }]];
 }
@@ -234,6 +252,8 @@ function workspace_catalog_directory_edit(array $body, bool $pasteCheck = false)
     $entry = wquery('SELECT * FROM catalog_entries WHERE catalog_id=? AND id=? AND active=TRUE',[$id,$body['row']])->fetch();
     if (!$entry) throw new ApiError('not_found','Запись не найдена.',404);
     $kind = $model['catalogKind'];
+    if ($kind==='clients' && $column==='B' && workspace_client_account_managers_enabled() &&
+        (int)(workspace_client_grid_catalog()['id']??0)===$id) workspace_client_guard_manager_cell($body,$pasteCheck);
     if ($kind==='fleet-drivers' && isset(workspace_driver_directory_fields()[$column])) {
         throw new ApiError('forbidden','Реквизит доступен для просмотра.',403);
     }
@@ -376,6 +396,13 @@ function workspace_catalog_directory_edit(array $body, bool $pasteCheck = false)
     } elseif ($kind==='edo-operators') {
         if ($column==='A') $payload['operatorCode']=$value=workspace_edo_operator_code($value);
         else $payload['name']=$value=workspace_catalog_validate_name($value);
+    } elseif ($kind==='container-types' && $column!=='A') {
+        $previous=workspace_container_type_profile($entry['name'],workspace_client_catalog_metadata('container_type_rule_'.$entry['id']));
+        $rule=workspace_container_type_input([$column=>$value],$previous);
+        $payload['active']=(bool)$entry['active'];
+        $payload['containerRule']=$rule;
+        $value=workspace_container_type_rule_values($rule)[$column];
+        if ($column!=='C') $catalogStyle=['catalogFill'=>$rule[$column==='B' ? 'typeColor' : 'warningColor']];
     } elseif ($column === 'A') $payload['name'] = $value = workspace_catalog_validate_name($value);
     elseif (workspace_is_document_status_catalog($kind)) {
         $payload['color']=$value==='' ? null : workspace_directory_color($value);
@@ -389,6 +416,12 @@ function workspace_catalog_directory_edit(array $body, bool $pasteCheck = false)
         $payload['carrierDetails']=workspace_carrier_details($details);
         $value=$payload['carrierDetails'][$field];
         if ($column==='C') $updatedValues=['D'=>workspace_carrier_edo_operator($value)];
+    } elseif ($kind==='clients' && isset(WORKSPACE_CLIENT_REQUISITE_LABELS[$column])) {
+        $payload['clientRequisites']=workspace_client_validate_requisites([$column=>$value]);
+        $value=$payload['clientRequisites'][$column];
+    } elseif ($kind==='carriers' && $column==='E') {
+        [$value]=workspace_carrier_logist_input($id,(int)$entry['id'],workspace_client_validate_manager($value));
+        $payload['logist']=$value;
     } else $payload[$kind === 'clients' ? 'manager' : 'logist'] = $value = workspace_client_validate_manager($value);
     if ($pasteCheck) return ['accepted'=>true];
     $baseHash = workspace_catalog_directory_hash($id,$body['row']);

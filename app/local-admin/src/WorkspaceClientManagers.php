@@ -1,10 +1,13 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/WorkspaceClientAccountManagers.php';
 
 function workspace_client_manager_values(int $catalogId): array {
-    if (workspace_manager_catalog_id()) {
+    $accounts=workspace_client_account_managers_enabled();
+    if ($accounts || workspace_manager_catalog_id()) {
         $names=[];
-        foreach (workspace_client_manager_links($catalogId) as $row) $names[$row['client_id']][]=$row['name'];
+        $links=$accounts ? workspace_client_account_manager_links($catalogId) : workspace_client_manager_links($catalogId);
+        foreach ($links as $row) $names[$row['client_id']][]=$row['name'];
         return array_map(static fn(array $value): string=>implode(', ',$value),$names);
     }
     return workspace_client_manager_legacy_values($catalogId);
@@ -28,6 +31,16 @@ function workspace_client_remember_alias(int $catalogId, int $entryId, string $n
 }
 
 function workspace_client_set_manager(int $catalogId, int $entryId, string $manager): void {
+    if (workspace_client_account_managers_enabled()) {
+        $accounts=array_column(workspace_employee_records(),null,'id');
+        $links=workspace_client_account_manager_links($catalogId,$entryId,$accounts);
+        $choices=workspace_client_account_manager_choices($accounts,$links);
+        $ids=workspace_client_manager_match_names($manager,$choices,$links);
+        if ($ids!==array_column($links,'manager_id')) {
+            workspace_client_account_manager_replace($entryId,$ids,$choices,$links);
+        }
+        return;
+    }
     if (workspace_manager_catalog_id()) {
         workspace_client_replace_manager_links($entryId,workspace_client_manager_ids($manager));
         return;
@@ -38,7 +51,12 @@ function workspace_client_set_manager(int $catalogId, int $entryId, string $mana
     wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [$key, wjson((object)$values)]);
 }
 
-function workspace_client_manager_ids(string $manager): array {
+function workspace_client_manager_ids(string $manager,?int $catalogId=null,?int $clientId=null): array {
+    if (workspace_client_account_managers_enabled()) {
+        $accounts=array_column(workspace_employee_records(),null,'id');
+        $links=$catalogId!==null && $clientId!==null ? workspace_client_account_manager_links($catalogId,$clientId,$accounts) : [];
+        return workspace_client_manager_match_names($manager,workspace_client_account_manager_choices($accounts,$links),$links);
+    }
     $managerCatalog=workspace_manager_catalog_id();
     $byName=[];
     foreach (workspace_manager_entries($managerCatalog) as $entry) {
@@ -72,6 +90,9 @@ function workspace_client_replace_manager_links(int $clientId,array $ids): void 
 
 function workspace_client_manager_card(int $clientId,?array $body=null): array {
     $catalogId=(int)(workspace_client_grid_catalog()['id']??0);
+    if ($catalogId && workspace_client_account_managers_enabled()) {
+        return workspace_client_account_manager_card($catalogId,$clientId,$body);
+    }
     $managerCatalog=workspace_manager_catalog_id();
     if (!$catalogId || !$managerCatalog) throw new ApiError('not_found','Справочник «Сотрудники» не найден.',404);
     workspace_require('catalog',(string)$managerCatalog,'view');
@@ -166,9 +187,11 @@ function workspace_client_catalog_metadata(string $key): array {
     return is_array($values) ? $values : [];
 }
 
-function workspace_client_validate_manager(mixed $value): string {
-    if (!is_string($value) || mb_strlen($value) > 160 || preg_match('/[\x00-\x1f]/u', $value)) {
-        throw new ApiError('invalid_manager', 'Укажите имя менеджера длиной до 160 символов.');
+function workspace_client_validate_manager(mixed $value,bool $accountList=false): string {
+    $maxLength=$accountList ? WORKSPACE_CLIENT_ACCOUNT_MANAGER_LIMIT*162-2 : 160;
+    if (!is_string($value) || mb_strlen($value)>$maxLength || preg_match('/[\x00-\x1f]/u',$value)) {
+        throw new ApiError('invalid_manager',$accountList
+            ? 'Проверьте список менеджеров.' : 'Укажите имя менеджера длиной до 160 символов.');
     }
     return trim($value);
 }

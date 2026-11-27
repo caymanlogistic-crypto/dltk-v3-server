@@ -14,15 +14,20 @@ $searchPlaceholder = match ($directory) {
     'entries'=>'Поиск по справочнику',
     default=>'Название статуса',
 };
-$searchLabel = $directory === 'clients' ? 'Поиск по клиенту или менеджеру' : 'Поиск в справочнике';
+$searchLabel = $directory === 'clients' ? 'Поиск по клиенту, ИНН или менеджеру' : 'Поиск в справочнике';
+$unloadClientName = !empty($catalogGrid['unloadPoints']) ? ($catalogGrid['clientFilter']['name']??null) : null;
 ?>
 <section class="vitrine-catalog-toolbar" aria-label="Управление справочником"<?= isset($catalogGrid['id']) ? ' data-catalog-id="'.(int)$catalogGrid['id'].'"' : '' ?>>
+  <?php if ($unloadClientName!==null): ?>
+  <h1><strong>Точки выгрузки: <?= $escape($unloadClientName) ?></strong></h1>
+  <?php else: ?>
   <h1>Справочник: <strong><?= $escape($currentTable['title']) ?></strong><?php if ($visibilityLabel): ?> (<span data-directory-row-count><?= count($data['rowIds'] ?? []) ?></span>)<?php endif; ?></h1>
+  <?php endif; ?>
   <?php if (!$embeddedCatalog && ($currentTable['catalogKind']??null)==='terminals-main'): ?>
   <a class="btn btn-secondary" href="<?= $escape($viewUrl($directoryUrl.'&tariffs=1')) ?>">Тарифы</a>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['clientFilter'])): ?>
-  <span>Клиент: <strong><?= $escape($catalogGrid['clientFilter']['name']) ?></strong></span>
+  <?php if ($unloadClientName===null): ?><span>Клиент: <strong><?= $escape($catalogGrid['clientFilter']['name']) ?></strong></span><?php endif; ?>
   <?php if (!$embeddedCatalog): ?><a href="<?= $escape($viewUrl($directoryUrl.($archive ? '&archive=1' : (!empty($catalogGrid['showAll']) ? '&archive=all' : '')))) ?>"><?= $directory==='clients' ? 'Сбросить выбор клиента' : 'Все точки выгрузки' ?></a><?php endif; ?>
   <?php endif; ?>
   <form class="vitrine-catalog-search" method="get" action="<?= $escape($viewUrl('/vitrine')) ?>">

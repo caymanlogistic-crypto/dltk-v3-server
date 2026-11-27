@@ -12,8 +12,9 @@ function vitrine_save_range(?string $directory, array $body): array {
     $ids = $targets = [];
     foreach ($cells as $cell) {
         if (!is_array($cell) || !is_int($cell['row']??null) || $cell['row']===0 ||
-            ($cell['row']<0 && (!$paste || $directory!==null || $cell['row'] < -WORKSPACE_AVTOVYVOZ_DRAFT_ROWS)) ||
-            !is_string($cell['column']??null) || !preg_match('/^[A-Z]{1,3}$/D',$cell['column']) ||
+            ($cell['row']<0 && (!$paste || $directory!==null || ($cell['row'] < -WORKSPACE_AVTOVYVOZ_DRAFT_ROWS
+                && workspace_trip_day_draft_date($cell['row'])===null))) ||
+            !is_string($cell['column']??null) || !preg_match('/^(?:[A-Z]{1,3}|U2)$/D',$cell['column']) ||
             !is_string($cell['value']??null) || mb_strlen($cell['value'])>20000 ||
             !is_int($cell['revision']??null) || $cell['revision']<0 ||
             !is_string($cell['baseHash']??null) || !preg_match('/^[0-9a-f]{64}$/D',$cell['baseHash'])) {
@@ -39,12 +40,14 @@ function vitrine_save_range(?string $directory, array $body): array {
             $draft = $draftData['tripDraft'];
             if (!$draft) throw new ApiError('forbidden','Нет доступа к созданию рейсов.',403);
             foreach ($draftSlots as $slot) {
+                $firstCell=reset($targets[$slot]);
+                $date=workspace_trip_day_draft_value($draftData['table'],$slot,$firstCell['draftAnchor']??null);
                 foreach ($targets[$slot] as $cell) {
                     if ($cell['revision']!==0 || !hash_equals($draft['baseHash'],$cell['baseHash'])) {
                         throw new ApiError('revision_conflict','Шаблон новой строки изменился. Обновите таблицу.',409);
                     }
                     if (trim($cell['value'])!=='') {
-                        $newRows[$slot] ??= workspace_create_record($draftData['table']);
+                        $newRows[$slot] ??= workspace_create_record($draftData['table'],$date);
                     }
                 }
                 unset($ids[$slot]);
@@ -82,6 +85,9 @@ function vitrine_save_range(?string $directory, array $body): array {
             if (!$paste && !$clear && $directory===null && $column==='B' && isset($cells[$index]['orderStatus'])) {
                 $cell['orderStatus'] = $cells[$index]['orderStatus'];
             }
+            if (!$paste && !$clear && $directory===null && isset($cells[$index]['fieldColorStatus'])) {
+                $cell['fieldColorStatus']=$cells[$index]['fieldColorStatus'];
+            }
             try {
                 if ($directory === null) {
                     $cell['row'] = $newRows[$row] ?? $row;
@@ -107,11 +113,11 @@ function vitrine_save_range(?string $directory, array $body): array {
                         $cell['revision'] = $version['after'];
                         $cell['baseHash'] = $version['hash'];
                     }
-                    $result = match ($directory) {
+                    $result = workspace_order_status_directory($directory)!==null
+                        ? workspace_client_order_status_grid_edit($cell,false,$directory) : match ($directory) {
                         'entries' => workspace_catalog_directory_edit($cell),
                         'clients' => workspace_client_grid_edit($cell),
                         'employees' => workspace_employee_grid_edit($cell),
-                        'client-order-statuses' => workspace_client_order_status_grid_edit($cell),
                         'flight-statuses' => workspace_flight_status_grid_edit($cell),
                         default => throw new ApiError('readonly','Запись доступна только для просмотра.',403),
                     };
@@ -119,12 +125,15 @@ function vitrine_save_range(?string $directory, array $body): array {
                         'after'=>$result['revision'],'hash'=>$result['baseHash']];
                 }
             } catch (ApiError $error) {
-                $label = $row<0 ? 'Новая строка '.abs($row).', столбец '.$column : $column.($directoryRows[$row]['rowLabel']??$row);
+                $day=workspace_trip_day_draft_date($row);
+                $label = $row<0
+                    ? 'Новая строка '.($day===null ? abs($row) : 'на '.vitrine_compact_display($day,'date')).', столбец '.$column
+                    : $column.($directoryRows[$row]['rowLabel']??$row);
                 throw new ApiError($error->publicCode,$label.' · '.$error->publicMessage,$error->httpStatus);
             }
             $results[$index] = ['row'=>$row,'column'=>$column,'result'=>$result];
         }
-        foreach ($newRows as $row) workspace_event('row.changed',['tableSlug'=>$data['table']['slug'],'row'=>$row]);
+        if ($newRows) workspace_publish_inserted_rows($data['table'],array_values($newRows),$user);
         ksort($results);
         $result = ['cells'=>array_values($results),'createdRows'=>(object)$newRows];
         wquery('INSERT INTO request_deduplication VALUES(?,?,?)',[$user,$request,wjson($result)]);

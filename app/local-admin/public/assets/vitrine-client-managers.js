@@ -69,7 +69,7 @@
     const path='/api/workspace/catalogs'+(body?'':'?clientManagers='+clientId);
     const options={credentials:'same-origin'};
     if (body) Object.assign(options,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
-      body:JSON.stringify({action:'save_client_managers',clientId,...body})});
+      body:JSON.stringify({action:'save_client_managers',clientId,managerSource:data.managerSource,...body})});
     const response=await fetch(window.DltkPaths?.path(path)??path,options);
     const result=await response.json();
     if (!response.ok || result.error) throw new Error(result.error?.message||'Не удалось обновить список менеджеров.');
@@ -112,7 +112,8 @@
         actions.append(more);
       }
       const cell=node('td');
-      const label=manager.label+(manager.active?'':' (архив)');
+      const unavailable=data.managerSource==='accounts' ? ' (недоступен для назначения)' : ' (архив)';
+      const label=manager.label+(manager.legacy ? ' (требуется сопоставление)' : manager.active ? '' : unavailable);
       const name=data.canEdit ? action(label,button=>edit(manager,button)) : node('span',label,'vitrine-client-relations-cell');
       cell.append(name);
       row.append(actions,cell);

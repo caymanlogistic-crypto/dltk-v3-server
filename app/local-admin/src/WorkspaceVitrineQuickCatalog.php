@@ -28,6 +28,11 @@ function vitrine_quick_catalogs(array $table): array {
         && workspace_client_order_status_can_view($table) && workspace_can('system','client-order-statuses','edit',$table['id'])) {
         $result['orderStatus'] = ['directory'=>'client-order-statuses','id'=>0];
     }
+    foreach (workspace_trip_field_status_directories() as $column=>$details) {
+        if (workspace_trip_field_status_can($table,$column,'view') && workspace_trip_field_status_can($table,$column,'edit')) {
+            $result['fieldColor'.$column]=['directory'=>$details['directory'],'id'=>0];
+        }
+    }
     return $result;
 }
 
@@ -84,7 +89,9 @@ function vitrine_quick_catalog_reorder(): never {
 function vitrine_quick_catalog_options(): never {
     $key = $_GET['quickOptions'];
     $catalog = vitrine_quick_catalog_require($key);
-    if ($key==='orderStatus') json_response(['orderStatuses'=>workspace_active_client_order_statuses()]);
+    if (workspace_order_status_directory($catalog['directory'])!==null) {
+        json_response(['orderStatuses'=>workspace_active_client_order_statuses(false,$catalog['directory'])]);
+    }
     $number = filter_var($_GET['ids']??null,FILTER_VALIDATE_INT);
     if ($number===false || $number===0) throw new ApiError('invalid_rows','Выберите один рейс.');
     $data = vitrine_data([$number]);
@@ -94,6 +101,8 @@ function vitrine_quick_catalog_options(): never {
     $shared = $row['sharedChoices'][$key]??null;
     $related = array_filter($row['catalogBindings'],static fn(int $id): bool=>$id===$catalog['id']);
     $unloadOptions = $key==='K' ? $data['unloadOptions'] : null;
+    $unloadClientId=$key==='K' && workspace_can('field','B','view',$data['table']['id'])
+        ? (int)($row['references']['B']['id']??$data['unloadClients'][vitrine_catalog_key($row['values']['B']??'')]??0) : 0;
     $unloadClients = $unloadOptions !== null && isset($data['sharedOptionCatalogs']['B'])
         ? array_filter(
             $data['unloadClients'],
@@ -105,6 +114,8 @@ function vitrine_quick_catalog_options(): never {
         'relatedChoices'=>array_intersect_key($data['sharedOptions'],$related),
         'dropoffOptions'=>$key==='M' ? $data['dropoffOptions'] : null,
         'unloadOptions'=>$unloadOptions,
+        'unloadClientId'=>$unloadClientId,
+        'containerTypeRules'=>$key==='I' ? $data['containerTypeRules'] : null,
         'unloadClients'=>$unloadClients,
     ]);
 }

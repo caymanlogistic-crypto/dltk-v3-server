@@ -14,8 +14,9 @@
   }
 
   function payload(cell,value) {
+    const anchor=cell.closest('[data-trip-draft-anchor]')?.dataset.tripDraftAnchor;
     return {row:Number(cell.dataset.row),column:cell.dataset.column,value,
-      revision:Number(cell.dataset.revision),baseHash:cell.dataset.base};
+      revision:Number(cell.dataset.revision),baseHash:cell.dataset.base,...(anchor ? {draftAnchor:Number(anchor)} : {})};
   }
 
   function cellAt(row,column) {
@@ -40,8 +41,8 @@
   }
 
   function rememberBefore(cell) {
-    return {cell,before:range.cellText(cell),reset:!cell.classList.contains('local-edited'),
-      initial:payload(cell,'')};
+    return {cell,before:cell.dataset.formula??range.cellText(cell),reset:!cell.classList.contains('local-edited'),
+      fieldColorStatus:grid.fieldColorStatus(cell),initial:payload(cell,'')};
   }
 
   async function send(action,changes) {
@@ -80,6 +81,10 @@
     return transaction(async ()=>{
       const {rowKeys,columns}=range.destination(anchor,source);
       const loaded=await rows.readRangeRows(rowKeys);
+      const day=anchor.closest('[data-trip-draft-date]')?.dataset.tripDraftDate;
+      if (day && loaded.some(row=>row.dataset.tripDraftDate!==day)) {
+        throw new Error('Вставьте данные в свободные строки этой даты частями.');
+      }
       const changes=[];
       const addressSnapshots=new Map();
       const priorOrderStatus=new Map();
@@ -114,7 +119,7 @@
       const history=[];
       let blocked=false;
       for (const change of changes) {
-        const {initial,before,reset}=change;
+        const {initial,before,reset,fieldColorStatus}=change;
         const key=initial.row+':'+initial.column;
         const {cell,result}=saved.get(key);
         const createdRow=createdRows[initial.row];
@@ -125,7 +130,8 @@
         }
         const orderStatus=priorOrderStatus.get(key);
         history.push({...payload(cell,before),reset,beforeRevision:initial.revision,beforeHash:initial.baseHash,
-          ...(orderStatus!==undefined && orderStatus!==cell.dataset.orderStatus && before!=='' ? {orderStatus} : {})});
+          ...(orderStatus!==undefined && orderStatus!==cell.dataset.orderStatus && before!=='' ? {orderStatus} : {}),
+          ...(fieldColorStatus && result.fieldColorStatus==='' && before!=='' ? {fieldColorStatus} : {})});
         if (requiresForm(cell) && before!=='' && change.payload.value==='') blocked=true;
         const address=addressSnapshots.get(key);
         if (result.unloadChanged && !byTarget.has(initial.row+':K')) {
@@ -137,14 +143,15 @@
       }
       grid.rememberRange({cells:history,blocked});
       range.pasted();
-      const firstCreated=Object.values(createdRows)[0];
-      if (firstCreated) {
+      const createdKeys=Object.keys(createdRows);
+      if (createdKeys.length) {
         try {
-          await rows.refreshManifest();
-          if (Number(anchor.dataset.row)<0) {
-            const target=createdRows[anchor.dataset.row]??firstCreated;
-            await rows.activate({dataset:{row:String(target),column:anchor.dataset.column}});
-          }
+          const focusKey=createdRows[anchor.dataset.row] ? anchor.dataset.row : createdKeys[0];
+          const focusColumn=changes.find(change=>change.initial.row===Number(focusKey)).initial.column;
+          const focus=Number(anchor.dataset.row)<0
+            ? {row:Number(createdRows[focusKey]),column:focusColumn,origin:anchor}
+            : null;
+          await rows.refreshManifest({focus,filledDrafts:createdKeys});
         } catch (error) {
           window.PlanexNotifications.show({tone:'danger',message:'Рейсы сохранены. Обновите таблицу, чтобы их увидеть.'});
         }

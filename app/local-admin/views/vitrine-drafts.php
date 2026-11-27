@@ -2,7 +2,7 @@
 declare(strict_types=1);
 ?>
 <?php if ($tripDraft): ?>
-<tbody data-trip-drafts aria-label="Новые рейсы">
+<tbody data-trip-drafts<?= isset($tripDraft['compactInputs']['F']) && !isset($tripDraft['readOnly']['F']) ? ' data-trip-day-drafts' : '' ?> aria-label="Новые рейсы">
 <?php else: ?>
 <tbody id="vitrine-draft-rows" aria-label="Новые записи справочника"
        data-draft-version="<?= $escape($catalogGrid['draftVersion'] ?? '') ?>"

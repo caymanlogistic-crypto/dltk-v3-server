@@ -22,9 +22,11 @@
     return value;
   }
 
-  function bindDigits(field, {maxDigits, placeholder, format, read, digitsOnlyPaste, phone}) {
-    field.inputMode = 'numeric';
+  function bindDigits(field, {maxDigits, placeholder, format, read, digitsOnlyPaste, phone, formula}) {
+    field.inputMode = formula ? 'text' : 'numeric';
     field.placeholder = placeholder;
+    const isFormula=value=>formula && value.trimStart().startsWith('=');
+    let formulaDraft=false;
 
     // Keep the typed digits while showing a country prefix inferred from the number.
     let phoneDraft;
@@ -47,6 +49,13 @@
     if (phone) field.form?.addEventListener('reset',()=>{phoneDraft=undefined;});
 
     field.addEventListener('beforeinput',event=>{
+      if (isFormula(field.value) || (formulaDraft && field.value && !read(field.value))) return;
+      if (formula && event.inputType==='insertText' && event.data==='=') {
+        event.preventDefault();
+        field.value='=';
+        field.dispatchEvent(new InputEvent('input',{inputType:'insertText',bubbles:true}));
+        return;
+      }
       const start = digitOffset(field.selectionStart);
       const end = digitOffset(field.selectionEnd);
       const digits=fieldDigits();
@@ -68,6 +77,9 @@
       setValue(digits.slice(0,from)+digits.slice(to),from);
     });
     field.addEventListener('input',()=>{
+      if (isFormula(field.value)) { formulaDraft=true; return; }
+      if (formulaDraft && field.value && !read(field.value)) return;
+      formulaDraft=false;
       const position = digitOffset(field.selectionStart);
       setValue(fieldDigits().slice(0,maxDigits),position);
     });
@@ -75,6 +87,12 @@
     field.addEventListener('paste',event=>{
       event.preventDefault();
       const text=event.clipboardData.getData('text/plain');
+      if (isFormula(text) || isFormula(field.value)) {
+        if (isFormula(text)) field.value=text.trim();
+        else field.setRangeText(text,field.selectionStart,field.selectionEnd,'end');
+        field.dispatchEvent(new InputEvent('input',{inputType:'insertFromPaste',bubbles:true}));
+        return;
+      }
       const value=digitsOnlyPaste ? (/^[0-9]+$/.test(text) ? text : '') : read(text);
       if (!value) return;
       const start = digitOffset(field.selectionStart);
@@ -184,7 +202,8 @@
   }
 
   function mask(maxDigits,placeholder,format,read) {
-    return {format,read,bind:(field,{digitsOnlyPaste=false}={})=>bindDigits(field,{maxDigits,placeholder,format,read,digitsOnlyPaste})};
+    return {format,read,bind:(field,{digitsOnlyPaste=false,formula=false}={})=>bindDigits(field,
+      {maxDigits,placeholder:formula ? '=' : placeholder,format,read,digitsOnlyPaste,formula})};
   }
   window.VitrineSlot = Object.freeze({
     ...mask(maxDigits,'с 00 до 12 - 25.10.26',format,read),requestLabel,isRequest

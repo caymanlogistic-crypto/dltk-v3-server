@@ -74,7 +74,7 @@ def valid_cell_shape(cell):
     return (isinstance(cell, dict) and set(cell) == {'tableSlug', 'row', 'column'}
             and isinstance(cell['tableSlug'], str) and bool(re.fullmatch(r'[a-z0-9-]{1,80}', cell['tableSlug']))
             and type(cell['row']) is int and 0 < cell['row'] <= 2147483647
-            and isinstance(cell['column'], str) and bool(re.fullmatch(r'[A-Z]{1,3}', cell['column'])))
+            and isinstance(cell['column'], str) and bool(re.fullmatch(r'[A-Z]{1,3}|U2', cell['column'])))
 
 
 def validate_target(cell):

@@ -99,7 +99,9 @@
     const actions = el('div','modal-foot-actions');
     const save = el('button','btn btn-primary','Сохранить'); save.type = 'submit'; save.setAttribute('form',form.id);
     const cancel = button('Отмена','btn-secondary',() => addOnly ? close() : renderList()); actions.append(save,cancel);
-    form.append(error,label,colors,preview); body.append(form); footer.replaceChildren(actions); name.focus(); name.select();
+    form.append(error,label,colors,preview); body.append(form); footer.replaceChildren(actions);
+    name.focus();
+    name.setSelectionRange(name.value.length,name.value.length);
     form.addEventListener('submit',async event => {
       event.preventDefault(); if (saving) return;
       if (!name.value.trim() || !window.vitrineStatusCatalog.palette.some(item => item.fill === color)) { notify('Укажите название статуса и выберите цвет.','danger'); name.focus(); return; }

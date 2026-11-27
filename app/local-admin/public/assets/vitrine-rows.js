@@ -5,21 +5,29 @@
   let ids=[];try{ids=JSON.parse(document.getElementById('vitrine-row-manifest').content);}catch{}
   const drafts=Array.from(document.querySelectorAll('[data-draft-slot]'));
   const tripDraftBody=document.querySelector('[data-trip-drafts]');
+  const dayDraftTemplate=tripDraftBody?.hasAttribute('data-trip-day-drafts') ? drafts[0].cloneNode(true) : null;
+  const dateLayout=window.VitrineTripDateGroups?.create(ids,Boolean(dayDraftTemplate));
+  const dayDraftRows=new Map();
+  const dayRefills=new Map();
+  const localDateEdits=new Set();
+  const tripDateMotions=new WeakMap();
   const empty=document.getElementById('vitrine-empty');
   const directoryRowCount=document.querySelector('[data-directory-row-count]');
   const search=document.querySelector('.vitrine-catalog-search input[type="search"]');
   let appliedSearch=search?.value.trim() ?? '', requestedSearch=appliedSearch;
-  const hasTripFilter=params=>['tripStatus','tripClient'].some(key=>params.has(key));
-  let appliedTripFilter=hasTripFilter(new URLSearchParams(location.search));
+  const tripFilterKey=params=>JSON.stringify(['tripStatus','tripClient'].map(key=>params.get(key) || ''));
+  const noTripFilter=tripFilterKey(new URLSearchParams());
+  let appliedTripFilter=tripFilterKey(new URLSearchParams(location.search));
   const draftIndex=cell=>drafts.indexOf(cell.closest?.('[data-draft-slot]'));
-  const rowIndex=cell=>positions.get(cell.dataset.row) ?? ids.length+draftIndex(cell);
+  const dataRowCount=()=>dateLayout?.rowKeys.length ?? ids.length;
+  const rowIndex=cell=>dateLayout?.rowIndex(cell.dataset.row) ?? positions.get(cell.dataset.row) ?? dataRowCount()+draftIndex(cell);
   function setCounts() {
     table.dataset.totalRows=String(ids.length);
     if (directoryRowCount && directoryRowCount.textContent!==table.dataset.totalRows) {
       directoryRowCount.textContent=table.dataset.totalRows;
     }
-    table.setAttribute('aria-rowcount',String(ids.length+drafts.length+1));
-    drafts.forEach((row,index)=>row.setAttribute('aria-rowindex',String(ids.length+index+2)));
+    table.setAttribute('aria-rowcount',String(dataRowCount()+drafts.length+1));
+    drafts.forEach((row,index)=>row.setAttribute('aria-rowindex',String(dataRowCount()+index+2)));
     if (empty && search) {
       empty.hidden = ids.length>0 || (drafts.length>0 && !appliedSearch);
       empty.textContent = appliedSearch ? 'По вашему запросу ничего не найдено.' : 'В таблице пока нет строк для отображения.';
@@ -30,7 +38,7 @@
   const pageSize=Number(table.dataset.rowPageSize)||100,cache=new Map(),loaded=new Map(),pending=new Map();
   const compactWindow=table.hasAttribute('data-row-page-size');
   const openAtLastRow=table.hasAttribute('data-open-at-last-row');
-  const openUnfiltered=openAtLastRow && !appliedSearch && !appliedTripFilter;
+  const openUnfiltered=openAtLastRow && !appliedSearch && appliedTripFilter===noTripFilter;
   const centerOnLogin=openUnfiltered && table.hasAttribute('data-center-on-login');
   const bufferBefore=compactWindow ? 6 : 20;
   const bufferAfter=compactWindow ? 12 : 20;
@@ -87,6 +95,96 @@
       if (number<windowStartPage || number>windowEndPage) loaded.delete(number);
     }
     for(const [id,row] of cache)if(!row.isConnected&&!loaded.has(Math.floor(positions.get(String(id))/pageSize)))cache.delete(id);
+    for(const [key,row] of dayDraftRows) if(!row.isConnected) dayDraftRows.delete(key);
+  }
+  function buildDayDraft(key,slot) {
+    const row=dayDraftTemplate.cloneNode(true);
+    row.dataset.rowNumber=key;
+    row.dataset.tripDraftDate=slot.key;
+    row.setAttribute('aria-label','Новая строка на '+slot.key);
+    for (const cell of row.querySelectorAll('td[data-edit-cell]')) {
+      cell.dataset.row=key;
+      cell.tabIndex=-1;
+    }
+    return row;
+  }
+  function mountedDayDraft(key) {
+    const slot=dateLayout.draft(key);
+    const row=dayDraftRows.get(key) ?? buildDayDraft(key,slot);
+    row.dataset.tripDraftAnchor=String(slot.anchor);
+    row.setAttribute('aria-rowindex',String(dateLayout.rowIndex(key)+2));
+    dayDraftRows.set(key,row);
+    return row;
+  }
+  function animateDayRefills() {
+    if (!dayRefills.size) return;
+    const painted=new Set();
+    for (const [key,row] of dayDraftRows) {
+      const slot=dateLayout.draft(key);
+      const count=slot ? dayRefills.get(slot.key) : null;
+      if (!row.isConnected || !count || slot.slot<2-count) continue;
+      row.removeAttribute('data-trip-draft-arrival');
+      void row.offsetWidth;
+      row.dataset.tripDraftArrival='';
+      const animation=row.getAnimations().find(item=>item.animationName==='vitrine-trip-draft-arrival');
+      if (animation) animation.finished.then(
+        ()=>{delete row.dataset.tripDraftArrival;},()=>{}
+      );
+      else delete row.dataset.tripDraftArrival;
+      painted.add(slot.key);
+    }
+    for (const key of painted) dayRefills.delete(key);
+  }
+  function tripDateOrigins(focus) {
+    const origins=new Map();
+    const header=table.tHead.getBoundingClientRect().bottom;
+    const bottom=scroll.getBoundingClientRect().bottom;
+    for (const row of body.querySelectorAll('[data-vitrine-row]:not([data-trip-draft])')) {
+      const key=row.dataset.rowNumber;
+      const index=positions.get(key);
+      const date=dateLayout.keyAt(index);
+      const rect=row.getBoundingClientRect();
+      if (date && rect.bottom>header && rect.top<bottom) {
+        const id=Number(key);
+        origins.set(id,{date,top:rect.top,offset:rowOffset(index),remote:!localDateEdits.has(id)});
+      }
+    }
+    if (focus?.originalDate) {
+      origins.set(focus.row,{date:focus.originalDate,top:focus.screenTop,
+        offset:focus.startScroll+focus.offset,remote:false});
+    }
+    return origins;
+  }
+  function animateTripDateMoves(moves) {
+    if (!moves?.size) return;
+    const header=table.tHead.getBoundingClientRect().bottom;
+    const bottom=scroll.getBoundingClientRect().bottom;
+    for (const [id,origin] of moves) {
+      const row=cache.get(id);
+      if (!row?.isConnected) continue;
+      row.removeAttribute('data-trip-date-moving');
+      const rect=row.getBoundingClientRect();
+      if (rect.bottom<=header || rect.top>=bottom) continue;
+      const targetOffset=rowOffset(positions.get(String(id)));
+      const fallback=targetOffset>=origin.offset ? -height : height;
+      const delta=origin.top-rect.top;
+      const shift=Math.max(-scroll.clientHeight,Math.min(scroll.clientHeight,Math.abs(delta)>1 ? delta : fallback));
+      row.style.setProperty('--vitrine-trip-date-shift',shift+'px');
+      void row.offsetWidth;
+      row.dataset.tripDateMoving=origin.remote ? 'remote' : 'local';
+      const motion={};
+      tripDateMotions.set(row,motion);
+      const cleanup=()=>{
+        if (tripDateMotions.get(row)!==motion) return;
+        tripDateMotions.delete(row);
+        row.removeAttribute('data-trip-date-moving');
+        row.style.removeProperty('--vitrine-trip-date-shift');
+      };
+      const animation=row.getAnimations().find(item=>item.animationName==='vitrine-trip-row-move');
+      if (origin.remote) setTimeout(cleanup,620);
+      else if (animation) animation.finished.then(cleanup,()=>{});
+      else cleanup();
+    }
   }
   async function fetchRows(wanted, search){
     const url=window.VitrineGridScope.url('/api/vitrine/rows',{rowFilters:true,ids:wanted,search});
@@ -131,9 +229,11 @@
       const received=new Set(result.rowIds);
       const missing=new Set(wanted.filter(id=>!received.has(id)));
       if(missing.size){
-        ids=ids.filter(id=>!missing.has(id));positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
+        const remaining=ids.filter(id=>!missing.has(id));
+        dateLayout?.remove(ids,remaining);
+        ids=remaining;positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
         for(const id of missing)cache.delete(id);
-        loaded.clear();pending.clear();manifestVersion++;generation++;navigationGeneration++;navigation=null;first=last=-1;
+        loaded.clear();pending.clear();manifestVersion++;generation++;navigationGeneration++;navigation=null;first=last=-1;viewportPlan=null;
         setCounts();table.removeAttribute('aria-busy');
         queue();return;
       }
@@ -142,22 +242,80 @@
     })().finally(()=>{if(pending.get(number)===task)pending.delete(number);});
     pending.set(number,task);return task;
   }
-  let focusLastRow=openUnfiltered && initial.length>0;
+  let viewportPlan=null;
+  const pendingInsertions=new Map();
+  function paintInsertedTrips() {
+    if (!pendingInsertions.size) return;
+    const now=performance.now();
+    const viewportBottom=scroll.getBoundingClientRect().bottom;
+    const headerBottom=table.tHead.getBoundingClientRect().bottom;
+    for (const [id,expires] of pendingInsertions) {
+      if (expires<=now) {pendingInsertions.delete(id);continue;}
+      const row=cache.get(id);
+      if (!row?.isConnected) continue;
+      const bounds=row.getBoundingClientRect();
+      if (bounds.top>=viewportBottom || bounds.bottom<=headerBottom) continue;
+      pendingInsertions.delete(id);
+      row.dataset.tripRowInserted='';
+      setTimeout(()=>{delete row.dataset.tripRowInserted;},620);
+    }
+  }
+  function flashInsertedTrips(rows) {
+    const expires=performance.now()+5000;
+    for (const id of rows) {
+      if (Number.isSafeInteger(id) && id>0) pendingInsertions.set(id,expires);
+    }
+    paintInsertedTrips();
+    setTimeout(()=>{
+      for (const [id,until] of pendingInsertions) if (until<=expires) pendingInsertions.delete(id);
+    },5000);
+  }
+  const removedRows=new Set();
+  async function animateRemovedRows() {
+    const marked=[];
+    const animations=[];
+    for (const id of removedRows) {
+      if (positions.has(String(id))) continue;
+      removedRows.delete(id);
+      const row=cache.get(id) ?? body.querySelector('tr[data-row-number="'+id+'"]');
+      if (!row?.isConnected) continue;
+      row.dataset.tripRowRemoving='';
+      marked.push(row);
+      const animation=row.getAnimations().find(item=>item.animationName==='vitrine-trip-row-remove');
+      if (animation) animations.push(animation.finished);
+    }
+    await Promise.allSettled(animations);
+    return marked;
+  }
   function stamp(spacer,size){spacer.hidden=size===0;spacer.firstElementChild.style.setProperty('--spacer-height',size+'px');}
   const availableHeight=()=>scroll.clientHeight-headHeight;
   // Only the login arrival adds space to center the last row of a short table.
   let endPadding=centerOnLogin ? Math.max(0,(availableHeight()-height)/2) : 0;
-  let startPadding=centerOnLogin ? Math.max(0,availableHeight()/2-(ids.length-.5)*height) : 0;
-  const rowOffset=index=>startPadding+index*height;
-  const viewportIndex=()=>Math.max(0,Math.min(ids.length-1,Math.floor((scroll.scrollTop-startPadding)/height)));
+  const windowOffset=index=>(dateLayout?.units(index)??index)*height;
+  const lastRowUnits=dateLayout?.units(ids.length-1,true)??ids.length-1;
+  let startPadding=centerOnLogin ? Math.max(0,availableHeight()/2-(lastRowUnits+.5)*height) : 0;
+  const rowOffset=index=>startPadding+(dateLayout?.units(index,true)??index)*height;
+  const viewportIndex=(top=scroll.scrollTop)=>dateLayout
+    ? dateLayout.indexAt(top-startPadding,height,ids.length)
+    : Math.max(0,Math.min(ids.length-1,Math.floor((top-startPadding)/height)));
   function stampEnd(end) {
-    stamp(bottom,(ids.length-end)*height+(tripDraftBody ? 0 : endPadding));
+    stamp(bottom,windowOffset(ids.length)-windowOffset(end)+(tripDraftBody ? 0 : endPadding));
     if(tripDraftBody)stamp(tail,Math.max(0,endPadding-drafts.length*height));
   }
   async function render(){
     if(window.VitrineGrid?.editing())return;
-    if(!ids.length){body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);stamp(tail,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');return;}
-    const visible=Math.max(1,Math.ceil(availableHeight()/height)),viewportStart=viewportIndex(),viewportEnd=Math.min(ids.length,viewportStart+visible+1);
+    const plan=viewportPlan;
+    if(!ids.length){
+      if (removedRows.size) await animateRemovedRows();
+      viewportPlan=null;body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);stamp(tail,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');
+      if (plan) scroll.scrollTop=plan.top;
+      window.dispatchEvent(new CustomEvent('vitrine-rows-updated'));
+      return;
+    }
+    const displayTop=plan?.top??scroll.scrollTop;
+    const visible=Math.max(1,Math.ceil(availableHeight()/height)),viewportStart=viewportIndex(displayTop);
+    const viewportEnd=dateLayout ? Math.min(ids.length,viewportIndex(displayTop+availableHeight())+1)
+      : Math.min(ids.length,viewportStart+visible+1);
     if(first>=0&&(first===0||viewportStart>=first+refillMargin)&&(last===ids.length||viewportEnd<=last-refillMargin))return;
     const start=Math.max(0,Math.min(ids.length-1,viewportStart-bufferBefore));
     const end=Math.min(ids.length,compactWindow ? viewportEnd+bufferAfter : start+visible+bufferBefore+bufferAfter);
@@ -170,24 +328,42 @@
       await Promise.all(needed);if(ticket!==generation||window.VitrineGrid?.editing())return;
       const rows=ids.slice(start,end).map(id=>cache.get(id));
       if(rows.some(row=>!row))throw new Error('Не удалось загрузить все строки окна. Повторите прокрутку.');
+      if (removedRows.size) {
+        const marked=await animateRemovedRows();
+        if (ticket!==generation || window.VitrineGrid?.editing()) {
+          for (const row of marked) delete row.dataset.tripRowRemoving;
+          return;
+        }
+      }
       const mountStarted=performance.now();
-      window.VitrineDisplay?.prepareRows(rows.filter(row=>!row.isConnected));
-      rows.forEach((row,index)=>row.setAttribute('aria-rowindex',String(start+index+2)));
-      stamp(top,rowOffset(start));stampEnd(end);
+      rows.forEach((row,index)=>row.setAttribute('aria-rowindex',String((dateLayout?.rowIndex(row.dataset.rowNumber)??start+index)+2)));
+      stamp(top,startPadding+windowOffset(start));stampEnd(end);
       if(top.parentElement!==body)body.prepend(top);
       if(bottom.parentElement!==body)body.append(bottom);
-      const keep=new Set(rows);
-      for(const row of body.querySelectorAll('[data-vitrine-row]'))if(!keep.has(row))row.remove();
+      const mounted=dateLayout?.rowsWithDividers(rows,start,body,visibleColumns().length+1,mountedDayDraft)??rows;
+      window.VitrineDisplay?.prepareRows(mounted.filter(row=>row.hasAttribute('data-vitrine-row')&&!row.isConnected));
+      const keep=new Set(mounted);
+      for(const row of body.querySelectorAll('[data-vitrine-row],[data-trip-date-divider]'))if(!keep.has(row))row.remove();
       let cursor=top.nextSibling;
-      for(const row of rows){if(cursor===row)cursor=cursor.nextSibling;else body.insertBefore(row,cursor||bottom);}
+      for(const row of mounted){if(cursor===row)cursor=cursor.nextSibling;else body.insertBefore(row,cursor||bottom);}
       first=start;last=end;
+      if(plan) {
+        viewportPlan=null;
+        scroll.scrollTop=plan.top;
+      }
       window.dispatchEvent(new CustomEvent('vitrine-rows-updated'));
-      if(focusLastRow){
-        focusLastRow=false;
-        const cell=cache.get(ids.at(-1))?.querySelector('td[data-edit-cell]:not([hidden])');
-        if(cell?.isConnected && (!document.activeElement || document.activeElement===document.body)){
+      paintInsertedTrips();
+      animateDayRefills();
+      animateTripDateMoves(plan?.dateMoves);
+      if(plan?.focus && (!plan.focus.onClear || search?.value.trim()==='')) {
+        const row=cache.get(plan.focus.row);
+        const cell=(plan.focus.column && row?.querySelector('td[data-column="'+plan.focus.column+'"]:not([hidden])'))
+          || row?.querySelector('td[data-edit-cell]:not([hidden])');
+        if(cell?.isConnected) {
+          if(plan.focus.onClear) scroll.scrollLeft=0;
           window.VitrineGrid?.select(cell);
           cell.focus({preventScroll:true});
+          plan.focus.action?.(cell);
         }
       }
       table.dataset.windowMounts=String(++mounts);table.dataset.lastMountScriptMs=(performance.now()-mountStarted).toFixed(2);
@@ -196,10 +372,15 @@
       const ahead=upward?Math.floor(start/pageSize)-1:Math.floor((end-1)/pageSize)+1;
       if(ahead>=0&&ahead*pageSize<ids.length&&!loaded.has(ahead))page(ahead).catch(()=>{});
     }catch(error){if(ticket===generation)report(error);}
-    finally{if(ticket===generation)table.removeAttribute('aria-busy');}
+    finally{
+      if(ticket===generation){
+        if(viewportPlan===plan)viewportPlan=null;
+        table.removeAttribute('aria-busy');
+      }
+    }
   }
-  function queue(){if(!frame)frame=requestAnimationFrame(()=>{frame=0;render();});}
-  scroll.addEventListener('scroll',queue,{passive:true});
+  function queue(){if(!frame&&!viewportPlan)frame=requestAnimationFrame(()=>{frame=0;if(!viewportPlan)render();});}
+  scroll.addEventListener('scroll',()=>{paintInsertedTrips();queue();},{passive:true});
   const resize = () => {
     headHeight=table.querySelector('thead').getBoundingClientRect().height;
     first=-1;
@@ -210,13 +391,20 @@
   window.addEventListener('vitrine-statuses-updated',()=>loaded.clear());
   window.addEventListener('vitrine-cell-selected',()=>{navigation=null;});
   window.addEventListener('vitrine-columns-updated',()=>{for(const spacer of [top,bottom,tail])spacer.firstElementChild.colSpan=visibleColumns().length+1;first=-1;queue();});
-  const rangeRows=()=>[...ids.map(String),...drafts.map(row=>row.dataset.rowNumber)];
+  const rangeRows=()=>[...(dateLayout?.rowKeys??ids.map(String)),...drafts.map(row=>row.dataset.rowNumber)];
   function cachedRangeRows(keys){
-    return keys.map(key=>Number(key)>0 ? cache.get(Number(key)) : drafts.find(row=>row.dataset.rowNumber===key));
+    return keys.map(key=>Number(key)>0 ? cache.get(Number(key))
+      : dayDraftRows.get(key) ?? drafts.find(row=>row.dataset.rowNumber===key));
   }
   async function readRangeRows(keys){
     const version=manifestVersion;
-    const rows=cachedRangeRows(keys);
+    const rows=cachedRangeRows(keys).map((row,index)=>{
+      const slot=dateLayout?.draft(keys[index]);
+      if (row || !slot) return row;
+      const draft=buildDayDraft(keys[index],slot);
+      draft.dataset.tripDraftAnchor=String(slot.anchor);
+      return draft;
+    });
     const missing=keys.filter((_,index)=>!rows[index]).map(Number);
     const fresh=new Map();
     for (let offset=0;offset<missing.length;offset+=100) {
@@ -224,16 +412,16 @@
       for (const row of page.rows) fresh.set(row.dataset.rowNumber,row);
     }
     if (version!==manifestVersion) throw new Error('Состав таблицы изменился. Выберите диапазон заново.');
-    const resolved=cachedRangeRows(keys).map((row,index)=>row??fresh.get(keys[index]));
+    const resolved=cachedRangeRows(keys).map((row,index)=>row??rows[index]??fresh.get(keys[index]));
     if (resolved.some(row=>!row)) throw new Error('Не удалось загрузить диапазон таблицы.');
     return resolved;
   }
   let rangeReveal=0;
   async function revealRangeEnd(key,column){
     const ticket=++rangeReveal;
-    const index=positions.get(key);
+    const index=positions.get(key) ?? dateLayout?.draft(key)?.index;
     if (index!==undefined) {
-      ensureVisible(index);
+      ensureVisible(index,key);
       await render();
     }
     if (ticket!==rangeReveal) return;
@@ -250,8 +438,9 @@
     }
   }
   function visibleColumns(){return Array.from(table.querySelectorAll('thead th[data-column]:not([hidden])')).map(node=>node.dataset.column);}
-  function ensureVisible(index){
-    const available=availableHeight(),offset=rowOffset(index);
+  function ensureVisible(index,key){
+    const available=availableHeight();
+    const offset=dateLayout?.draft(key) ? startPadding+dateLayout.draftUnits(key)*height : rowOffset(index);
     if(offset<scroll.scrollTop)scroll.scrollTop=offset;
     else if(offset+height>scroll.scrollTop+available)scroll.scrollTop=Math.max(0,offset+height-available);
   }
@@ -260,37 +449,42 @@
       window.VitrineGrid.select(cell);cell.focus({preventScroll:true});window.VitrineGrid.reveal(cell);action?.(cell);
       return cell;
     }
-    const index=positions.get(cell.dataset.row);if(index===undefined)return null;
+    const key=cell.dataset.row;
+    const index=positions.get(key) ?? dateLayout?.draft(key)?.index;
+    if(index===undefined)return null;
     const ticket=++navigationGeneration;
     await page(Math.floor(index/pageSize));if(ticket!==navigationGeneration)return null;
-    ensureVisible(index);await render();if(ticket!==navigationGeneration)return null;
-    const target=cache.get(ids[index])?.querySelector('td[data-column="'+cell.dataset.column+'"]:not([hidden])');
+    ensureVisible(index,key);await render();if(ticket!==navigationGeneration)return null;
+    const target=(dayDraftRows.get(key)??cache.get(Number(key)))?.querySelector('td[data-column="'+cell.dataset.column+'"]:not([hidden])');
     if(target){window.VitrineGrid.select(target);target.focus({preventScroll:true});window.VitrineGrid.reveal(target);action?.(target);}
     return target;
   }
   function go(cell,r,c){
-    const columns=visibleColumns();if(r<0||r>=ids.length+drafts.length||c<0||c>=columns.length)return false;
-    if(r>=ids.length){
-      const target=drafts[r-ids.length].querySelector('td[data-column="'+columns[c]+'"]');
+    const columns=visibleColumns(),count=dataRowCount();if(r<0||r>=count+drafts.length||c<0||c>=columns.length)return false;
+    if(r>=count){
+      const target=drafts[r-count].querySelector('td[data-column="'+columns[c]+'"]');
       if(!target)return false;
       navigationGeneration++;
       activate(target);
       return true;
     }
+    const key=dateLayout?.rowKeys[r] ?? String(ids[r]);
+    const index=positions.get(key) ?? dateLayout?.draft(key)?.index;
+    if(index===undefined)return false;
     navigation={r,c};const ticket=++navigationGeneration;
-    const ready=cache.get(ids[r])?.querySelector('td[data-column="'+columns[c]+'"]');
+    const ready=(dayDraftRows.get(key)??cache.get(Number(key)))?.querySelector('td[data-column="'+columns[c]+'"]');
     if(ready?.isConnected){
-      window.VitrineGrid.select(ready);ready.focus({preventScroll:true});ensureVisible(r);
+      window.VitrineGrid.select(ready);ready.focus({preventScroll:true});ensureVisible(index,key);
       if(ready.dataset.column!==cell.dataset.column)window.VitrineGrid.reveal(ready);
-      const offset=r%pageSize;
-      const ahead=Math.floor(r/pageSize)+(offset>pageSize*.6?1:offset<pageSize*.4?-1:0);
+      const offset=index%pageSize;
+      const ahead=Math.floor(index/pageSize)+(offset>pageSize*.6?1:offset<pageSize*.4?-1:0);
       if(ahead>=0&&ahead*pageSize<ids.length&&!loaded.has(ahead))page(ahead).catch(()=>{});
       return true;
     }
     (async()=>{
-      await page(Math.floor(r/pageSize));if(ticket!==navigationGeneration)return;
-      ensureVisible(r);await render();if(ticket!==navigationGeneration)return;
-      const target=cache.get(ids[r])?.querySelector('td[data-column="'+columns[c]+'"]');
+      await page(Math.floor(index/pageSize));if(ticket!==navigationGeneration)return;
+      ensureVisible(index,key);await render();if(ticket!==navigationGeneration)return;
+      const target=(dayDraftRows.get(key)??cache.get(Number(key)))?.querySelector('td[data-column="'+columns[c]+'"]');
       if(target){window.VitrineGrid.select(target);target.focus({preventScroll:true});window.VitrineGrid.reveal(target);}
     })().catch(report);return true;
   }
@@ -328,7 +522,7 @@
         cell.dataset.choices=JSON.stringify([...new Set(choices)]);
       }
       const matchesReference=String(cell.dataset.referenceId)===String(patch.id);
-      const coloredCatalog=['E','T','U'].includes(cell.dataset.column)&&document.body.dataset.workspaceTable==='vyvoz';
+      const coloredCatalog=['E','T','U','U2'].includes(cell.dataset.column)&&document.body.dataset.workspaceTable==='vyvoz';
       const legacyMatch=coloredCatalog&&!Number(cell.dataset.referenceId)&&cell.textContent!==''&&
         [patch.name,patch.beforeName,...(patch.aliases||[])].some(name=>normalizedCatalogName(name)===normalizedCatalogName(cell.textContent));
       if(coloredCatalog&&(matchesReference||legacyMatch)){
@@ -348,36 +542,78 @@
     }
   }
   window.addEventListener('vitrine-editor-closed',()=>{for(const row of cache.values())for(const patch of catalogPatches.values())applyCatalogPatch(row,patch);});
-  let refreshTask=null,refreshAgain=false,manifestDeferred=false;
-  async function refreshManifest(){
+  let refreshTask=null,refreshAgain=false,manifestDeferred=false,createdFocus=null,keepAbsoluteTop=false,manifestWriteEpoch=0;
+  function rememberTripFocus(focus) {
+    manifestWriteEpoch++;
+    const headBottom=table.tHead.getBoundingClientRect().bottom;
+    const screenTop=focus.origin.getBoundingClientRect().top;
+    const originalDate=focus.origin.closest('tr')?.dataset.tripDraftDate
+      ?? dateLayout?.keyAt(positions.get(String(focus.row)));
+    createdFocus={...focus,offset:screenTop-headBottom,originalDate,screenTop,startScroll:scroll.scrollTop};
+  }
+  async function refreshManifest({focus=null,keepViewport=false,removedRow=null,filledDrafts=[]}={}){
+    keepAbsoluteTop ||= keepViewport;
+    if (filledDrafts.length) manifestWriteEpoch++;
+    for (const key of filledDrafts) {
+      const slot=dateLayout?.draft(String(key));
+      if (!slot) continue;
+      dayRefills.set(slot.key,Math.min(2,(dayRefills.get(slot.key)??0)+1));
+    }
+    if (removedRow!==null && positions.has(String(removedRow))) removedRows.add(Number(removedRow));
+    if(focus) rememberTripFocus(focus);
     if(window.VitrineGrid?.editing()){manifestDeferred=true;return;}
     if(refreshTask){refreshAgain=true;return refreshTask;}
+    let requestedEpoch=manifestWriteEpoch;
     refreshTask=(async()=>{
       do{
         refreshAgain=false;
+        requestedEpoch=manifestWriteEpoch;
         const query=requestedSearch;
         const manifestUrl=()=>window.VitrineGridScope.url('/api/workspace/manifest',{rowFilters:true,search:requestedSearch});
         const urlRequested=manifestUrl();
         const response=await fetch(urlRequested,{credentials:'same-origin'});
-        if(query!==requestedSearch||urlRequested!==manifestUrl()){refreshAgain=true;continue;}
+        if(query!==requestedSearch||urlRequested!==manifestUrl()||requestedEpoch!==manifestWriteEpoch){refreshAgain=true;continue;}
         const result=await response.json();
-        if(query!==requestedSearch||urlRequested!==manifestUrl()){refreshAgain=true;continue;}
+        if(query!==requestedSearch||urlRequested!==manifestUrl()||requestedEpoch!==manifestWriteEpoch){refreshAgain=true;continue;}
+        if(search&&search.value.trim()!==query)continue;
         if(!response.ok||result.error)throw new Error(result.error?.message||'Не удалось обновить список строк.');
         if(!Array.isArray(result.rowIds)||result.rowIds.some(id=>!Number.isInteger(id)))throw new Error('Некорректный список строк.');
         if(window.VitrineGrid?.editing()){manifestDeferred=true;return;}
         const next=[...new Set(result.rowIds)];
+        const nextDateGroups=result.tripDateGroups??[];
         const searchChanged=query!==appliedSearch;
-        const tripFilter=hasTripFilter(new URL(urlRequested,location.href).searchParams);
+        const tripFilter=tripFilterKey(new URL(urlRequested,location.href).searchParams);
         const filterChanged=tripFilter!==appliedTripFilter;
-        if(!searchChanged && !filterChanged && next.join(',')===ids.join(','))continue;
+        const candidate=createdFocus && next.includes(createdFocus.row) ? createdFocus : null;
+        if(candidate)createdFocus=null;
+        const preserveViewport=keepAbsoluteTop;
+        keepAbsoluteTop=false;
+        const structureChanged=next.join(',')!==ids.join(',') || (dateLayout && !dateLayout.agrees(nextDateGroups));
+        if(!searchChanged && !filterChanged && (!candidate || candidate.dateChange) && !structureChanged) {
+          localDateEdits.clear();
+          animateDayRefills();
+          continue;
+        }
         const anchorIndex=Math.max(0,Math.min(ids.length-1,viewportIndex()));
         const anchor=ids[anchorIndex],offset=scroll.scrollTop-rowOffset(anchorIndex);
+        const anchorDate=dateLayout?.keyAt(anchorIndex);
         const chosen=table.querySelector('td.is-current-cell'),chosenRow=chosen?.dataset.row,chosenColumn=chosen?.dataset.column;
         const oldPositions=document.body.hasAttribute('data-vitrine-catalog') ? new Map(positions) : null;
+        const dateMoves=dateLayout && !searchChanged && !filterChanged && (structureChanged || candidate)
+          ? tripDateOrigins(candidate) : null;
+        dateLayout?.replace(next,nextDateGroups);
         ids=next;positions.clear();ids.forEach((id,index)=>positions.set(String(id),index));
+        if (dateMoves) {
+          for (const [id,origin] of dateMoves) {
+            const index=positions.get(String(id));
+            if (index===undefined || dateLayout.keyAt(index)===origin.date) dateMoves.delete(id);
+          }
+        }
+        localDateEdits.clear();
+        const target=candidate && (!candidate.dateChange || dateMoves?.has(candidate.row)) ? candidate : null;
         manifestVersion++;generation++;navigationGeneration++;navigation=null;pending.clear();loaded.clear();first=last=-1;
         const allowed=new Set(ids);
-        for(const [id,row] of cache)if(searchChanged||!allowed.has(id)||oldPositions&&oldPositions.get(String(id))!==positions.get(String(id))){row.remove();cache.delete(id);}
+        for(const id of cache.keys())if(searchChanged||!allowed.has(id)||oldPositions&&oldPositions.get(String(id))!==positions.get(String(id)))cache.delete(id);
         if(searchChanged){
           appliedSearch=query;
           const url=new URL(location.href);
@@ -388,16 +624,43 @@
         setCounts();
         const resetScroll=searchChanged || filterChanged;
         if (resetScroll) startPadding=endPadding=0;
-        const newAnchor=resetScroll?0:positions.get(String(anchor))??Math.min(anchorIndex,Math.max(ids.length-1,0));
-        scroll.scrollTop=resetScroll?0:Math.max(0,rowOffset(newAnchor)+offset);
+        const returnToEnd=openAtLastRow && resetScroll && !query && ids.length>0
+          && (searchChanged || tripFilter===noTripFilter);
+        const anchorPosition=positions.get(String(anchor));
+        const anchorMoved=anchorDate && anchorPosition!==undefined && dateLayout.keyAt(anchorPosition)!==anchorDate;
+        const newAnchor=resetScroll?0:anchorPosition??Math.min(anchorIndex,Math.max(ids.length-1,0));
+        const top=target
+          ? rowOffset(positions.get(String(target.row)))-Math.max(0,Math.min(target.offset,availableHeight()-height))
+          : returnToEnd ? rowOffset(ids.length-1)+height-availableHeight()
+            : resetScroll ? 0 : preserveViewport || anchor===undefined || anchorMoved ? scroll.scrollTop : rowOffset(newAnchor)+offset;
+        viewportPlan={top:Math.max(0,top),focus:target ?? (returnToEnd ? {row:ids.at(-1),onClear:true} : null),dateMoves};
         await render();
-        if(chosenRow&&!chosen?.closest('[data-draft-slot]')&&!positions.has(chosenRow)){
+        if(!target&&!returnToEnd&&chosenRow&&!chosen?.closest('[data-draft-slot]')&&!positions.has(chosenRow)){
           const candidate=body.querySelector('td[data-column="'+chosenColumn+'"]:not([hidden])')||table.querySelector('tbody td[data-edit-cell]:not([hidden])');
           if(candidate)window.VitrineGrid?.select(candidate);
         }
       }while(refreshAgain);
-    })().finally(()=>{refreshTask=null;});
+    })().finally(()=>{
+      refreshTask=null;
+      if (!manifestDeferred && requestedEpoch===manifestWriteEpoch) {
+        createdFocus=null;
+        dayRefills.clear();
+      }
+    });
     return refreshTask;
+  }
+  let tripDateFrame=0;
+  function refreshTripDates(cell,follow) {
+    if (!dateLayout) return;
+    const row=Number(cell.dataset.row);
+    localDateEdits.add(row);
+    if (follow && cell.isConnected) rememberTripFocus({row,column:'F',origin:cell,dateChange:true});
+    else manifestWriteEpoch++;
+    if (tripDateFrame) return;
+    tripDateFrame=requestAnimationFrame(()=>{
+      tripDateFrame=0;
+      refreshManifest().catch(report);
+    });
   }
   window.addEventListener('vitrine-editor-closed',()=>{if(manifestDeferred){manifestDeferred=false;refreshManifest().catch(report);}});
   const fleetDocumentRequests=new WeakMap();
@@ -434,6 +697,8 @@
 
   window.VitrineRows=Object.freeze({
     refreshManifest,
+    flashInsertedTrips,
+    refreshTripDates,
     refreshFleetDocuments,
     applyFleetDocuments,
     exportRows,
@@ -480,12 +745,13 @@
     shortDriverName,
     resolveCell:cell=>cache.get(Number(cell.dataset.row))?.querySelector('td[data-column="'+cell.dataset.column+'"]')||cell,
     move(cell,dr,dc,wrap){const columns=visibleColumns();let r=(navigation?.r??rowIndex(cell))+dr,c=(navigation?.c??columns.indexOf(cell.dataset.column))+dc;if(wrap&&c<0){r--;c=columns.length-1;}if(wrap&&c>=columns.length){r++;c=0;}return go(cell,r,c);},
-    edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?ids.length+drafts.length-1:0):rowIndex(cell),end?columns.length-1:0);},
+    edge(cell,end,full){const columns=visibleColumns();return go(cell,full?(end?dataRowCount()+drafts.length-1:0):rowIndex(cell),end?columns.length-1:0);},
     get total(){return ids.length;}
   });
   if(tripDraftBody)tripDraftBody.append(tail);
+  if(dateLayout && initial.length) body.replaceChildren(...dateLayout.rowsWithDividers(initial,initialStart,body,visibleColumns().length+1,mountedDayDraft));
   if(openUnfiltered && initial.length){
-    stamp(top,rowOffset(initialStart));
+    stamp(top,startPadding+windowOffset(initialStart));
     stampEnd(ids.length);
     body.prepend(top);
     body.append(bottom);
