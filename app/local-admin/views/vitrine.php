@@ -12,7 +12,7 @@ $canManageRows = $canManageDirectory || (!$directory && !empty($data['table']['i
     workspace_can('table',(string)$data['table']['id'],'edit',$data['table']['id']));
 $rowArchive = $catalogGrid['archive'] ?? (($_GET['archive']??null)==='1');
 $rowRelatedLabel = $directory ? ($catalogGrid['relatedLabel']??null) : 'История строки';
-$showDraftRows = $canManageDirectory && !$catalogGrid['archive'];
+$showDraftRows = ($catalogGrid['canAdd'] ?? $canManageDirectory) && !$catalogGrid['archive'];
 $viewUrl = static fn(string $path): string => function_exists('app_url_path') ? app_url_path($path) : $path;
 $currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>workspace_order_status_directory($directory)['title']
     ?? ['clients'=>'Клиенты','employees'=>'Учётные записи','roles'=>'Роли','flight-statuses'=>'Статусы рейса','entries'=>'Справочник'][$directory]] : workspace_table());
@@ -105,7 +105,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="workspace-table" content="<?= $escape($currentTable['slug']) ?>">
   <meta name="vitrine-load-error" content="<?= $escape($error ?? '') ?>">
   <title><?= $escape($currentTable['title']) ?> — ЛК ДЛТК</title>
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=row-deletion-1'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=trip-today-1'),ENT_QUOTES,'UTF-8') ?>">
   <?php if ($loginArrival): ?>
   <link rel="expect" href="#workspace" blocking="render">
   <?php endif; ?>
@@ -123,7 +123,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-select.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-slot.js?v=quick-catalog-2'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-time-picker.js')) ?>"></script>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-calendar.js')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-calendar.js?v=trip-today-1')) ?>"></script>
   <?php if ($isAvtovyvoz): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-person-names.js')) ?>"></script>
   <?php endif; ?>
@@ -132,9 +132,9 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-trip-driver.js')) ?>"></script>
   <?php endif; ?>
   <?php if ($isAvtovyvoz && !$rowArchive): ?>
-  <script defer<?= $arrivalBlocking ?> src="<?= $escape($viewUrl('/assets/vitrine-trip-date-groups.js')) ?>"></script>
+  <script defer<?= $arrivalBlocking ?> src="<?= $escape($viewUrl('/assets/vitrine-trip-date-groups.js?v=trip-today-1')) ?>"></script>
   <?php endif; ?>
-  <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js?v=row-deletion-1'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js?v=trip-today-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if ($canReorderCatalogRows || $showTripRowOrder): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-order.js?v=2')) ?>"></script>
   <?php endif; ?>
@@ -153,8 +153,8 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if ($canManageDirectory && workspace_directory_excel_supported($directory)): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-import.js')) ?>"></script>
   <?php endif; ?>
-  <?php if ($canManageRows || $rowRelatedLabel): ?>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js?v=row-deletion-1')) ?>"></script>
+  <?php if ($canManageRows || $rowRelatedLabel || $showDraftRows): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js?v=employee-drafts-1')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['unloadPoints'])): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-unload-contacts.js')) ?>"></script>

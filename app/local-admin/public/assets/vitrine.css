@@ -3342,6 +3342,10 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
   color:var(--text-main);
   text-align:start;
 }
+.vitrine .vitrine-table tbody tr[data-trip-today] > td {
+  background:var(--p-cell-action-fill);
+  color:white;
+}
 .vitrine .vitrine-table tr[data-trip-date-divider] span {
   display:inline-block;
   position:sticky;

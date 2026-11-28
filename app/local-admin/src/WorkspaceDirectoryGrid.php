@@ -99,7 +99,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     }
     $scope = $employees ? workspace_employee_credential_scope() : null;
     $canManageEmployees = in_array($scope,['superadmin','admin'],true);
-    $roleChoices = $canManageEmployees ? array_column(workspace_employee_role_options($scope),'name') : [];
+    $roleChoices = array_column(workspace_employee_role_options($scope),'name');
     $canEdit = $employees ? $canManageEmployees : ($orderStatuses ? $canEditStatuses : workspace_directory_roles_editable());
     $rowIds = [];
     $rows = [];
@@ -140,10 +140,15 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         if ($directory === 'roles') $row['readOnly']['A'] = 'Название роли записывается при создании.';
         $rows[] = $row;
     }
+    $catalogGrid = ['archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,
+        'draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)];
+    if ($employees) {
+        $catalogGrid += ['canAdd'=>$roleChoices!==[],'draftRowCount'=>2,
+            'passwordEdit'=>$scope!==null,'passwordEye'=>$scope==='superadmin'];
+    }
     return [
         'table'=>$model, 'columns'=>$model['columns'], 'rows'=>$rows, 'rowIds'=>$rowIds,
-        'palette'=>$palette, 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,'passwordEdit'=>$employees && $scope!==null,
-            'passwordEye'=>$employees && $scope==='superadmin','draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)],
+        'palette'=>$palette, 'catalogGrid'=>$catalogGrid,
     ];
 }
 

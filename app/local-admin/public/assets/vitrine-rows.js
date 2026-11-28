@@ -7,6 +7,12 @@
   const tripDraftBody=document.querySelector('[data-trip-drafts]');
   const dayDraftTemplate=tripDraftBody?.hasAttribute('data-trip-day-drafts') ? drafts[0].cloneNode(true) : null;
   const dateLayout=window.VitrineTripDateGroups?.create(ids,Boolean(dayDraftTemplate));
+  if (dateLayout) {
+    setInterval(()=>dateLayout.refreshToday(body),60000);
+    document.addEventListener('visibilitychange',()=>{
+      if (!document.hidden) dateLayout.refreshToday(body);
+    });
+  }
   const dayDraftRows=new Map();
   const dayRefills=new Map();
   const localDateEdits=new Set();

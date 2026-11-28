@@ -52,7 +52,22 @@
       replace(remaining,next);
     }
 
+    let currentToday;
+    function paintToday(divider) {
+      const today = divider.dataset.tripDateKey === currentToday;
+      divider.toggleAttribute('data-trip-today',today);
+      divider.firstElementChild.firstElementChild.textContent =
+        divider.dataset.tripDateLabel+(today ? ' — СЕГОДНЯ' : '');
+    }
+    function refreshToday(body) {
+      const today = window.VitrineCalendar.todayKey();
+      if (today === currentToday) return;
+      currentToday = today;
+      body.querySelectorAll('[data-trip-date-divider]').forEach(paintToday);
+    }
+
     function rowsWithDividers(rows,start,body,colspan,draftRow) {
+      refreshToday(body);
       const mounted=new Map(Array.from(body.querySelectorAll('[data-trip-date-divider]'), row=>[row.dataset.tripDateDivider,row]));
       const result=[];
       rows.forEach((row,offset)=>{
@@ -71,7 +86,9 @@
             divider.insertCell().append(span);
           }
           divider.firstElementChild.colSpan=colspan;
-          divider.firstElementChild.firstElementChild.textContent=marker.label;
+          divider.dataset.tripDateKey=marker.key;
+          divider.dataset.tripDateLabel=marker.label;
+          paintToday(divider);
           result.push(divider);
         }
         result.push(row);
@@ -84,7 +101,7 @@
     try { initial=JSON.parse(document.getElementById('vitrine-trip-date-groups').content); } catch {}
     replace(ids,initial);
     return {
-      replace,remove,rowsWithDividers,
+      replace,remove,rowsWithDividers,refreshToday,
       get rowKeys(){return rowKeys;},
       rowIndex:key=>rowPositions.get(key),
       keyAt:index=>keys[index],

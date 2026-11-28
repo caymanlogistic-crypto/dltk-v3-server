@@ -26,7 +26,7 @@ function workspace_employee_role_names(): array {
     ];
 }
 
-function workspace_employee_roles(bool $archive = false): array {
+function workspace_employee_roles(bool $archive = false, bool $includeAll = false): array {
     $knownNames = workspace_employee_role_names();
     $archived = workspace_client_catalog_metadata('directory_archived_roles');
     $roles = [];
@@ -35,7 +35,7 @@ function workspace_employee_roles(bool $archive = false): array {
         ORDER BY id")->fetchAll() as $role) {
         $id = (int)$role['id'];
         $code = $role['code'];
-        if (!isset($knownNames[$code]) && !str_starts_with($code,'directory_')) continue;
+        if (!$includeAll && !isset($knownNames[$code]) && !str_starts_with($code,'directory_')) continue;
         if (isset($archived[$id]) !== $archive) continue;
         $roles[] = ['id'=>$id,'code'=>$code,'name'=>$knownNames[$code] ?? $role['name']];
     }
@@ -138,10 +138,18 @@ function workspace_employee_history_filter(): string {
         "($otherHistory OR CAST(JSON_UNQUOTE(JSON_EXTRACT(h.after_value,'$.id')) AS UNSIGNED) IN ($ids))";
 }
 
-function workspace_employee_role_options(string $scope): array {
-    return array_values(array_filter(workspace_employee_roles(), static fn(array $role): bool =>
-        $scope === 'superadmin' || ($scope === 'admin' && in_array($role['code'],WORKSPACE_TEAM_EMPLOYEE_ROLES,true))
-    ));
+function workspace_employee_role_options(?string $scope): array {
+    $allowed = match ($scope) {
+        'superadmin','directory_analytics' => null,
+        'admin' => WORKSPACE_TEAM_EMPLOYEE_ROLES,
+        'directory_senior_manager' => ['manager','directory_senior_manager'],
+        'directory_senior_logist' => ['logist','directory_senior_logist'],
+        default => [],
+    };
+    if ($allowed === null) return workspace_employee_roles(includeAll:true);
+    if ($allowed === []) return [];
+    return array_values(array_filter(workspace_employee_roles(),
+        static fn(array $role): bool => in_array($role['code'],$allowed,true)));
 }
 
 function workspace_employee_revision(array $employee): string {
@@ -159,7 +167,9 @@ function workspace_employees_endpoint(string $method): never {
         $ids = array_column(workspace_employee_visible_records(),'id');
         sort($ids,SORT_NUMERIC);
         $users = array_map('workspace_user',$ids);
-        json_response(['users'=>$users, 'roles'=>wquery('SELECT id,name FROM roles ORDER BY id')->fetchAll()]);
+        $roles = array_map(static fn(array $role): array=>['id'=>$role['id'],'name'=>$role['name']],
+            workspace_employee_role_options(workspace_employee_credential_scope()));
+        json_response(['users'=>$users, 'roles'=>$roles]);
     }
 
     if ($method === 'GET') {
@@ -200,7 +210,8 @@ function workspace_employee_save(array $input, bool $cellEdit = false, ?string $
 function workspace_employee_write(array $input, bool $cellEdit = false, ?string $deleteReason=null, bool $privateRoster=false): array {
     $scope = workspace_employee_credential_scope();
     if ($scope === null) throw new ApiError('forbidden','Редактирование учётных записей недоступно.',403);
-    if (!in_array($scope,['superadmin','admin'],true)) {
+    $id = $input['id'] ?? null;
+    if (!in_array($scope,['superadmin','admin'],true) && ($id !== null || $cellEdit || $deleteReason !== null)) {
         $changeFields = array_diff(array_keys($input),['id','revision']);
         if (!$cellEdit || $deleteReason !== null || !$changeFields ||
             array_filter($changeFields,static fn(string $field): bool=>!workspace_employee_can_edit_field($scope,$field))) {
@@ -220,7 +231,6 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
         ((!$rosterPin && mb_strlen($password)<8) || strlen($password)>72 || str_contains($password,"\0")))) {
         throw new ApiError('invalid_password','Пароль должен содержать от 8 символов и занимать до 72 байт.');
     }
-    $id = $input['id'] ?? null;
     if ($id !== null && (!is_int($id) || $id<1)) throw new ApiError('invalid_user','Некорректный идентификатор сотрудника.');
     $roleIds = $input['roleIds'] ?? [];
     if (!is_array($roleIds) || !array_is_list($roleIds) || count($roleIds)>1 ||

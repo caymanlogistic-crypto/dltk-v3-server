@@ -156,15 +156,17 @@ function workspace_assert_catalog_entry_unused(string $kind, int $catalogId, arr
 }
 
 function workspace_employee_row_action(array $body): array {
-    $scope = workspace_employee_editor_scope();
-    if ($scope === null) throw new ApiError('forbidden','Редактирование доступно администратору.',403);
     if ($body['action'] === 'add') {
+        $scope = workspace_employee_credential_scope();
+        if ($scope === null) throw new ApiError('forbidden','Создание учётных записей недоступно.',403);
         $values = $body['values'];
         $role = array_column(workspace_employee_role_options($scope),'id','name')[$values['E'] ?? ''] ?? null;
-        if (!$role) throw new ApiError('invalid_role','Выберите роль из справочника.');
+        if (!$role) throw new ApiError('invalid_role','Выберите роль из доступного списка.',403);
         return workspace_employee_save(['name'=>$values['A'] ?? '', 'login'=>$values['B'] ?? '',
             'password'=>$values['C'] ?? '', 'email'=>$values['D'] ?? '', 'roleIds'=>[$role]]);
     }
+    $scope = workspace_employee_editor_scope();
+    if ($scope === null) throw new ApiError('forbidden','Для этого действия нет доступа.',403);
     $employee = workspace_employee_records($body['row'])[0] ?? null;
     if (!$employee || !workspace_employee_can_edit($scope,$employee)) {
         throw new ApiError('forbidden','Для этой учётной записи нет доступа.',403);
