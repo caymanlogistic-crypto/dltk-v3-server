@@ -427,6 +427,9 @@ function vitrine_store(array $body): array {
                             WHERE l.vehicle_id=?',[$reference])->fetchColumn();
                         if (!$body['reset']) $value=workspace_fleet_trip_vehicle_label($entry['name'],$trailer ?: null);
                     } else $value=$unload?$entry['address']:$entry['name'];
+                } elseif ($body['reset'] && in_array($key,['B','S'],true)) {
+                    $names=vitrine_trip_people_catalog_names($binding);
+                    $reference=$names[vitrine_catalog_key($value)]??null;
                 } elseif (!$body['reset'] && ($unload || $value!==$before) &&
                     !$historicalUnload && !($link['kind']==='terminals-main' && !empty($body['legacyTerminalPaste']))) {
                     throw new ApiError('invalid_reference',$link['invalid']);
@@ -499,9 +502,19 @@ function vitrine_store(array $body): array {
                     : workspace_carrier_edo_operator($partyProfiles[$reference]['F']??'');
             } else {
                 $entries=vitrine_catalog_values($link);
-                $previousEntry=vitrine_find_catalog_entry($binding,$before,$link['kind']==='clients');
-                $previous=$entries[$previousEntry['id']??0]??'';
-                $next=$entries[$reference]??'';
+                if (in_array($link['kind'],['clients','carriers'],true)) {
+                    $originalReference=wquery('SELECT e.id,e.catalog_id AS catalogId FROM record_references rr
+                        JOIN catalog_entries e ON e.id=rr.entry_id WHERE rr.record_id=? AND rr.field_key=?',[$r['id'],$key])->fetch()?:null;
+                    $names=vitrine_trip_people_catalog_names($binding);
+                    $previousId=vitrine_trip_people_source_id($link,$originalReference,$names,$before);
+                    $nextId=$reference ?: (int)($names[vitrine_catalog_key($value)]??0);
+                    $previous=$entries[$previousId]??'';
+                    $next=$entries[$nextId]??'';
+                } else {
+                    $previousEntry=vitrine_find_catalog_entry($binding,$before);
+                    $previous=$entries[$previousEntry['id']??0]??'';
+                    $next=$entries[$reference]??'';
+                }
             }
             $dependentPatch=vitrine_update_catalog_value($t,$r,$values,$link['target'],$next,$previous,$u,$action,$request,$operation,!$clear&&empty($party)&&!in_array($key,['K','O'],true));
         }
@@ -520,7 +533,9 @@ function vitrine_store(array $body): array {
                 wquery('INSERT INTO record_references VALUES(?,?,?) ON DUPLICATE KEY UPDATE entry_id=VALUES(entry_id)',[$r['id'],$key,$reference]);
                 $result+=['referenceId'=>$reference,'catalogId'=>(int)$binding];
             }
-            if($link && ($clear||$historicalUnload||((!empty($party)||in_array($key,['K','O'],true))&&$body['reset']))){
+            $resetDropsReference=$body['reset'] && (!empty($party)||in_array($key,['K','O'],true) ||
+                (!$reference&&in_array($key,['B','S'],true)));
+            if($link && ($clear||$historicalUnload||$resetDropsReference)){
                 wquery('DELETE FROM record_references WHERE record_id=? AND field_key=?',[$r['id'],$key]);
                 $result+=['referenceId'=>0,'catalogId'=>(int)$binding];
             }

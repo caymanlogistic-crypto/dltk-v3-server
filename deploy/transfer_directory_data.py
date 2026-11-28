@@ -12,6 +12,7 @@ import pymysql
 
 SERVER = Path('/srv/dltk-v3-test/shared/private/mysql-admin.cnf')
 BINDINGS = {'container-types': 'I', 'dropoff-points': 'M', 'unload-points': 'K', 'managers': ''}
+REQUIRED_KINDS = BINDINGS.keys() - {'managers'}
 RECEIPT = 'directory_rollout_20261123'
 
 
@@ -44,6 +45,15 @@ def verify(cursor, expected):
         raise RuntimeError('Unexpected MySQL instance or workspace marker.')
 
 
+def manager_directory_retired(cursor):
+    return one(cursor, "SELECT 1 FROM workspace_meta m WHERE m.key='manager_directory_retired_v1'") is not None
+
+
+def valid_catalogs(catalogs):
+    kinds = {catalog['kind'] for catalog in catalogs}
+    return len(kinds) == len(catalogs) and REQUIRED_KINDS <= kinds <= BINDINGS.keys()
+
+
 def export_data(profile, target):
     with closing(connect(profile, 'dltk_v3_workspace')) as db, db.cursor() as cur:
         verify(cur, 'dltk_v3_workspace')
@@ -51,7 +61,9 @@ def export_data(profile, target):
             JOIN catalog_bindings b ON b.catalog_id=c.id JOIN table_definitions t ON t.id=b.table_id
             WHERE t.slug='vyvoz' AND c.kind IN ('container-types','dropoff-points','unload-points','managers')
             ORDER BY c.id""")
-        if len(catalogs) != len(BINDINGS) or {c['kind'] for c in catalogs} != BINDINGS.keys():
+        if manager_directory_retired(cur):
+            catalogs = [catalog for catalog in catalogs if catalog['kind'] != 'managers']
+        if not valid_catalogs(catalogs):
             raise RuntimeError('The expected local directories were not found.')
         for catalog in catalogs:
             catalog['entries'] = rows(cur, """SELECT e.id,e.normalized,e.name,e.active FROM catalog_entries e
@@ -63,11 +75,13 @@ def export_data(profile, target):
         points = next(cat for cat in catalogs if cat['kind'] == 'unload-points')
         points['entries'] = [entry for entry in points['entries'] if entry['id'] not in review_ids]
         result = {'version': 1, 'catalogs': catalogs}
-        result['managers'] = rows(cur, """SELECT p.entry_id,p.surname,p.patronymic,r.code,p.phone,p.email
-            FROM manager_profiles p JOIN roles r ON r.id=p.role_id""")
-        result['links'] = rows(cur, """SELECT l.manager_id,l.position,c.normalized client_key,c.name client_label
-            FROM client_manager_links l JOIN catalog_entries c ON c.id=l.client_id
-            ORDER BY l.client_id,l.position""")
+        result['managers'], result['links'] = [], []
+        if any(catalog['kind'] == 'managers' for catalog in catalogs):
+            result['managers'] = rows(cur, """SELECT p.entry_id,p.surname,p.patronymic,r.code,p.phone,p.email
+                FROM manager_profiles p JOIN roles r ON r.id=p.role_id""")
+            result['links'] = rows(cur, """SELECT l.manager_id,l.position,c.normalized client_key,c.name client_label
+                FROM client_manager_links l JOIN catalog_entries c ON c.id=l.client_id
+                ORDER BY l.client_id,l.position""")
         result['unloads'] = rows(cur, """SELECT p.entry_id,c.normalized client_key,p.client_label,p.address,p.schedule,p.instruction
             FROM unload_points p LEFT JOIN catalog_entries c ON c.id=p.client_id""")
         result['contacts'] = rows(cur, """SELECT entry_id,name,phone,email,original,is_primary
@@ -157,7 +171,9 @@ def import_profiles(cur, data, table, mapping, created, clients):
         if source in created:
             cur.execute('INSERT INTO manager_profiles VALUES(%s,%s,%s,%s,%s,%s)',
                 (mapping[source], profile['surname'], profile['patronymic'], roles[profile['code']], profile['phone'], profile['email']))
-    linked_clients = {row['client_id'] for row in rows(cur, 'SELECT DISTINCT client_id FROM client_manager_links')}
+    linked_clients = set()
+    if data['links']:
+        linked_clients = {row['client_id'] for row in rows(cur, 'SELECT DISTINCT client_id FROM client_manager_links')}
     missing_clients = set()
     for link in data['links']:
         client = clients.get(link['client_key'])
@@ -202,7 +218,7 @@ def import_profiles(cur, data, table, mapping, created, clients):
 def import_data(source, apply):
     raw = source.read_bytes()
     data = json.loads(raw)
-    if data.get('version') != 1 or len(data['catalogs']) != len(BINDINGS) or {c['kind'] for c in data['catalogs']} != BINDINGS.keys():
+    if data.get('version') != 1 or not valid_catalogs(data['catalogs']):
         raise RuntimeError('Unexpected directory transfer package.')
     fingerprint = hashlib.sha256(raw).hexdigest()
     with closing(connect(SERVER, 'dltk_v3_test')) as db, db.cursor() as cur:
@@ -215,6 +231,9 @@ def import_data(source, apply):
             print('Package already applied.')
             return
         table = one(cur, "SELECT id FROM table_definitions WHERE slug='vyvoz' AND is_demo=FALSE")['id']
+        if manager_directory_retired(cur):
+            data['catalogs'] = [catalog for catalog in data['catalogs'] if catalog['kind'] != 'managers']
+            data['managers'], data['links'] = [], []
         clients = target_clients(cur, table)
         mapping, created = create_directories(cur, table, data, clients)
         details = import_profiles(cur, data, table, mapping, created, clients)

@@ -18,8 +18,12 @@ function vitrine_catalog_key(string $name): string {
     return mb_strtolower(trim(preg_replace('/\s+/u',' ',$name)));
 }
 
+function workspace_catalog_kind_retired(string $kind): bool {
+    return workspace_fleet_retired_kind($kind) || ($kind==='managers' && workspace_manager_directory_retired());
+}
+
 function workspace_catalogs(): array {
-    $out=[];foreach(wquery('SELECT * FROM catalogs ORDER BY id')->fetchAll() as $c){if(workspace_fleet_retired_kind($c['kind'])||!workspace_can('catalog',(string)$c['id'],'view'))continue;$c['id']=(int)$c['id'];$c['tableIds']=array_map('intval',wquery('SELECT DISTINCT table_id FROM catalog_bindings WHERE catalog_id=?',[$c['id']])->fetchAll(PDO::FETCH_COLUMN));$out[]=$c;}return $out;
+    $out=[];foreach(wquery('SELECT * FROM catalogs ORDER BY id')->fetchAll() as $c){if(workspace_catalog_kind_retired($c['kind'])||!workspace_can('catalog',(string)$c['id'],'view'))continue;$c['id']=(int)$c['id'];$c['tableIds']=array_map('intval',wquery('SELECT DISTINCT table_id FROM catalog_bindings WHERE catalog_id=?',[$c['id']])->fetchAll(PDO::FETCH_COLUMN));$out[]=$c;}return $out;
 }
 function workspace_palette(): array {return [['name'=>'Красный','fill'=>'#F4D9DA'],['name'=>'Оранжевый','fill'=>'#F7E1CB'],['name'=>'Жёлтый','fill'=>'#F7F2D2'],['name'=>'Зелёный','fill'=>'#DCEAD4'],['name'=>'Бирюзовый','fill'=>'#CFE9E4'],['name'=>'Синий','fill'=>'#D8E6F4'],['name'=>'Фиолетовый','fill'=>'#DFDBF1'],['name'=>'Розовый','fill'=>'#EFD9E8'],['name'=>'Серый','fill'=>'#E7E7E7']];}
 function workspace_is_document_status_catalog(string $kind): bool {
@@ -44,7 +48,7 @@ function workspace_catalog_save(array $b, ?string $deleteReason=null): array {
 }
 
 function workspace_catalog_write(array $b, ?string $deleteReason=null): array {
-    $cid=(int)($b['catalogId']??0);$catalog=wquery('SELECT * FROM catalogs WHERE id=?',[$cid])->fetch();if(!$catalog||workspace_fleet_retired_kind($catalog['kind']))throw new ApiError('not_found','Справочник не найден.',404);
+    $cid=(int)($b['catalogId']??0);$catalog=wquery('SELECT * FROM catalogs WHERE id=?',[$cid])->fetch();if(!$catalog||workspace_catalog_kind_retired($catalog['kind']))throw new ApiError('not_found','Справочник не найден.',404);
     workspace_require('catalog',(string)$cid,'edit');$name=workspace_catalog_validate_name((string)($b['name']??''));$color=$b['color']??null;
     if(!workspace_catalog_has_palette($catalog['kind']))$color=null;
     if(($catalog['kind']==='status'||$color!==null)&&!in_array($color,array_column(workspace_palette(),'fill'),true)){

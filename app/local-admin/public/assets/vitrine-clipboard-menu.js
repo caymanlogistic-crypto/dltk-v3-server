@@ -69,7 +69,7 @@
       (!target.readOnly || window.VitrineSelect?.canPasteOption(target))));
     const cell = target.matches(gridCell) && !target.matches('[data-readonly-cell],[data-derived-source],[aria-readonly="true"]') &&
       !['client-managers','client-unload-points','unload-contacts'].includes(target.dataset.kind) &&
-      target.dataset.draftType!=='password' && !window.VitrineRangePaste?.requiresForm(target);
+      target.dataset.draftType!=='password' && target.dataset.kind!=='password' && !window.VitrineRangePaste?.requiresForm(target);
     return {copy, paste:edit || cell};
   }
 

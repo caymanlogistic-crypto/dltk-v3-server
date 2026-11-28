@@ -26,11 +26,12 @@ function workspace_directory_rows_endpoint(string $directory, array $body): neve
 }
 
 function workspace_row_delete_reason(mixed $value): string {
-    $reason=is_string($value) ? trim($value) : '';
-    if (!preg_match('/\S/u',$reason) || mb_strlen($reason)>1000) {
-        throw new ApiError('invalid_delete_reason','Укажите причину удаления до 1000 символов.');
+    if ($value === null) return '';
+    if (!is_string($value) || mb_strlen(trim($value))>1000) {
+        throw new ApiError('invalid_delete_reason','Комментарий к удалению должен быть не длиннее 1000 символов.');
     }
-    return $reason;
+    $reason=trim($value);
+    return preg_match('/\S/u',$reason) ? $reason : '';
 }
 
 function workspace_row_deleted(string $prefix,int $id): bool {
@@ -155,30 +156,34 @@ function workspace_assert_catalog_entry_unused(string $kind, int $catalogId, arr
 }
 
 function workspace_employee_row_action(array $body): array {
-    $scope = workspace_employee_editor_scope();
-    if ($scope === null) throw new ApiError('forbidden','Редактирование доступно администратору.',403);
     if ($body['action'] === 'add') {
+        $scope = workspace_employee_credential_scope();
+        if ($scope === null) throw new ApiError('forbidden','Создание учётных записей недоступно.',403);
         $values = $body['values'];
         $role = array_column(workspace_employee_role_options($scope),'id','name')[$values['E'] ?? ''] ?? null;
-        if (!$role) throw new ApiError('invalid_role','Выберите роль из справочника.');
+        if (!$role) throw new ApiError('invalid_role','Выберите роль из доступного списка.',403);
         return workspace_employee_save(['name'=>$values['A'] ?? '', 'login'=>$values['B'] ?? '',
-            'password'=>$values['C'] ?? '', 'email'=>$values['D'] ?? '', 'roleIds'=>[$role]]);
+            'password'=>$values['C'] ?? '', 'roleIds'=>[$role]]);
     }
+    $scope = workspace_employee_credential_scope();
+    if ($scope === null) throw new ApiError('forbidden','Для этого действия нет доступа.',403);
     $employee = workspace_employee_records($body['row'])[0] ?? null;
-    if (!$employee || !workspace_employee_can_edit($scope,$employee)) {
+    $deletion = in_array($body['action'],['delete','check_delete'],true);
+    if (!$employee || !($deletion ? workspace_employee_can_delete($scope,$employee) : workspace_employee_can_edit($scope,$employee))) {
         throw new ApiError('forbidden','Для этой учётной записи нет доступа.',403);
     }
     if ($employee['authVersion'] !== $body['revision'] || workspace_employee_revision($employee) !== ($body['baseHash'] ?? null)) {
         workspace_directory_conflict();
     }
     $restore = $body['action'] === 'restore';
-    if (!in_array($body['action'],['delete','check_delete'],true) && $employee['active'] === $restore) workspace_directory_conflict();
+    if (!$deletion && $employee['active'] === $restore) workspace_directory_conflict();
     if ($body['action'] === 'check_delete') {
         workspace_assert_employee_unused($employee);
         return ['name'=>$employee['name']];
     }
-    return workspace_employee_save(['id'=>$employee['id'],'revision'=>workspace_employee_revision($employee),
-        'name'=>$employee['name'],'login'=>$employee['login'],'active'=>$restore],deleteReason:$body['reason']??null);
+    $payload = ['id'=>$employee['id'],'revision'=>$body['baseHash'],'active'=>$restore];
+    if ($body['action'] === 'delete') return workspace_employee_save($payload,deleteReason:$body['reason']);
+    return workspace_employee_save($payload+['name'=>$employee['name'],'login'=>$employee['login']]);
 }
 
 function workspace_assert_employee_unused(array $employee): void {

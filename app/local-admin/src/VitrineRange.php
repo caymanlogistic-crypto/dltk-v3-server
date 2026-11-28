@@ -102,6 +102,9 @@ function vitrine_save_range(?string $directory, array $body): array {
                         }
                     }
                 } else {
+                    if ($directory === 'employees' && $column === 'C') {
+                        throw new ApiError('readonly','Откройте редактор ячейки для смены пароля.',403);
+                    }
                     $state = $directoryRows[$row]??null;
                     if (!$state || !array_key_exists($column,$state['values']) || !empty($state['readOnly'][$column])) {
                         throw new ApiError('readonly','Ячейка доступна только для просмотра.',403);

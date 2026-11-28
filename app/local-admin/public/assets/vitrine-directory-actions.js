@@ -1,16 +1,16 @@
 'use strict';
 (() => {
   const actions = document.querySelector('[data-directory-row-actions]');
-  if (!actions) return;
-  const remove = actions.querySelector('[data-directory-delete]');
-  const archiveToggle = actions.querySelector('[data-directory-archive-toggle]');
-  const related = actions.querySelector('[data-directory-related]');
-  const archive = actions.hasAttribute('data-archive');
+  const draftBody = document.getElementById('vitrine-draft-rows');
+  if (!actions && !draftBody) return;
+  const remove = actions?.querySelector('[data-directory-delete]');
+  const archiveToggle = actions?.querySelector('[data-directory-archive-toggle]');
+  const related = actions?.querySelector('[data-directory-related]');
+  const archive = actions?.hasAttribute('data-archive');
   const archiveActionFor = row => archive || row.hasAttribute('data-directory-archived') ? 'restore' : 'archive';
   const deleteDialog = document.querySelector('[data-directory-delete-dialog]');
   const reasonField = deleteDialog?.querySelector('[data-directory-reason-field]');
   const reason = reasonField?.querySelector('textarea');
-  const confirm = deleteDialog?.querySelector('[type="submit"]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const endpoint = window.VitrineGridScope.url('/api/vitrine/cell');
   const table = document.querySelector('.vitrine-table');
@@ -31,7 +31,7 @@
   }
 
   function openMenu(button,cell) {
-    if (pending || window.VitrineGrid.editing()) return;
+    if (!actions || pending || window.VitrineGrid.editing()) return;
     if (trigger === button) { closeMenu(true); return; }
     closeMenu();
     window.VitrineGrid.select(cell);
@@ -72,7 +72,7 @@
     event.preventDefault();
     openMenu(button,cell);
   });
-  actions.addEventListener('keydown',event=>{
+  actions?.addEventListener('keydown',event=>{
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       event.preventDefault();
       const items = [...actions.querySelectorAll('[role="menuitem"]:not([hidden])')];
@@ -86,7 +86,7 @@
     closeMenu(true);
   });
   document.addEventListener('pointerdown',event=>{
-    if (!actions.contains(event.target) && !event.target.closest(triggerSelector)) closeMenu();
+    if (actions && !actions.contains(event.target) && !event.target.closest(triggerSelector)) closeMenu();
   });
   table.closest('.vitrine-table-scroll').addEventListener('scroll',()=>closeMenu());
   window.addEventListener('resize',()=>closeMenu());
@@ -134,12 +134,12 @@
     });
   }
 
-  const draftBody = document.getElementById('vitrine-draft-rows');
   const fields = JSON.parse(draftBody?.dataset.draftFields || '{}');
   const draftKey = ['dltk-v3.directory-drafts', document.body.dataset.workspaceUser,
     document.body.dataset.workspaceTable, draftBody?.dataset.draftVersion].filter(Boolean).join('.');
   const legacyKey = draftKey.replace('directory-drafts','flight-status-drafts');
   const isFlight = document.body.dataset.vitrineCatalog === 'flight-statuses';
+  const isEmployeeDirectory = document.body.dataset.vitrineCatalog === 'employees';
   let stored = {};
   try {
     const current = sessionStorage.getItem(draftKey);
@@ -150,9 +150,11 @@
   } catch {}
   const drafts = new Map(Array.from(draftBody?.rows || []).map(row=>{
     const slot = stored[row.dataset.rowNumber];
-    const values = Object.fromEntries(Object.keys(fields).map(column=>[
-      column,fields[column].type !== 'password' && typeof slot?.[column] === 'string' ? slot[column] : '',
-    ]));
+    const values = Object.fromEntries(Object.entries(fields).map(([column,field])=>{
+      const value = field.type !== 'password' && typeof slot?.[column] === 'string' ? slot[column] : '';
+      const allowed = !isEmployeeDirectory || field.type !== 'choice' || choice(column,value);
+      return [column,allowed ? value : ''];
+    }));
     const confirmed = new Set(Object.keys(fields).filter(column=>fields[column].allowEmpty && typeof slot?.[column] === 'string'));
     return [row,{values,confirmed,saving:false}];
   }));
@@ -181,7 +183,7 @@
       const field = fields[column];
       if (!field) continue;
       const display = field.type === 'password' && value ? 'Введён' : value;
-      cell.textContent = display;
+      (cell.querySelector('[data-password-cell-value]') ?? cell).textContent = display;
       cell.toggleAttribute('data-draft-allow-empty',Boolean(field.allowEmpty));
       const fill = choice(column,value)?.color;
       if (fill) cell.style.setProperty('--order-status-fill',fill);
@@ -256,6 +258,7 @@
       showDraft(cell.closest('[data-draft-slot]'));
       try {
         await window.VitrineRows.refreshManifest();
+        if (isEmployeeDirectory) notice('Учётная запись создана.','success');
         if (cell.classList.contains('is-current-cell') && !window.VitrineGrid.editing()) window.VitrineGrid.reveal(cell);
       } catch (error) { onError(error); }
     },
@@ -283,12 +286,9 @@
         {restore:'Восстановить',archive:'Перенести в архив',delete:'Удалить'}[action]+' «'+result.name+'»?';
       if (reason) {
         reasonField.hidden = reason.disabled = action !== 'delete';
-        reason.required = action === 'delete';
         reason.value = '';
-        confirm.disabled = !reason.disabled;
       }
       deleteDialog.showModal();
-      if (reason && !reason.disabled) reason.focus();
     } catch (error) {
       onError(error);
     } finally {
@@ -297,17 +297,15 @@
   }
   archiveToggle?.addEventListener('click',()=>confirmRow());
   remove?.addEventListener('click',()=>confirmRow('delete'));
-  reason?.addEventListener('input',()=>{confirm.disabled=!reason.value.trim();});
   if (deleteDialog) bindForm(deleteDialog, async fields => {
     const payload=reason && !reason.disabled ? {...target.row,reason:fields.get('reason').trim()} : target.row;
     await request(target.action,payload);
-    if (target.action==='delete' && document.body.dataset.workspaceTable==='vyvoz' && !document.body.dataset.vitrineCatalog) {
+    if (target.action==='delete') {
       deleteDialog.close();
-      window.VitrineRows.refreshManifest({keepViewport:true,removedRow:payload.row})
-        .then(()=>notice('Запись удалена.','success'))
-        .catch(onError);
+      await window.VitrineRows.refreshManifest({keepViewport:true,removedRow:payload.row});
+      notice('Запись удалена.','success');
       return;
     }
-    refresh({restore:'Запись восстановлена.',archive:'Запись перенесена в архив.',delete:'Запись удалена.'}[target.action]);
+    refresh({restore:'Запись восстановлена.',archive:'Запись перенесена в архив.'}[target.action]);
   });
 })();

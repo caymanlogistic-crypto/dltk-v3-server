@@ -2,16 +2,17 @@
 declare(strict_types=1);
 
 function workspace_employee_grid_readonly(string $column, ?string $scope, array $employee): ?string {
-    if ($scope === null || !workspace_employee_can_edit($scope,$employee)) return 'Запись доступна только для просмотра.';
-    if ($column === 'C') return 'Пароль меняется в карточке сотрудника.';
-    if (!$employee['active']) return 'Сотрудник в архиве. Для изменения откройте карточку.';
+    $field = ['A'=>'name','B'=>'login','C'=>'password','E'=>'roleIds'][$column];
+    if ($scope === null || !workspace_employee_can_view($scope,$employee) || !workspace_employee_can_edit_field($scope,$field,$employee)) {
+        return 'Запись или поле доступны только для просмотра.';
+    }
     if ($column === 'E' && $employee['id'] === workspace_current_user()['id']) return 'Свою роль изменить нельзя.';
     return null;
 }
 
 function workspace_employee_grid_values(array $employee): array {
     return [
-        'A'=>$employee['name'], 'B'=>$employee['login'], 'C'=>'Скрыт', 'D'=>$employee['email'],
+        'A'=>$employee['name'], 'B'=>$employee['login'], 'C'=>'Скрыт',
         'E'=>implode(', ',array_column($employee['roles'],'name')),
     ];
 }
@@ -22,9 +23,9 @@ function workspace_employee_grid_endpoint(bool $pasteCheck = false): never {
 }
 
 function workspace_employee_grid_edit(array $body, bool $pasteCheck = false): array {
-    $scope = workspace_employee_editor_scope();
-    if ($scope === null) throw new ApiError('forbidden','Редактирование доступно администратору.',403);
-    if (!is_int($body['row'] ?? null) || $body['row']<1 || !in_array($body['column'] ?? null,['A','B','C','D','E'],true)
+    $scope = workspace_employee_credential_scope();
+    if ($scope === null) throw new ApiError('forbidden','Редактирование учётных записей недоступно.',403);
+    if (!is_int($body['row'] ?? null) || $body['row']<1 || !in_array($body['column'] ?? null,['A','B','C','E'],true)
         || !is_string($body['value'] ?? null)) {
         throw new ApiError('invalid_edit','Некорректные данные ячейки сотрудника.');
     }
@@ -41,9 +42,14 @@ function workspace_employee_grid_edit(array $body, bool $pasteCheck = false): ar
             if (!isset($roles[$value])) throw new ApiError('invalid_role','Выберите роль из справочника.');
             $changes['roleIds'] = [$roles[$value]];
         }
+    } elseif ($column === 'C') {
+        if ($pasteCheck || isset($body['paste']) || in_array($body['editAction'] ?? 'edit',['clear','reset','paste'],true)) {
+            throw new ApiError('readonly','Откройте редактор ячейки для смены пароля.',403);
+        }
+        $changes['password'] = $value;
     } else {
-        $field = ['A'=>'name','B'=>'login','D'=>'email'][$column];
-        $changes[$field] = workspace_employee_profile_value($field,$value);
+        $field = ['A'=>'name','B'=>'login'][$column];
+        $changes[$field] = workspace_employee_profile_value($field,$value,$employee['login']);
     }
     if ($pasteCheck) return ['accepted'=>true];
 
@@ -56,6 +62,7 @@ function workspace_employee_grid_edit(array $body, bool $pasteCheck = false): ar
     return [
         'value'=>$value, 'original'=>$value, 'edited'=>false,
         'revision'=>$saved['authVersion'], 'baseHash'=>workspace_employee_revision($saved),
-        'reauthenticate'=>$column === 'B' && $saved['id'] === workspace_current_user()['id'] && $saved['login'] !== $employee['login'],
+        'reauthenticate'=>$saved['id'] === workspace_current_user()['id'] &&
+            in_array($column,['B','C'],true) && $saved['authVersion'] !== $employee['authVersion'],
     ];
 }

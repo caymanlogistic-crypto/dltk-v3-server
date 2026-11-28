@@ -7,12 +7,14 @@ $clientCatalog = $directory === 'clients';
 $catalogGrid = $data['catalogGrid'] ?? null;
 $terminalTariffs = $data['terminalTariffs'] ?? null;
 $canManageDirectory = $catalogGrid['canEdit'] ?? false;
-$canReorderCatalogRows = $embeddedCatalog && $canManageDirectory && !in_array($_GET['archive']??null,['1','all'],true);
+$canReorderCatalogRows = ($catalogGrid['canReorder'] ?? $canManageDirectory)
+    && !in_array($_GET['archive']??null,['1','all'],true);
 $canManageRows = $canManageDirectory || (!$directory && !empty($data['table']['id']) &&
     workspace_can('table',(string)$data['table']['id'],'edit',$data['table']['id']));
+$canDeleteRows = $canManageRows || !empty($catalogGrid['canDelete']);
 $rowArchive = $catalogGrid['archive'] ?? (($_GET['archive']??null)==='1');
 $rowRelatedLabel = $directory ? ($catalogGrid['relatedLabel']??null) : 'История строки';
-$showDraftRows = $canManageDirectory && !$catalogGrid['archive'];
+$showDraftRows = ($catalogGrid['canAdd'] ?? $canManageDirectory) && !$catalogGrid['archive'];
 $viewUrl = static fn(string $path): string => function_exists('app_url_path') ? app_url_path($path) : $path;
 $currentTable = $data['table'] ?? ($directory ? ['id'=>0,'slug'=>'catalog-'.$directory,'title'=>workspace_order_status_directory($directory)['title']
     ?? ['clients'=>'Клиенты','employees'=>'Учётные записи','roles'=>'Роли','flight-statuses'=>'Статусы рейса','entries'=>'Справочник'][$directory]] : workspace_table());
@@ -23,14 +25,32 @@ $directoryUrl = $catalogGrid ? '/vitrine?catalog='.$directory.match ($directory)
     default => '',
 } : null;
 $workspaceTables=workspace_tables();
-$boundCatalogMenu=vitrine_bound_catalog_menu($workspaceTables);
+$boundCatalogMenu = $documentColorMenu = $systemCatalogMenu = [];
+foreach (vitrine_bound_catalog_menu($workspaceTables) as $item) {
+    if (workspace_is_document_status_catalog($item['kind'])) $documentColorMenu[] = $item;
+    elseif ($item['kind']==='edo-operators') $systemCatalogMenu[] = $item;
+    else $boundCatalogMenu[] = $item;
+}
+$catalogKind = $currentTable['catalogKind'] ?? '';
+$currentCatalogId = $directory==='entries' ? (int)($catalogGrid['id'] ?? 0) : 0;
+$systemDirectoryLinks = array_filter(
+    ['employees'=>'Учётные записи', 'roles'=>'Роли'],
+    static fn(string $key): bool => $key==='employees' ? workspace_employee_view_scope()!==null : workspace_can('system','roles','view'),
+    ARRAY_FILTER_USE_KEY
+);
+$isSystemDirectory = isset($systemDirectoryLinks[$directory]) || ($directory==='entries' && $catalogKind==='edo-operators');
 $canOpenStatuses = !$directory || in_array('vyvoz',array_column($workspaceTables,'slug'),true);
 $canViewClientColors = workspace_can('system','client-order-statuses','view');
 $tripTable = null;
 foreach ($workspaceTables as $availableTable) if ($availableTable['slug']==='vyvoz') { $tripTable=$availableTable; break; }
 $tripFieldColorMenu = $tripTable ? array_filter(workspace_trip_field_status_directories(),
     static fn(string $column): bool=>workspace_trip_field_status_can($tripTable,$column,'view'),ARRAY_FILTER_USE_KEY) : [];
-$isColorDirectory = $directory==='flight-statuses' || ($directory!==null && workspace_order_status_directory($directory)!==null);
+$tripStatusNavLabels = ['K'=>'Выгрузка', 'M'=>'Сдача', 'F'=>'Дата загрузки', 'G'=>'Время загрузки'];
+$documentStatusNavLabels = [
+    'assignment-statuses'=>'Поручения', 'etrn-statuses'=>'ЭТрН', 'etrn-signing-statuses'=>'Подписание ЭТРН',
+];
+$isColorDirectory = $directory==='flight-statuses' || ($directory!==null && workspace_order_status_directory($directory)!==null) ||
+    ($directory==='entries' && workspace_is_document_status_catalog($catalogKind));
 $preferences=empty($error) ? workspace_preferences($currentTable) : [];
 $isAvtovyvoz = !$directory && $currentTable['slug']==='vyvoz';
 $showTripRowOrder = $isAvtovyvoz && !$rowArchive && empty($error) &&
@@ -87,13 +107,13 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="workspace-table" content="<?= $escape($currentTable['slug']) ?>">
   <meta name="vitrine-load-error" content="<?= $escape($error ?? '') ?>">
   <title><?= $escape($currentTable['title']) ?> — ЛК ДЛТК</title>
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=unified-2'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=trip-date-header-1'),ENT_QUOTES,'UTF-8') ?>">
   <?php if ($loginArrival): ?>
   <link rel="expect" href="#workspace" blocking="render">
   <?php endif; ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-scope.js?v=2')) ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-paths.js'),ENT_QUOTES,'UTF-8') ?>"></script><script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-notifications.js'),ENT_QUOTES,'UTF-8') ?>"></script>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-clipboard-menu.js')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-clipboard-menu.js?v=account-password-1')) ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.js?v=layout-defaults-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (!empty($data['containerTypeRules'])): ?>
@@ -105,24 +125,27 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-select.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-slot.js?v=quick-catalog-2'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-time-picker.js')) ?>"></script>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-calendar.js')) ?>"></script>
-  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js?v=quick-catalog-2'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-calendar.js?v=trip-today-1')) ?>"></script>
+  <?php if ($isAvtovyvoz): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-person-names.js')) ?>"></script>
+  <?php endif; ?>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js?v=password-cell-2'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (in_array(true,array_column($columns,'tripDriverCard'),true)): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-trip-driver.js')) ?>"></script>
   <?php endif; ?>
   <?php if ($isAvtovyvoz && !$rowArchive): ?>
-  <script defer<?= $arrivalBlocking ?> src="<?= $escape($viewUrl('/assets/vitrine-trip-date-groups.js')) ?>"></script>
+  <script defer<?= $arrivalBlocking ?> src="<?= $escape($viewUrl('/assets/vitrine-trip-date-groups.js?v=trip-today-1')) ?>"></script>
   <?php endif; ?>
-  <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js?v=2'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js?v=trip-today-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if ($canReorderCatalogRows || $showTripRowOrder): ?>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-order.js?v=2')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-order.js?v=4')) ?>"></script>
   <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-range.js')) ?>"></script>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-range-paste.js?v=quick-catalog-2')) ?>"></script>
-  <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-grid.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-range.js?v=password-cell-1')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-range-paste.js?v=account-password-1')) ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-grid.js?v=row-deletion-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (!$directory): ?>
-  <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-presence.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-presence.js?v=short-names-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php endif; ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-search.js?v=quick-catalog-2')) ?>"></script>
   <?php if ($terminalTariffs !== null): ?>
@@ -132,8 +155,8 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if ($canManageDirectory && workspace_directory_excel_supported($directory)): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-import.js')) ?>"></script>
   <?php endif; ?>
-  <?php if ($canManageRows || $rowRelatedLabel): ?>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js?v=quick-catalog-2')) ?>"></script>
+  <?php if ($canDeleteRows || $rowRelatedLabel || $showDraftRows): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js?v=employee-drafts-1')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['unloadPoints'])): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-unload-contacts.js')) ?>"></script>
@@ -142,22 +165,22 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-relations-keyboard.js')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['clientUnloadCatalog'])): ?>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-unload-points.js')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-unload-points.js?v=row-deletion-1')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['clientManagers'])): ?>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-managers.js?v=2')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-managers.js?v=row-deletion-1')) ?>"></script>
   <?php endif; ?>
   <?php if ($clientCatalog || $directory === 'entries'): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-catalog.js')) ?>"></script>
   <?php elseif ($directory === 'employees'): ?>
   <script defer src="<?= $escape($viewUrl('/assets/workspace-auth.js?v=5')) ?>"></script>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-employees.js')) ?>"></script>
   <?php endif; ?>
 </head>
 <body class="vitrine<?= $clientCatalog ? ' vitrine-catalog-page' : '' ?>"<?php if ($directory): ?> data-vitrine-catalog="<?= $escape($directory) ?>" data-vitrine-catalog-kind="<?= $escape($currentTable['catalogKind']??'') ?>"<?php endif; ?><?= $isAvtovyvoz && vitrine_copy_diagnostics_enabled() ? ' data-copy-diagnostics' : '' ?> data-workspace-user="<?= (int)$currentUser['id'] ?>" data-workspace-table="<?= $escape($currentTable['slug']) ?>">
 <a class="vitrine-skip" href="#workspace">К таблице</a>
 <div class="app app--workspace<?= $embeddedCatalog ? ' vitrine-embedded-catalog' : '' ?>">
   <?php if (!$embeddedCatalog): ?>
+  <?php $account = workspace_employee_records((int)$currentUser['id'])[0] ?? []; ?>
   <header class="vitrine-topbar">
     <a class="sidebar-brand vitrine-brand" href="<?= htmlspecialchars(app_url_path('/vitrine'),ENT_QUOTES,'UTF-8') ?>"><span class="logo-mark" aria-hidden="true"></span><span class="brand-name">ЛК ДЛТК</span></a>
     <nav class="vitrine-topnav" aria-label="Основная навигация">
@@ -167,14 +190,16 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
       <?php endforeach; ?>
       </div>
       <details class="vitrine-folder">
-        <summary class="nav-item is-parent"><?= $navFolder ?><span class="nav-label">Система</span><?= $navChevron ?></summary>
-        <div class="vitrine-dropdown">
+        <summary class="nav-item is-parent<?= $isSystemDirectory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Система</span><?= $navChevron ?></summary>
+        <div class="vitrine-dropdown" aria-label="Система">
+          <?php foreach ($systemDirectoryLinks as $key => $label): ?>
+          <a class="nav-sub-item<?= $directory === $key ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog='.$key)) ?>"<?= $directory === $key ? ' aria-current="page"' : '' ?>><?= $escape($label) ?></a>
+          <?php endforeach; ?>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>">Журнал изменений</a>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=reports')) ?>">Сводные</a>
-          <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=catalogs&table='.$managementTable)) ?>">Управление справочниками</a>
-          <?php if ($directoryUrl && $directory !== 'clients' && ($currentTable['catalogKind'] ?? '') !== 'managers'): ?>
-          <a class="nav-sub-item" href="<?= $escape($viewUrl($directoryUrl.($catalogGrid['archive'] ? '' : '&archive=1').(empty($catalogGrid['clientFilter']) ? '' : '&client='.(int)$catalogGrid['clientFilter']['id']))) ?>"><?= $catalogGrid['archive'] ? 'Вернуться к справочнику' : 'Архив справочника' ?></a>
-          <?php endif; ?>
+          <?php foreach ($systemCatalogMenu as $item): $current=$currentCatalogId===(int)$item['id']; ?>
+          <a class="nav-sub-item<?= $current ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$item['id'])) ?>"<?= $current ? ' aria-current="page"' : '' ?>><?= $escape($item['title']) ?></a>
+          <?php endforeach; ?>
           <?php if (!$directory): ?>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/vitrine?table='.$managementTable.($rowArchive ? '' : '&archive=1'))) ?>"><?= $rowArchive ? 'Вернуться к таблице' : 'Архив строк' ?></a>
           <?php if (!$rowArchive && $canManageRows): ?>
@@ -182,8 +207,6 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <?php endif; ?>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>" id="workspace-row-history">История строки</a>
           <?php endif; ?>
-          <div class="nav-sub-item"><?= $escape($currentUser['login']) ?> <span data-workspace-live data-live-status aria-live="polite"></span></div>
-          <button class="nav-sub-item" type="button" id="workspace-logout">Выйти</button>
         </div>
       </details>
       <details class="vitrine-folder" id="vitrine-display-menu">
@@ -195,44 +218,56 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <a class="nav-sub-item" href="#grid-width" data-display-open="width">Ширина блока</a>
         </div>
       </details>
-      <?php if ($canOpenStatuses || $canViewClientColors || $tripFieldColorMenu): ?>
+      <?php if ($canOpenStatuses || $canViewClientColors || $tripFieldColorMenu || $documentColorMenu): ?>
       <details class="vitrine-folder" id="vitrine-cell-colors">
-        <summary class="nav-item is-parent<?= $isColorDirectory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Цвета ячеек</span><?= $navChevron ?></summary>
-        <div class="vitrine-dropdown" aria-label="Цвета ячеек">
+        <summary class="nav-item is-parent<?= $isColorDirectory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Статусы</span><?= $navChevron ?></summary>
+        <div class="vitrine-dropdown" aria-label="Статусы">
           <?php if ($canOpenStatuses): ?>
-          <a class="nav-sub-item<?= $directory === 'flight-statuses' ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=flight-statuses&table='.$managementTable)) ?>"<?= $directory === 'flight-statuses' ? ' aria-current="page"' : '' ?>>Статусы</a>
+          <a class="nav-sub-item<?= $directory === 'flight-statuses' ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=flight-statuses&table='.$managementTable)) ?>"<?= $directory === 'flight-statuses' ? ' aria-current="page"' : '' ?>>Рейсы</a>
           <?php endif; ?>
           <?php if ($canViewClientColors): ?>
           <a class="nav-sub-item<?= $directory === 'client-order-statuses' ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=client-order-statuses')) ?>"<?= $directory === 'client-order-statuses' ? ' aria-current="page"' : '' ?>>Клиенты</a>
           <?php endif; ?>
-          <?php foreach ($tripFieldColorMenu as $item): ?>
-          <a class="nav-sub-item<?= $directory === $item['directory'] ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog='.$item['directory'])) ?>"<?= $directory === $item['directory'] ? ' aria-current="page"' : '' ?>><?= $escape($item['title']) ?></a>
+          <?php foreach ($tripFieldColorMenu as $column => $item): ?>
+          <a class="nav-sub-item<?= $directory === $item['directory'] ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog='.$item['directory'])) ?>"<?= $directory === $item['directory'] ? ' aria-current="page"' : '' ?>><?= $escape($tripStatusNavLabels[$column]) ?></a>
+          <?php endforeach; ?>
+          <?php foreach ($documentColorMenu as $item): $current=$currentCatalogId===(int)$item['id']; ?>
+          <a class="nav-sub-item<?= $current ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$item['id'])) ?>"<?= $current ? ' aria-current="page"' : '' ?>><?= $escape($documentStatusNavLabels[$item['kind']]) ?></a>
           <?php endforeach; ?>
         </div>
       </details>
       <?php endif; ?>
       <details class="vitrine-folder" id="vitrine-catalogs">
-        <summary class="nav-item is-parent<?= $directory && !$isColorDirectory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
+        <summary class="nav-item is-parent<?= $directory && !$isColorDirectory && !$isSystemDirectory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
-          <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Учётные записи', 'roles'=>'Роли']; ?>
-          <?php if (!workspace_client_grid_catalog()) unset($directoryLinks['clients']); ?>
-          <?php if (!workspace_can('system','users','view')) unset($directoryLinks['employees']); ?>
-          <?php if (!workspace_can('system','roles','view')) unset($directoryLinks['roles']); ?>
-          <?php foreach ($directoryLinks as $key => $label): ?>
-          <a class="nav-sub-item<?= $directory === $key ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog='.$key)) ?>"<?= $directory === $key ? ' aria-current="page"' : '' ?>><?= $escape($label) ?></a>
-          <?php endforeach; ?>
+          <?php if (workspace_client_grid_catalog()): ?>
+          <a class="nav-sub-item<?= $clientCatalog ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=clients')) ?>"<?= $clientCatalog ? ' aria-current="page"' : '' ?>>Клиенты</a>
+          <?php endif; ?>
           <?php $managerCatalog=workspace_manager_catalog_id(); if ($managerCatalog && workspace_can('catalog',(string)$managerCatalog,'view')):
               $managerCurrent=$directory==='entries'&&($catalogGrid['id']??0)===$managerCatalog; ?>
           <a class="nav-sub-item<?= $managerCurrent ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$managerCatalog)) ?>"<?= $managerCurrent ? ' aria-current="page"' : '' ?>>Сотрудники</a>
           <?php endif; ?>
           <?php foreach ($boundCatalogMenu as $item):
-            $current=$directory==='entries'&&($catalogGrid['id']??0)===$item['id'];
+            $current=$currentCatalogId===(int)$item['id'];
           ?>
           <a class="nav-sub-item<?= $current ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$item['id'])) ?>"<?= $current ? ' aria-current="page"' : '' ?>><?= $escape($item['title']) ?></a>
           <?php endforeach; ?>
         </div>
       </details>
     </nav>
+    <details class="vitrine-folder vitrine-account">
+      <summary class="nav-item is-parent">
+        <span class="user-info">
+          <strong><?= $escape($currentUser['name'] ?: $currentUser['login']) ?></strong>
+          <?php if (!empty($account['roles'])): ?><span><?= $escape(implode(', ', array_column($account['roles'],'name'))) ?></span><?php endif; ?>
+        </span>
+        <?= $navChevron ?>
+      </summary>
+      <div class="vitrine-dropdown" aria-label="Учётная запись">
+        <button class="nav-sub-item" type="button" id="workspace-logout">Выйти</button>
+      </div>
+    </details>
+    <span class="vitrine-sr-only" data-workspace-live data-live-status aria-live="polite"></span>
   </header>
   <?php endif; ?>
   <main class="content ui-detail-card" id="workspace" tabindex="-1">
@@ -285,8 +320,8 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
       <?php endif; ?>
     </section>
     <?php endif; ?>
-    <?php if ($canManageRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
-    if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php';
+    <?php if ($canDeleteRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
+    if ($canDeleteRows) require __DIR__.'/vitrine-directory-row-dialogs.php';
     require __DIR__.'/vitrine-clear-cell-dialog.php';
     require __DIR__.'/vitrine-hide-column-dialog.php';
     if (in_array(true,array_column($columns,'tripDriverCard'),true)) require __DIR__.'/vitrine-trip-driver-dialog.php'; ?>

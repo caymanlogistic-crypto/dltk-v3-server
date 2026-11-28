@@ -5,15 +5,7 @@
   const scroll=body?.closest('.vitrine-table-scroll');
   const tripOrder=scroll?.hasAttribute('data-trip-row-order');
   if (!body || (!template && !tripOrder)) return;
-  const params=new URLSearchParams(location.search);
-  const key=params.get('quickCatalog');
   const csrf=document.querySelector('meta[name="csrf-token"]').content;
-  if (tripOrder) params.set('tripOrder','1');
-  else {
-    params.set('quickOrder',key);
-    params.delete('quickCatalog');
-  }
-  const path=window.DltkPaths.path('/api/vitrine/cell?'+params);
   let source=null, marker=null, busy=false;
 
   const activeRows='tr[data-row-number]:not([data-directory-archived])';
@@ -22,6 +14,16 @@
   const ownMoves=new Set();
   const pendingMoves=new Map();
   let draggedDate;
+
+  function orderPath() {
+    const params=new URLSearchParams(location.search);
+    if (tripOrder) params.set('tripOrder','1');
+    else {
+      params.set('quickOrder',params.get('quickCatalog')??params.get('catalog'));
+      params.delete('quickCatalog');
+    }
+    return window.DltkPaths.path('/api/vitrine/cell?'+params);
+  }
 
   function sameDate(date,row) {
     return !tripOrder || (date!==undefined && date===row.dataset.tripDate);
@@ -112,7 +114,7 @@
     busy=true;
     body.setAttribute('data-quick-order-saving','');
     try {
-      const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
+      const response=await fetch(orderPath(),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
         body:JSON.stringify(move)});
       const result=await response.json();
       if (!response.ok) throw new Error(result.error?.message || 'Не удалось изменить порядок строк.');

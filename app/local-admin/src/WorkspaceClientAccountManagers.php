@@ -129,7 +129,9 @@ function workspace_client_account_manager_card(int $catalogId,int $clientId,?arr
         if (workspace_can('system','users','view')) {
             foreach ($existing as $id) {
                 $account=$accounts[$id]??null;
-                if ($account && !workspace_employee_is_private($account)) $options[$id]['email']=$account['email'];
+                if ($account && !workspace_employee_is_private($account) && filter_var($account['login'],FILTER_VALIDATE_EMAIL)) {
+                    $options[$id]['email']=$account['login'];
+                }
             }
         }
         $names=array_map(static fn(int $id): string=>$choices[$id]['name'],$existing);

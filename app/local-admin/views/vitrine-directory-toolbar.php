@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 $employeePage = $directory === 'employees';
-$employeeScope = $employeePage ? workspace_employee_editor_scope() : null;
 $archive = $catalogGrid['archive'];
 $canUploadExcel = !$embeddedCatalog && $catalogGrid['canEdit'] && !$archive && workspace_directory_excel_supported($directory);
 $staffDirectory = ($currentTable['catalogKind'] ?? '') === 'managers';
@@ -9,7 +8,7 @@ $visibilityLabel = $staffDirectory ? 'Все сотрудники' : ($directory
 $visibilityAria = $staffDirectory ? 'Фильтр сотрудников' : ($directory === 'clients' ? 'Фильтр клиентов' : 'Фильтр записей');
 $searchPlaceholder = match ($directory) {
     'clients'=>'Клиент или менеджер',
-    'employees'=>'ФИО, логин, email или роль',
+    'employees'=>'ФИО, логин или роль',
     'roles'=>'Название роли',
     'entries'=>'Поиск по справочнику',
     default=>'Название статуса',
@@ -66,37 +65,17 @@ $unloadClientName = !empty($catalogGrid['unloadPoints']) ? ($catalogGrid['client
   <button class="btn" type="button" data-directory-details data-unkeyed>Строки без названия (<?= (int)$catalogGrid['unkeyedCount'] ?>)</button>
   <?php endif; ?>
   <?php endif; ?>
-  <?php if ($employeeScope): ?>
-  <div class="vitrine-catalog-actions">
-    <button class="btn btn-secondary" type="button" id="employee-edit" disabled>Изменить сотрудника</button>
-  </div>
-  <?php endif; ?>
 </section>
 <?php if ($canUploadExcel) require __DIR__.'/vitrine-directory-import.php'; ?>
-<?php if ($employeeScope): ?>
-<dialog class="vitrine-catalog-dialog" id="employee-dialog" data-roles="<?= $escape(wjson(workspace_employee_role_options($employeeScope))) ?>" aria-labelledby="employee-dialog-title">
-  <form>
-    <header class="modal-head"><h2 class="modal-title" id="employee-dialog-title">Сотрудник</h2></header>
-    <div class="modal-body">
-      <label class="field"><span class="field-label">ФИО</span><input class="field-input" name="name" maxlength="160" required autofocus></label>
-      <label class="field"><span class="field-label">Логин</span><input class="field-input" name="login" maxlength="60" required autocomplete="off"></label>
-      <div class="field">
-        <label class="field-label" id="employee-password-label" for="employee-password">Пароль</label>
-        <div class="auth-password">
-          <input class="field-input" id="employee-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="72">
-          <?php $passwordEyeField='employee-password'; require __DIR__.'/password-eye.php'; ?>
-        </div>
-      </div>
-      <label class="field"><span class="field-label">Email</span><input class="field-input" name="email" type="email" maxlength="254" autocomplete="off"></label>
-      <div class="field"><span class="field-label" id="employee-role-label">Роль</span><div data-employee-role></div></div>
-      <label class="checkbox-item"><input type="checkbox" name="active"> Учётная запись активна</label>
-      <p data-employee-error role="alert" hidden></p>
-    </div>
-    <footer class="modal-foot"><button class="btn btn-primary" type="submit">Сохранить</button><button class="btn btn-secondary" type="button" data-close>Отмена</button></footer>
-  </form>
-</dialog>
-<template id="vitrine-password-eye">
-  <?php $passwordEyeField='vitrine-editor-field'; require __DIR__.'/password-eye.php'; ?>
+<?php if ($employeePage && !empty($catalogGrid['passwordEdit'])): ?>
+<?php if (!empty($catalogGrid['passwordEye'])): ?>
+<template id="vitrine-password-inline-eye">
+  <?php $passwordEyeField='vitrine-editor-field'; $passwordEyeInline=true; require __DIR__.'/password-eye.php'; unset($passwordEyeInline); ?>
+</template>
+<?php endif; ?>
+<template id="vitrine-password-actions">
+  <button class="vitrine-cell-icon" type="button" data-password-save aria-label="Сохранить пароль"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>
+  <button class="vitrine-cell-icon" type="button" data-password-cancel aria-label="Отмена"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
 </template>
 <?php endif; ?>
 

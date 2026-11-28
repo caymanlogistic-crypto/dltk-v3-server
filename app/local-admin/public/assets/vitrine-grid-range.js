@@ -204,7 +204,7 @@
   }
 
   function cellText(cell) {
-    return cell.querySelector('[data-trip-vehicle-value]')?.textContent ?? cell.textContent;
+    return cell.querySelector('[data-trip-vehicle-value],[data-password-cell-value]')?.textContent ?? cell.textContent;
   }
 
   function copyData(area,mountedRows) {

@@ -1,7 +1,13 @@
 <?php
 declare(strict_types=1);
 
+function workspace_manager_directory_retired(): bool {
+    static $retired;
+    return $retired??=(bool)wquery("SELECT 1 FROM workspace_meta WHERE `key`='manager_directory_retired_v1'")->fetchColumn();
+}
+
 function workspace_manager_catalog_id(): int {
+    if (workspace_manager_directory_retired()) return 0;
     static $id;
     return $id??=(int)wquery("SELECT id FROM catalogs WHERE kind='managers' ORDER BY id LIMIT 1")->fetchColumn();
 }

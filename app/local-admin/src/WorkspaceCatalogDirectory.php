@@ -4,7 +4,7 @@ declare(strict_types=1);
 function workspace_catalog_directory_model(): array {
     $id = filter_var($_GET['id'] ?? null,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
     $catalog = $id ? wquery('SELECT id,title,kind FROM catalogs WHERE id=?',[$id])->fetch() : null;
-    if (!$catalog || workspace_fleet_retired_kind($catalog['kind'])) throw new ApiError('not_found','Справочник не найден.',404);
+    if (!$catalog || workspace_catalog_kind_retired($catalog['kind'])) throw new ApiError('not_found','Справочник не найден.',404);
     workspace_require('catalog',(string)$id,'view');
     $labels = match ($catalog['kind']) {
         'clients'=>['A'=>'Клиент','B'=>'Менеджер']+WORKSPACE_CLIENT_REQUISITE_LABELS,

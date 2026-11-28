@@ -3,9 +3,12 @@
 // Calendar markup and controls follow UIDatePicker in the Vitrine design demo.
 (() => {
   const examples = JSON.parse(document.getElementById('vitrine-preview-calendars')?.content || '{}');
-  const today = new Intl.DateTimeFormat('sv-SE', {
+  const moscowDate = new Intl.DateTimeFormat('sv-SE', {
     timeZone:'Europe/Moscow', year:'numeric', month:'2-digit', day:'2-digit',
-  }).format(new Date());
+  });
+  const todayKey = () => moscowDate.format(new Date());
+  window.VitrineCalendar = Object.freeze({todayKey});
+  const today = todayKey();
   const months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
   const weekdays = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
   const pad = value => String(value).padStart(2,'0');

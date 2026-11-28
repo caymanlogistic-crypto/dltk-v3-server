@@ -42,8 +42,10 @@ function workspace_directory_grid_model(string $directory): array {
             'columns'=>[['letter'=>'A','label'=>$statusDirectory['label']],['letter'=>'B','label'=>'Цвет']]];
     }
     $employees = $directory === 'employees';
-    workspace_require('system',$employees ? 'users' : 'roles','view');
-    $labels = $employees ? ['A'=>'ФИО','B'=>'Логин','C'=>'Пароль','D'=>'Email','E'=>'Роль'] : ['A'=>'Роль'];
+    if ($employees) {
+        workspace_employee_require_view_scope();
+    } else workspace_require('system','roles','view');
+    $labels = $employees ? ['A'=>'ФИО','B'=>'Логин','C'=>'Пароль','E'=>'Роль'] : ['A'=>'Роль'];
     $columns = [];
     foreach ($labels as $letter => $label) $columns[] = ['letter'=>$letter,'label'=>$label];
     return [
@@ -95,9 +97,10 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     if (!$archive) {
         $entries=workspace_directory_order_entries($entries,$flightStatuses ? (int)$catalog['id'] : $directory);
     }
-    $scope = $employees ? workspace_employee_editor_scope() : null;
-    $roleChoices = $scope === null ? [] : array_column(workspace_employee_role_options($scope),'name');
-    $canEdit = $employees ? $scope !== null : ($orderStatuses ? $canEditStatuses : workspace_directory_roles_editable());
+    $scope = $employees ? workspace_employee_credential_scope() : null;
+    $canManageEmployees = in_array($scope,['superadmin','admin'],true);
+    $roleChoices = array_column(workspace_employee_role_options($scope),'name');
+    $canEdit = $employees ? $canManageEmployees : ($orderStatuses ? $canEditStatuses : workspace_directory_roles_editable());
     $rowIds = [];
     $rows = [];
     $requested = $requestedRows !== null ? array_fill_keys($requestedRows,true) : null;
@@ -111,16 +114,17 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         $row = [
             'rowIndex'=>$id, 'rowLabel'=>count($rowIds), 'values'=>$values,
             'kinds'=>array_fill_keys(array_keys($values),'text'),
-            'rowActions'=>$canEdit && (!$employees || workspace_employee_can_edit($scope,$entry)),
+            'rowActions'=>$employees ? $scope!==null && workspace_employee_can_delete($scope,$entry) : $canEdit,
         ];
         if ($employees) {
             $row['baseHash'] = workspace_employee_revision($entry);
-            $row['singleLine'] = ['A'=>true,'B'=>true,'D'=>true];
+            $row['singleLine'] = ['A'=>true,'B'=>true,'C'=>true];
+            $row['kinds']['C'] = 'password';
             foreach (array_keys($values) as $column) {
-                $row['readOnly'][$column] = workspace_employee_grid_readonly($column,$scope,$entry);
+                $row['readOnly'][$column] = workspace_employee_grid_readonly($column,$scope,$entry) ?? '';
                 $row['edits'][$column] = ['revision'=>$entry['authVersion']];
             }
-            if ($row['readOnly']['E'] === null) {
+            if ($row['readOnly']['E'] === '') {
                 $row['choices']['E'] = $roleChoices;
                 $row['requiredChoices']['E'] = true;
             }
@@ -136,9 +140,18 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         if ($directory === 'roles') $row['readOnly']['A'] = 'Название роли записывается при создании.';
         $rows[] = $row;
     }
+    $catalogGrid = ['archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,
+        'orderKey'=>$flightStatuses ? (int)$catalog['id'] : $directory,
+        'draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)];
+    if ($employees) {
+        $catalogGrid += ['canAdd'=>$roleChoices!==[],'draftRowCount'=>2,
+            'canDelete'=>workspace_employee_can_manage_dispatchers($scope),
+            'canReorder'=>workspace_employee_can_reorder($scope),
+            'passwordEdit'=>$scope!==null,'passwordEye'=>$scope==='superadmin'];
+    }
     return [
         'table'=>$model, 'columns'=>$model['columns'], 'rows'=>$rows, 'rowIds'=>$rowIds,
-        'palette'=>$palette, 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,'draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)],
+        'palette'=>$palette, 'catalogGrid'=>$catalogGrid,
     ];
 }
 
@@ -154,7 +167,7 @@ function workspace_directory_draft_fields(string $directory, array $roles = [], 
     $optionalAssignment = ['type'=>'text','required'=>true,'allowEmpty'=>true];
     return match ($directory) {
         'flight-statuses'=>['A'=>$name,'B'=>$color],
-        'employees'=>['A'=>$name,'B'=>$name,'C'=>['required'=>true,'type'=>'password'],'D'=>['type'=>'email'],
+        'employees'=>['A'=>$name,'B'=>['required'=>true,'type'=>'email'],'C'=>['required'=>true,'type'=>'password'],
             'E'=>['required'=>true,'type'=>'choice','choices'=>$roles]],
         'clients'=>['A'=>$name,'B'=>$optionalAssignment]+array_fill_keys(array_keys(WORKSPACE_CLIENT_REQUISITE_LABELS),['type'=>'text']),
         'entries'=>match (true) {

@@ -7,6 +7,12 @@
   const tripDraftBody=document.querySelector('[data-trip-drafts]');
   const dayDraftTemplate=tripDraftBody?.hasAttribute('data-trip-day-drafts') ? drafts[0].cloneNode(true) : null;
   const dateLayout=window.VitrineTripDateGroups?.create(ids,Boolean(dayDraftTemplate));
+  if (dateLayout) {
+    setInterval(()=>dateLayout.refreshToday(body),60000);
+    document.addEventListener('visibilitychange',()=>{
+      if (!document.hidden) dateLayout.refreshToday(body);
+    });
+  }
   const dayDraftRows=new Map();
   const dayRefills=new Map();
   const localDateEdits=new Set();
@@ -221,7 +227,9 @@
   async function exportRows(columns){
     const selectedIds=[...ids], search=appliedSearch, values=new Map(), missing=[];
     function capture(row){
-      const cells=new Map(Array.from(row.querySelectorAll('td[data-column]'),cell=>[cell.dataset.column,cell.textContent+(cell.dataset.fleetDriverSuffix ?? '')]));
+      const cells=new Map(Array.from(row.querySelectorAll('td[data-column]'),cell=>[
+        cell.dataset.column,(cell.dataset.tripPersonName ?? cell.textContent)+(cell.dataset.fleetDriverSuffix ?? ''),
+      ]));
       values.set(Number(row.dataset.rowNumber),[row.querySelector('th')?.firstChild?.textContent ?? '',...columns.map(column=>cells.get(column) ?? '')]);
     }
     for(const id of selectedIds){
@@ -291,21 +299,24 @@
     },5000);
   }
   const removedRows=new Set();
+  async function animateRowRemoval(row) {
+    if (!row?.isConnected) return;
+    row.dataset.tripRowRemoving='';
+    const animation=row.getAnimations().find(item=>item.animationName==='vitrine-trip-row-remove');
+    if (animation) await Promise.allSettled([animation.finished]);
+  }
   async function animateRemovedRows() {
-    const marked=[];
     const animations=[];
     for (const id of removedRows) {
       if (positions.has(String(id))) continue;
-      removedRows.delete(id);
-      const row=cache.get(id) ?? body.querySelector('tr[data-row-number="'+id+'"]');
-      if (!row?.isConnected) continue;
-      row.dataset.tripRowRemoving='';
-      marked.push(row);
-      const animation=row.getAnimations().find(item=>item.animationName==='vitrine-trip-row-remove');
-      if (animation) animations.push(animation.finished);
+      const row=body.querySelector('tr[data-row-number="'+id+'"]');
+      if (row) animations.push(animateRowRemoval(row));
+      else removedRows.delete(id);
     }
-    await Promise.allSettled(animations);
-    return marked;
+    await Promise.all(animations);
+  }
+  function clearRemovedRows() {
+    for (const id of removedRows) if (!positions.has(String(id))) removedRows.delete(id);
   }
   function stamp(spacer,size){spacer.hidden=size===0;spacer.firstElementChild.style.setProperty('--spacer-height',size+'px');}
   const availableHeight=()=>scroll.clientHeight-headHeight;
@@ -326,7 +337,12 @@
     if(window.VitrineGrid?.editing())return;
     const plan=viewportPlan;
     if(!ids.length){
-      if (removedRows.size) await animateRemovedRows();
+      if (removedRows.size) {
+        const ticket=generation;
+        await animateRemovedRows();
+        if (generation!==ticket || window.VitrineGrid?.editing()) return;
+      }
+      clearRemovedRows();
       viewportPlan=null;body.replaceChildren(top,bottom);stamp(top,0);stamp(bottom,0);stamp(tail,0);first=last=0;windowStartPage=0;windowEndPage=-1;prune();table.removeAttribute('aria-busy');
       if (plan) scroll.scrollTop=plan.top;
       window.dispatchEvent(new CustomEvent('vitrine-rows-updated'));
@@ -349,11 +365,9 @@
       const rows=ids.slice(start,end).map(id=>cache.get(id));
       if(rows.some(row=>!row))throw new Error('Не удалось загрузить все строки окна. Повторите прокрутку.');
       if (removedRows.size) {
-        const marked=await animateRemovedRows();
-        if (ticket!==generation || window.VitrineGrid?.editing()) {
-          for (const row of marked) delete row.dataset.tripRowRemoving;
-          return;
-        }
+        await animateRemovedRows();
+        if (ticket!==generation || window.VitrineGrid?.editing()) return;
+        clearRemovedRows();
       }
       const mountStarted=performance.now();
       rows.forEach((row,index)=>row.setAttribute('aria-rowindex',String((dateLayout?.rowIndex(row.dataset.rowNumber)??start+index)+2)));
@@ -717,6 +731,7 @@
 
   window.VitrineRows=Object.freeze({
     refreshManifest,
+    animateRowRemoval,
     moveRow,
     visibleRowRect,
     flashInsertedTrips,

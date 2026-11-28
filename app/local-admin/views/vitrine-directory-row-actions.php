@@ -7,6 +7,8 @@ declare(strict_types=1);
   <?php endif; ?>
   <?php if ($canManageRows): ?>
   <button class="ctx-item" type="button" role="menuitem" data-directory-archive-toggle></button>
+  <?php endif; ?>
+  <?php if ($canDeleteRows): ?>
   <button class="ctx-item is-danger" type="button" role="menuitem" data-directory-delete>Удалить строку</button>
   <?php endif; ?>
 </div>

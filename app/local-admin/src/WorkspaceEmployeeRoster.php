@@ -53,8 +53,11 @@ function workspace_write_employee_roster(mixed $roster, bool $createOnly=false, 
         if ($createOnly && isset($entry['previousLogin'])) {
             throw new ApiError('invalid_roster','При переносе через кабинет переименование недоступно.');
         }
-        $login = workspace_employee_profile_value('login',$entry['login'] ?? null);
-        $previous = isset($entry['previousLogin']) ? workspace_employee_profile_value('login',$entry['previousLogin']) : $login;
+        $login = $entry['login'] ?? null;
+        $previous = $entry['previousLogin'] ?? $login;
+        if (!is_string($login) || !is_string($previous)) throw new ApiError('invalid_roster','Укажите логин.');
+        $login = strtolower(trim($login));
+        $previous = strtolower(trim($previous));
         $account = ['login'=>$login,'previousLogin'=>$previous]+$entry;
         // Updating the acting account can invalidate the session used to authorize writes.
         if ($actorLogin === $login || $actorLogin === $previous) $actingAccount[$index] = $account;
@@ -68,6 +71,7 @@ function workspace_write_employee_roster(mixed $roster, bool $createOnly=false, 
             [$login,$previous,$login])->fetch();
         $old = $user ? (workspace_employee_records((int)$user['id'])[0] ?? null) : null;
         if ($user && !$old) throw new ApiError('invalid_roster','Учётная запись удалена.',409);
+        $login = workspace_employee_profile_value('login',$login,$old['login']??null);
         if (isset($seenLogins[$login]) || ($old && isset($seenIds[$old['id']]))) throw new ApiError('duplicate_login','Логин встречается в списке повторно.',409);
         $seenLogins[$login] = true;
         $code = $entry['role'] ?? null;
@@ -82,17 +86,16 @@ function workspace_write_employee_roster(mixed $roster, bool $createOnly=false, 
             continue;
         }
         $name = workspace_employee_profile_value('name',$entry['name'] ?? $old['name'] ?? workspace_employee_role_names()[$code] ?? null);
-        $email = workspace_employee_profile_value('email',$entry['email'] ?? (str_contains($login,'@') ? $login : ($old['email'] ?? '')));
         $password = $entry['password'] ?? null;
         if (!is_string($password) || $password === '') throw new ApiError('invalid_password','Укажите пароль для новой учётной записи.');
         $passwordChanged = !$user || !workspace_password_verify($password,$user['password_hash']);
-        if ($old && $old['login'] === $login && $old['name'] === $name && $old['email'] === $email &&
+        if ($old && $old['login'] === $login && $old['name'] === $name &&
             $old['active'] && array_column($old['roles'],'id') === [$role] && !$passwordChanged) {
             $seenIds[$old['id']] = true;
             ++$result['unchanged'];
             continue;
         }
-        $saved = workspace_employee_write(['id'=>$old['id'] ?? null,'login'=>$login,'name'=>$name,'email'=>$email,
+        $saved = workspace_employee_write(['id'=>$old['id'] ?? null,'login'=>$login,'name'=>$name,
             'password'=>$passwordChanged ? $password : '', 'active'=>true,'roleIds'=>[$role]],privateRoster:true);
         $seenIds[$saved['id']] = true;
         ++$result[$old ? 'updated' : 'created'];

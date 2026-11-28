@@ -89,7 +89,7 @@
     window.dispatchEvent(new CustomEvent('vitrine-editor-closed'));
   }
   function position() {
-    if (!active) return;
+    if (!active || active.inlinePassword) return;
     const panel = active.panel;
     if (active.inline) {
       const rect = active.cell.getBoundingClientRect();
@@ -201,7 +201,11 @@
     const displayValue = slotRequested ? window.VitrineSlot.requestLabel
       : integerDigits ? integerMask.format(integerDigits) : result.value;
     const vehicleValue = cell.querySelector('[data-trip-vehicle-value]');
-    (vehicleValue ?? cell).textContent = displayValue;
+    if (cell.hasAttribute('data-trip-person-name')) {
+      const fullName = String(displayValue ?? '');
+      cell.dataset.tripPersonName = fullName;
+      cell.textContent = window.VitrinePersonNames.shortNames(fullName);
+    } else (vehicleValue ?? cell.querySelector('[data-password-cell-value]') ?? cell).textContent = displayValue;
     if (vehicleValue) cell.querySelector('[data-trip-driver-button]').hidden = !displayValue.trim();
     cell.dataset.original = result.original ?? '';
     cell.dataset.revision = String(result.revision);
@@ -380,6 +384,7 @@
   async function save(reset = false) {
     if (!active || active.saving) return;
     const editor = active;
+    if (editor.cell.dataset.kind === 'password' && editor.field.value === '') { close(); return; }
     if (!reset && (editor.cell.dataset.compactInput || editor.cell.dataset.kind==='slot') && !hasDraft(editor)) {
       close();
       return;
@@ -413,7 +418,7 @@
     if (editor.requestField) editor.requestField.disabled = true;
     editor.dropoff?.fields.forEach(field=>field.disabled=true);
     editor.fleetDriver?.fields.forEach(field=>field.disabled=true);
-    editor.saveButton.textContent = 'Сохраняю…';
+    if (!editor.inlinePassword) editor.saveButton.textContent = 'Сохраняю…';
     editor.panel.setAttribute('aria-busy', 'true');
     const cell = editor.cell;
     const before = snapshot(cell);
@@ -444,7 +449,7 @@
       if (editor.requestField) editor.requestField.disabled = false;
       editor.dropoff?.fields.forEach(field=>field.disabled=false);
       editor.fleetDriver?.fields.forEach(field=>field.disabled=false);
-      editor.saveButton.textContent = 'Сохранить';
+      if (!editor.inlinePassword) editor.saveButton.textContent = 'Сохранить';
       editor.panel.removeAttribute('aria-busy');
       editor.error.textContent = error instanceof TypeError ? 'Нет связи с сервером. Текст сохранён в поле — повторите попытку.' : error.message;
       if (error.code?.startsWith('margin_rule_')) editor.error.hidden = false;
@@ -518,8 +523,11 @@
       return;
     }
     document.querySelectorAll('.vitrine-folder[open]').forEach(folder => { folder.open = false; });
-    const panel = element('section', 'vitrine-editor');
-    panel.setAttribute('role', 'dialog');
+    const draftType = cell.dataset.draftType;
+    const accountPassword = cell.dataset.kind === 'password';
+    const password = accountPassword || draftType === 'password';
+    const panel = element('section', password ? 'vitrine-password-inline auth-password' : 'vitrine-editor');
+    panel.setAttribute('role', password ? 'group' : 'dialog');
     const isStatus = cell.dataset.kind === 'status';
     const isSlot = cell.dataset.kind === 'slot';
     const mask = isSlot ? window.VitrineSlot : window.VitrineCompactInput[cell.dataset.compactInput];
@@ -590,9 +598,8 @@
     if (['money','cargo-value'].includes(cell.dataset.compactInput)) field.classList.add('vitrine-money-input');
     field.id = 'vitrine-editor-field';
     field.setAttribute('aria-label', 'Значение ячейки');
-    const draftType = cell.dataset.draftType;
     const formula = cell.hasAttribute('data-formula-input');
-    let initialValue = draftType === 'password' ? window.VitrineDirectoryDrafts.secret(cell) : (cell.dataset.formula ?? cell.textContent);
+    let initialValue = accountPassword ? '' : password ? window.VitrineDirectoryDrafts.secret(cell) : (cell.dataset.formula ?? cell.textContent);
     if (fleetEditor && control) initialValue=control.field.value;
     if (dropoffEditor && !Number(cell.dataset.referenceId)) initialValue='';
     if (mask) {
@@ -602,13 +609,17 @@
       const digitsOnlyPaste = cell.dataset.compactInput === 'date';
       mask.bind(field,{digitsOnlyPaste,formula});
     }
-    field.autocomplete = draftType === 'password' ? 'new-password' : 'off';
-    if (draftType === 'password') field.type = 'password';
+    field.autocomplete = password ? 'new-password' : 'off';
+    if (password) {
+      field.type = 'password';
+      field.setAttribute('aria-label', accountPassword ? 'Новый пароль' : 'Пароль');
+    }
+    if (accountPassword) field.placeholder = 'Новый пароль';
     if (draftType === 'email') field.inputMode = 'email';
     if (draftType === 'date') field.inputMode = 'numeric';
     if (draftType === 'phone') field.inputMode = 'numeric';
     if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
-    field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : isSingleLine && catalog ? 160 : 20000;
+    field.maxLength = draftType === 'email' ? 254 : password ? 72 : isSingleLine && catalog ? 160 : 20000;
     field.value = mask && firstCharacter !== null && !(formula && firstCharacter==='=')
       ? mask.format(firstCharacter) : firstCharacter ?? initialValue;
     if (isContainer) {
@@ -674,12 +685,6 @@
       field.addEventListener('input',event=>{
         if (field.value && event.inputType?.startsWith('insert')) requestField.checked = false;
       });
-    } else if (draftType==='password' && window.DltkPasswordVisibility && document.getElementById('vitrine-password-eye')) {
-      const wrapper = element('div','auth-password');
-      const toggle = document.getElementById('vitrine-password-eye').content.firstElementChild.cloneNode(true);
-      wrapper.append(field,toggle);
-      panel.append(wrapper);
-      window.DltkPasswordVisibility(field,toggle);
     } else panel.append(control?.element || field);
     const fieldColor=fieldColorLists[cell.dataset.column];
     if (fieldColor || cell.hasAttribute('data-order-status')) {
@@ -732,23 +737,41 @@
     if (!catalog && cell.dataset.column==='Y') panel.prepend(error);
     else panel.append(error);
     const actions = element('div', 'vitrine-editor-actions');
-    const saveButton = element('button', 'btn btn-primary', 'Сохранить');
-    const cancelButton = element('button', 'btn btn-secondary', 'Отмена');
+    const passwordActions = password ? document.getElementById('vitrine-password-actions').content.cloneNode(true) : null;
+    const saveButton = passwordActions?.querySelector('[data-password-save]') ?? element('button', 'btn btn-primary', 'Сохранить');
+    const cancelButton = passwordActions?.querySelector('[data-password-cancel]') ?? element('button', 'btn btn-secondary', 'Отмена');
     const buttons = [saveButton, cancelButton, ...panel.querySelectorAll('[data-quick-open]')];
     saveButton.type = cancelButton.type = 'button';
     saveButton.addEventListener('click', () => save());
     cancelButton.addEventListener('click', close);
     actions.append(saveButton, cancelButton);
-    if (!dropoff && !isStatus && !documentStatusEditor && !cell.hasAttribute('data-order-status') && cell.dataset.compactInput!=='time' && cell.classList.contains('local-edited')) {
+    if (!password && !dropoff && !isStatus && !documentStatusEditor && !cell.hasAttribute('data-order-status') && cell.dataset.compactInput!=='time' && cell.classList.contains('local-edited')) {
       const resetButton = element('button', 'btn btn-secondary vitrine-editor-reset', 'Исходное');
       resetButton.type = 'button'; resetButton.addEventListener('click', () => save(true));
       buttons.push(resetButton); actions.append(resetButton);
     }
-    panel.append(actions);
-    document.body.append(panel);
+    if (password) {
+      panel.append(...actions.children);
+      const toggle = document.getElementById('vitrine-password-inline-eye')?.content.firstElementChild.cloneNode(true);
+      if (toggle && window.DltkPasswordVisibility) {
+        panel.append(toggle);
+        const setVisible = window.DltkPasswordVisibility(field,toggle);
+        const updateToggle = () => {
+          toggle.hidden = field.value === '';
+          if (toggle.hidden) setVisible(false);
+        };
+        updateToggle();
+        field.addEventListener('input',updateToggle);
+        buttons.push(toggle);
+      }
+      cell.append(panel);
+    } else {
+      panel.append(actions);
+      document.body.append(panel);
+    }
     cell.classList.add('is-editing');
     select(cell);
-    active = { panel, cell, field, initialValue, orderField, orderControl, initialOrder:orderControl?.resolveValue(), requestField, initialRequest, dropoff, fleetDriver, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
+    active = { panel, cell, field, initialValue, inlinePassword:password, orderField, orderControl, initialOrder:orderControl?.resolveValue(), requestField, initialRequest, dropoff, fleetDriver, resolveValue:control?.resolveValue, buttons, saveButton, error, saving:false };
     window.dispatchEvent(new CustomEvent('vitrine-editor-opened',{detail:{row:Number(cell.dataset.row),column:cell.dataset.column,panel,cell,field,dropoffDate:dropoff?.dateField}}));
     table?.classList.add('has-editor');
     panel.addEventListener('keydown', event => {
@@ -807,11 +830,13 @@
     const cell = event.target.closest('td[data-edit-cell]');
     if (!cell) return;
     if (event.button === 2) { event.preventDefault(); return; }
-    if (event.button !== 0) return;
+    if (event.button !== 0 || event.target.closest('.vitrine-password-inline')) return;
     event.preventDefault();
     if (!active) cell.focus({ preventScroll:true });
   });
-  table?.addEventListener('selectstart', event => event.preventDefault());
+  table?.addEventListener('selectstart', event => {
+    if (!event.target.closest('.vitrine-password-inline')) event.preventDefault();
+  });
   table?.addEventListener('dragstart', event => {
     if (!event.target.closest('[data-quick-row-drag]')) event.preventDefault();
   });
@@ -834,6 +859,11 @@
   const clickedCell = event => event.target.closest('button, a[href], input, select, textarea')
     ? null : event.target.closest('td[data-edit-cell]');
   table?.addEventListener('click', event => {
+    const passwordAction = event.target.closest('[data-password-cell-action]');
+    if (passwordAction && !window.VitrineRangePaste?.busy()) {
+      open(passwordAction.closest('td[data-edit-cell]'));
+      return;
+    }
     const cell = clickedCell(event);
     if (!cell || active || window.VitrineRangePaste?.busy()) return;
     select(cell);
@@ -924,6 +954,10 @@
     select(next); next.focus({preventScroll:true}); reveal(next); return true;
   }
   function askClear(cell) {
+    if (cell.dataset.kind === 'password') {
+      report('Откройте редактор ячейки для смены пароля.', 'info');
+      return;
+    }
     if (cell.dataset.derivedSource || cell.dataset.kind==='client-unload-points') {
       notifyDerivedCell(cell);
       return;
@@ -993,6 +1027,11 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
+    if (event.key === 'Enter' && event.altKey && cell.querySelector('[data-password-cell-action]')) {
+      event.preventDefault();
+      open(cell);
+      return;
+    }
     if (event.key === 'Enter' && event.altKey && cell.matches('[data-trip-driver-cell]')) {
       event.preventDefault();
       cell.querySelector('[data-trip-driver-button]:not([hidden])')?.click();
@@ -1056,7 +1095,7 @@
     let cell = eventCell(event);
     const inEditor = active && event.target === active.field;
     if ((!cell && !inEditor) || !event.clipboardData) return;
-    if (inEditor && (active.cell.dataset.kind === 'slot' || window.VitrineCompactInput[active.cell.dataset.compactInput] || active.field.getAttribute('aria-autocomplete') === 'list'
+    if (inEditor && (active.cell.dataset.kind === 'password' || active.cell.dataset.kind === 'slot' || window.VitrineCompactInput[active.cell.dataset.compactInput] || active.field.getAttribute('aria-autocomplete') === 'list'
       || active.cell.closest('[data-draft-slot]'))) return;
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
@@ -1085,7 +1124,7 @@
     if (target.dataset.kind==='client-managers') { report('Откройте список менеджеров из ячейки.','info'); return; }
     if (target.dataset.kind==='client-unload-points') { report('Откройте точки выгрузки из ячейки.','info'); return; }
     if (target.dataset.kind==='unload-contacts') { report('Откройте редактор контактов из ячейки.','info'); return; }
-    if (!inEditor && target.dataset.draftType === 'password') {
+    if (!inEditor && (target.dataset.draftType === 'password' || target.dataset.kind === 'password')) {
       report('Откройте поле пароля для вставки.','info');
       return;
     }

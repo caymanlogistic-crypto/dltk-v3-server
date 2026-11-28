@@ -31,7 +31,7 @@
   function check(cell) {
     if (!cell || cell.matches('[data-readonly-cell],[data-derived-source],[aria-readonly="true"]') ||
         ['client-managers','client-unload-points','unload-contacts'].includes(cell.dataset.kind) ||
-        cell.dataset.draftType==='password') {
+        cell.dataset.draftType==='password' || cell.dataset.kind==='password') {
       const address=cell ? cell.dataset.column+(cell.closest('tr').querySelector('th')?.firstChild?.textContent??'') : '';
       throw new Error([address,'Ячейка недоступна для вставки.'].filter(Boolean).join(' · '));
     }
