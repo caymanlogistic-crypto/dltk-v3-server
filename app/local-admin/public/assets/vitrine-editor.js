@@ -384,6 +384,7 @@
   async function save(reset = false) {
     if (!active || active.saving) return;
     const editor = active;
+    if (editor.cell.dataset.kind === 'password' && editor.field.value === '') { close(); return; }
     if (!reset && (editor.cell.dataset.compactInput || editor.cell.dataset.kind==='slot') && !hasDraft(editor)) {
       close();
       return;
@@ -595,8 +596,10 @@
     field.id = 'vitrine-editor-field';
     field.setAttribute('aria-label', 'Значение ячейки');
     const draftType = cell.dataset.draftType;
+    const accountPassword = cell.dataset.kind === 'password';
+    const password = accountPassword || draftType === 'password';
     const formula = cell.hasAttribute('data-formula-input');
-    let initialValue = draftType === 'password' ? window.VitrineDirectoryDrafts.secret(cell) : (cell.dataset.formula ?? cell.textContent);
+    let initialValue = accountPassword ? '' : password ? window.VitrineDirectoryDrafts.secret(cell) : (cell.dataset.formula ?? cell.textContent);
     if (fleetEditor && control) initialValue=control.field.value;
     if (dropoffEditor && !Number(cell.dataset.referenceId)) initialValue='';
     if (mask) {
@@ -606,13 +609,17 @@
       const digitsOnlyPaste = cell.dataset.compactInput === 'date';
       mask.bind(field,{digitsOnlyPaste,formula});
     }
-    field.autocomplete = draftType === 'password' ? 'new-password' : 'off';
-    if (draftType === 'password') field.type = 'password';
+    field.autocomplete = password ? 'new-password' : 'off';
+    if (password) {
+      field.type = 'password';
+      field.setAttribute('aria-label', accountPassword ? 'Новый пароль' : 'Пароль');
+    }
+    if (accountPassword) field.placeholder = 'Новый пароль';
     if (draftType === 'email') field.inputMode = 'email';
     if (draftType === 'date') field.inputMode = 'numeric';
     if (draftType === 'phone') field.inputMode = 'numeric';
     if (cell.hasAttribute('data-draft-allow-empty')) field.placeholder = 'Можно оставить пустым';
-    field.maxLength = draftType === 'email' ? 254 : draftType === 'password' ? 72 : isSingleLine && catalog ? 160 : 20000;
+    field.maxLength = draftType === 'email' ? 254 : password ? 72 : isSingleLine && catalog ? 160 : 20000;
     field.value = mask && firstCharacter !== null && !(formula && firstCharacter==='=')
       ? mask.format(firstCharacter) : firstCharacter ?? initialValue;
     if (isContainer) {
@@ -678,12 +685,16 @@
       field.addEventListener('input',event=>{
         if (field.value && event.inputType?.startsWith('insert')) requestField.checked = false;
       });
-    } else if (draftType==='password' && window.DltkPasswordVisibility && document.getElementById('vitrine-password-eye')) {
+    } else if (password) {
       const wrapper = element('div','auth-password');
-      const toggle = document.getElementById('vitrine-password-eye').content.firstElementChild.cloneNode(true);
-      wrapper.append(field,toggle);
+      wrapper.append(field);
+      const eyeTemplate = document.getElementById('vitrine-password-eye');
+      if (eyeTemplate && window.DltkPasswordVisibility) {
+        const toggle = eyeTemplate.content.firstElementChild.cloneNode(true);
+        wrapper.append(toggle);
+        window.DltkPasswordVisibility(field,toggle);
+      }
       panel.append(wrapper);
-      window.DltkPasswordVisibility(field,toggle);
     } else panel.append(control?.element || field);
     const fieldColor=fieldColorLists[cell.dataset.column];
     if (fieldColor || cell.hasAttribute('data-order-status')) {
@@ -738,12 +749,12 @@
     const actions = element('div', 'vitrine-editor-actions');
     const saveButton = element('button', 'btn btn-primary', 'Сохранить');
     const cancelButton = element('button', 'btn btn-secondary', 'Отмена');
-    const buttons = [saveButton, cancelButton, ...panel.querySelectorAll('[data-quick-open]')];
+    const buttons = [saveButton, cancelButton, ...panel.querySelectorAll('[data-quick-open], .auth-password-toggle')];
     saveButton.type = cancelButton.type = 'button';
     saveButton.addEventListener('click', () => save());
     cancelButton.addEventListener('click', close);
     actions.append(saveButton, cancelButton);
-    if (!dropoff && !isStatus && !documentStatusEditor && !cell.hasAttribute('data-order-status') && cell.dataset.compactInput!=='time' && cell.classList.contains('local-edited')) {
+    if (!password && !dropoff && !isStatus && !documentStatusEditor && !cell.hasAttribute('data-order-status') && cell.dataset.compactInput!=='time' && cell.classList.contains('local-edited')) {
       const resetButton = element('button', 'btn btn-secondary vitrine-editor-reset', 'Исходное');
       resetButton.type = 'button'; resetButton.addEventListener('click', () => save(true));
       buttons.push(resetButton); actions.append(resetButton);
@@ -928,6 +939,10 @@
     select(next); next.focus({preventScroll:true}); reveal(next); return true;
   }
   function askClear(cell) {
+    if (cell.dataset.kind === 'password') {
+      report('Откройте редактор ячейки для смены пароля.', 'info');
+      return;
+    }
     if (cell.dataset.derivedSource || cell.dataset.kind==='client-unload-points') {
       notifyDerivedCell(cell);
       return;
@@ -1060,7 +1075,7 @@
     let cell = eventCell(event);
     const inEditor = active && event.target === active.field;
     if ((!cell && !inEditor) || !event.clipboardData) return;
-    if (inEditor && (active.cell.dataset.kind === 'slot' || window.VitrineCompactInput[active.cell.dataset.compactInput] || active.field.getAttribute('aria-autocomplete') === 'list'
+    if (inEditor && (active.cell.dataset.kind === 'password' || active.cell.dataset.kind === 'slot' || window.VitrineCompactInput[active.cell.dataset.compactInput] || active.field.getAttribute('aria-autocomplete') === 'list'
       || active.cell.closest('[data-draft-slot]'))) return;
     event.preventDefault();
     if(cell&&!cell.isConnected&&window.VitrineRows){cell=await window.VitrineRows.activate(cell);if(!cell)return;}
@@ -1089,7 +1104,7 @@
     if (target.dataset.kind==='client-managers') { report('Откройте список менеджеров из ячейки.','info'); return; }
     if (target.dataset.kind==='client-unload-points') { report('Откройте точки выгрузки из ячейки.','info'); return; }
     if (target.dataset.kind==='unload-contacts') { report('Откройте редактор контактов из ячейки.','info'); return; }
-    if (!inEditor && target.dataset.draftType === 'password') {
+    if (!inEditor && (target.dataset.draftType === 'password' || target.dataset.kind === 'password')) {
       report('Откройте поле пароля для вставки.','info');
       return;
     }

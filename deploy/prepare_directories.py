@@ -12,7 +12,8 @@ ROOT = Path('/srv/dltk-v3-test')
 ADMIN = ROOT / 'shared/private/mysql-admin.cnf'
 CONFIG = ROOT / 'shared/runtime.ini'
 SCHEMA = 'dltk_v3_test'
-TABLES = ('manager_profiles', 'client_manager_links', 'client_account_manager_links', 'unload_points',
+LEGACY_MANAGER_TABLES = ('manager_profiles', 'client_manager_links')
+TABLES = ('client_account_manager_links', 'unload_points',
           'unload_point_contacts', 'unload_point_origins')
 PHP_PACKAGES = ('php8.4-xml', 'php8.4-zip')
 HERE = Path(__file__).resolve().parent
@@ -47,11 +48,11 @@ def runtime_check():
         raise SystemExit('Expected DLTK database user is missing.')
 
 
-def missing_tables():
-    quoted = ','.join(f"'{table}'" for table in TABLES)
+def missing_tables(tables):
+    quoted = ','.join(f"'{table}'" for table in tables)
     existing = set(query(f"SELECT table_name FROM information_schema.tables "
                          f"WHERE table_schema=DATABASE() AND table_name IN ({quoted})").splitlines())
-    return [table for table in TABLES if table not in existing]
+    return [table for table in tables if table not in existing]
 
 
 def install_php():
@@ -78,18 +79,23 @@ def main():
     parser.add_argument('--apply', action='store_true')
     args = parser.parse_args()
     runtime_check()
-    print('Missing directory tables:', ', '.join(missing_tables()) or 'none')
+    retired = query("SELECT COUNT(*) FROM workspace_meta m WHERE m.key='manager_directory_retired_v1'") == '1'
+    tables = TABLES if retired else LEGACY_MANAGER_TABLES + TABLES
+    files = ('client_account_managers.sql', 'unload_points.sql')
+    if not retired:
+        files = ('manager_directory.sql',) + files
+    print('Missing directory tables:', ', '.join(missing_tables(tables)) or 'none')
     print('Missing PHP-FPM modules:', ', '.join(sorted({'dom', 'zip'} - php_modules())) or 'none')
     if not args.apply:
         return
     install_php()
-    for filename in ('manager_directory.sql', 'client_account_managers.sql', 'unload_points.sql'):
+    for filename in files:
         query((HERE / filename).read_text(encoding='utf-8'))
-    for table in TABLES:
+    for table in tables:
         quote = chr(96)
         target = f'{quote}{SCHEMA}{quote}.{quote}{table}{quote}'
         query(f"GRANT SELECT,INSERT,UPDATE,DELETE ON {target} TO 'dltk_v3_app'@'localhost'")
-    if missing_tables():
+    if missing_tables(tables):
         raise SystemExit('Directory schema preparation incomplete.')
     print('Directory tables, grants and PHP-FPM configuration are ready.')
 

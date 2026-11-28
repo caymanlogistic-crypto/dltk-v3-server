@@ -200,7 +200,6 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
         $old = $id === null ? null : (workspace_employee_records($id)[0] ?? null);
         if ($id !== null && !$old) throw new ApiError('not_found','Сотрудник не найден.',404);
         if ($old && !workspace_employee_can_edit($scope,$old)) throw new ApiError('forbidden','Для этой учётной записи нет доступа.',403);
-        if ($cellEdit && !$old['active']) throw new ApiError('readonly','Сотрудник в архиве.',403);
         if ($old && ($cellEdit || isset($input['revision'])) && ($input['revision'] ?? null) !== workspace_employee_revision($old)) {
             $message = $cellEdit
                 ? 'Данные сотрудника изменились. Скопируйте черновик и обновите страницу.'

@@ -115,12 +115,13 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         ];
         if ($employees) {
             $row['baseHash'] = workspace_employee_revision($entry);
-            $row['singleLine'] = ['A'=>true,'B'=>true,'D'=>true];
+            $row['singleLine'] = ['A'=>true,'B'=>true,'C'=>true,'D'=>true];
+            $row['kinds']['C'] = 'password';
             foreach (array_keys($values) as $column) {
-                $row['readOnly'][$column] = workspace_employee_grid_readonly($column,$scope,$entry);
+                $row['readOnly'][$column] = workspace_employee_grid_readonly($column,$scope,$entry) ?? '';
                 $row['edits'][$column] = ['revision'=>$entry['authVersion']];
             }
-            if ($row['readOnly']['E'] === null) {
+            if ($row['readOnly']['E'] === '') {
                 $row['choices']['E'] = $roleChoices;
                 $row['requiredChoices']['E'] = true;
             }

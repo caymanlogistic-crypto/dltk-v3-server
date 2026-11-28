@@ -111,7 +111,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php endif; ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-scope.js?v=2')) ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-paths.js'),ENT_QUOTES,'UTF-8') ?>"></script><script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-notifications.js'),ENT_QUOTES,'UTF-8') ?>"></script>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-clipboard-menu.js')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-clipboard-menu.js?v=account-password-1')) ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-display.js?v=layout-defaults-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (!empty($data['containerTypeRules'])): ?>
@@ -127,7 +127,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if ($isAvtovyvoz): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-person-names.js')) ?>"></script>
   <?php endif; ?>
-  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js?v=short-names-1'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js?v=account-password-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (in_array(true,array_column($columns,'tripDriverCard'),true)): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-trip-driver.js')) ?>"></script>
   <?php endif; ?>
@@ -140,7 +140,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-range.js')) ?>"></script>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-range-paste.js?v=quick-catalog-2')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-range-paste.js?v=account-password-1')) ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-grid.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (!$directory): ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-presence.js?v=short-names-1'),ENT_QUOTES,'UTF-8') ?>"></script>
@@ -172,7 +172,6 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-catalog.js')) ?>"></script>
   <?php elseif ($directory === 'employees'): ?>
   <script defer src="<?= $escape($viewUrl('/assets/workspace-auth.js?v=5')) ?>"></script>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-employees.js')) ?>"></script>
   <?php endif; ?>
 </head>
 <body class="vitrine<?= $clientCatalog ? ' vitrine-catalog-page' : '' ?>"<?php if ($directory): ?> data-vitrine-catalog="<?= $escape($directory) ?>" data-vitrine-catalog-kind="<?= $escape($currentTable['catalogKind']??'') ?>"<?php endif; ?><?= $isAvtovyvoz && vitrine_copy_diagnostics_enabled() ? ' data-copy-diagnostics' : '' ?> data-workspace-user="<?= (int)$currentUser['id'] ?>" data-workspace-table="<?= $escape($currentTable['slug']) ?>">
