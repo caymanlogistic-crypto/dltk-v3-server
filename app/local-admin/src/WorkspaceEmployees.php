@@ -18,6 +18,9 @@ function workspace_account_short_names(string $names): string {
 
 const WORKSPACE_PRIVATE_EMPLOYEE_ROLES = ['superadmin', 'admin', 'directory_analytics'];
 const WORKSPACE_TEAM_EMPLOYEE_ROLES = ['manager','directory_senior_manager','logist','directory_senior_logist'];
+const WORKSPACE_EMPLOYEE_ACCESS_KEY = 'employee_access_paused_';
+const WORKSPACE_EMPLOYEE_ACCESS_PAUSED_SQL =
+    "EXISTS (SELECT 1 FROM workspace_meta p WHERE p.`key`=CONCAT('".WORKSPACE_EMPLOYEE_ACCESS_KEY."',u.id))";
 
 function workspace_employee_role_names(): array {
     return [
@@ -43,7 +46,7 @@ function workspace_employee_roles(bool $archive = false, bool $includeAll = fals
 }
 
 function workspace_employee_records(?int $id = null, ?bool $active = null): array {
-    $sql = "SELECT u.id,u.name,u.login,u.active,u.auth_version,
+    $sql = "SELECT u.id,u.name,u.login,u.active,u.auth_version,".WORKSPACE_EMPLOYEE_ACCESS_PAUSED_SQL." AS access_paused,
             r.id AS role_id,r.code,r.name AS role_name
             FROM users u
             LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id";
@@ -58,7 +61,8 @@ function workspace_employee_records(?int $id = null, ?bool $active = null): arra
         $userId = (int)$row['id'];
         $employees[$userId] ??= [
             'id'=>$userId, 'name'=>$row['name'], 'login'=>$row['login'],
-            'active'=>(bool)$row['active'], 'authVersion'=>(int)$row['auth_version'], 'roles'=>[],
+            'active'=>(bool)$row['active'], 'accessPaused'=>(bool)$row['access_paused'],
+            'authVersion'=>(int)$row['auth_version'], 'roles'=>[],
         ];
         if ($row['role_id'] !== null) $employees[$userId]['roles'][] = [
             'id'=>(int)$row['role_id'], 'code'=>$row['code'], 'name'=>$names[$row['code']] ?? $row['role_name'],
@@ -71,7 +75,7 @@ function workspace_employee_view_scope(): ?string {
     if (!workspace_can('system','users','view')) return null;
     $viewer = workspace_current_user();
     $actor = workspace_employee_records($viewer['id'])[0] ?? null;
-    if (!$actor || !$actor['active'] || $actor['authVersion'] !== (int)$viewer['auth_version']) return null;
+    if (!$actor || !$actor['active'] || $actor['accessPaused'] || $actor['authVersion'] !== (int)$viewer['auth_version']) return null;
     $codes = array_column($actor['roles'],'code');
     foreach (['superadmin','directory_analytics','admin','directory_senior_manager','directory_senior_logist'] as $scope) {
         if (in_array($scope,$codes,true)) return $scope;
@@ -144,6 +148,40 @@ function workspace_employee_can_edit(string $scope, array $employee): bool {
 function workspace_employee_can_delete(string $scope, array $employee): bool {
     return workspace_employee_can_edit($scope,$employee) ||
         (workspace_employee_can_manage_dispatchers($scope) && workspace_employee_is_dispatcher($employee));
+}
+
+function workspace_employee_can_set_access(?string $scope, array $employee): bool {
+    return $scope!==null && $employee['active'] && $employee['id']!==workspace_current_user()['id'] &&
+        workspace_employee_can_edit($scope,$employee);
+}
+
+function workspace_employee_set_access(array $input): array {
+    if (!is_bool($input['paused']??null)) throw new ApiError('invalid_user','Укажите состояние доступа.');
+    return workspace_transaction(static function () use ($input): array {
+        $scope = workspace_employee_credential_scope();
+        $employee = workspace_employee_records($input['row'])[0] ?? null;
+        if (!$employee || !workspace_employee_can_set_access($scope,$employee)) {
+            throw new ApiError('forbidden','Изменение доступа для этой учётной записи недоступно.',403);
+        }
+        if ($employee['authVersion']!==$input['revision'] || workspace_employee_revision($employee)!==($input['baseHash']??null)) {
+            workspace_directory_conflict();
+        }
+        $paused = $input['paused'];
+        if ($employee['accessPaused']!==$paused) {
+            $key = WORKSPACE_EMPLOYEE_ACCESS_KEY.$employee['id'];
+            if ($paused) wquery("INSERT INTO workspace_meta VALUES(?,'true')",[$key]);
+            else wquery('DELETE FROM workspace_meta WHERE `key`=?',[$key]);
+            wquery('UPDATE users SET auth_version=auth_version+1 WHERE id=?',[$employee['id']]);
+            wquery('DELETE FROM ws_tickets WHERE user_id=? AND consumed_at IS NULL',[$employee['id']]);
+            workspace_audit(['category'=>'management','label'=>'Сотрудник','action'=>'edit',
+                'before'=>['id'=>$employee['id'],'accessPaused'=>$employee['accessPaused']],
+                'after'=>['id'=>$employee['id'],'accessPaused'=>$paused]]);
+            workspace_event('users.changed',['id'=>$employee['id']]);
+            $employee['accessPaused']=$paused;
+            ++$employee['authVersion'];
+        }
+        return ['paused'=>$paused,'revision'=>$employee['authVersion'],'baseHash'=>workspace_employee_revision($employee)];
+    });
 }
 
 function workspace_employee_history_filter(): string {

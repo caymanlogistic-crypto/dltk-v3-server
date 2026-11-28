@@ -118,6 +118,9 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         ];
         if ($employees) {
             $row['baseHash'] = workspace_employee_revision($entry);
+            if ($entry['active']) $row['employeeAccess'] = [
+                'paused'=>$entry['accessPaused'],'editable'=>workspace_employee_can_set_access($scope,$entry),
+            ];
             $row['singleLine'] = ['A'=>true,'B'=>true,'C'=>true];
             $row['kinds']['C'] = 'password';
             foreach (array_keys($values) as $column) {

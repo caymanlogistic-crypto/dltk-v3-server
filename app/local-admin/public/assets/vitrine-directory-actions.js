@@ -57,6 +57,11 @@
   }
 
   table.addEventListener('click', event => {
+    const access = event.target.closest('button[data-employee-access-indicator]');
+    if (access) {
+      changeEmployeeAccess(access);
+      return;
+    }
     const header = event.target.closest('th[scope="row"]');
     const cell = header?.parentElement.querySelector('td[data-edit-cell]:not([hidden])');
     if (!cell || window.VitrineGrid.editing()) return;
@@ -109,6 +114,30 @@
       throw Object.assign(new Error(result.error?.message || 'Не удалось выполнить действие.'),{code:result.error?.code});
     }
     return result;
+  }
+
+  async function changeEmployeeAccess(button) {
+    if (button.hasAttribute('aria-busy') || window.VitrineGrid.editing() || window.VitrineRangePaste?.busy()) return;
+    const cell = button.closest('td[data-edit-cell]');
+    button.setAttribute('aria-busy','true');
+    try {
+      const state = await request('set_access',{
+        row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base,
+        paused:button.dataset.employeeAccessIndicator==='active'
+      });
+      for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
+        sibling.dataset.revision=state.revision;
+        sibling.dataset.base=state.baseHash;
+      }
+      button.dataset.employeeAccessIndicator=state.paused ? 'paused' : 'active';
+      button.setAttribute('aria-label',state.paused
+        ? 'Доступ приостановлен. Возобновить доступ' : 'Доступ активен. Приостановить доступ');
+      notice(state.paused ? 'Доступ приостановлен.' : 'Доступ возобновлён.','success');
+    } catch (error) {
+      onError(error);
+    } finally {
+      button.removeAttribute('aria-busy');
+    }
   }
 
   function refresh(message) {

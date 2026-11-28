@@ -43,6 +43,6 @@ function workspace_access_excel_payload(string $kind,array $values,?array $old):
         $payload['roleIds']=[$role];
     }
     if ($old) $payload+=['id'=>$old['id'],'revision'=>workspace_employee_revision(array_intersect_key($old,
-        array_flip(['id','name','login','active','authVersion','roles'])))];
+        array_flip(['id','name','login','active','accessPaused','authVersion','roles'])))];
     return [$login,$payload];
 }

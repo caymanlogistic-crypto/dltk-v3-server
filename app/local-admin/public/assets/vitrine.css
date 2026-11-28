@@ -3250,6 +3250,13 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
 .vitrine :is(button, input, a, [tabindex]):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .vitrine :is(.ui-date-toggle,.ui-time-toggle,.vitrine-field-icon):focus-visible { outline-offset:-3px; }
 .vitrine :is(.vitrine-cell-icon,.vitrine-row-menu-trigger):focus-visible { outline-offset:-4px; }
+.vitrine td:has([data-employee-access-indicator]) { padding-inline-end:32px; }
+.vitrine td:has([data-employee-access-indicator]):not([data-frozen-column]) { position:relative; }
+.vitrine [data-employee-access-indicator="active"] { color:var(--p-success); }
+.vitrine [data-employee-access-indicator="paused"] { color:var(--p-error); }
+.vitrine span[data-employee-access-indicator] { pointer-events:none; }
+.vitrine [data-employee-access-indicator="active"] .employee-access-pause,
+.vitrine [data-employee-access-indicator="paused"] .employee-access-play { display:none; }
 @media(max-width:700px) {
   .vitrine .app.app--workspace { grid-template-columns:minmax(0,1fr); }
   .vitrine .app--workspace > .content { grid-column:1; padding:10px; }
