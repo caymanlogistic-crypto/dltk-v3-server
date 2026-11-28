@@ -3285,6 +3285,8 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
 }
 .vitrine .vitrine-topnav .nav-item { flex:none; cursor:pointer; }
 .vitrine .vitrine-topnav .nav-item:focus-visible { outline-offset:-2px; }
+.vitrine .vitrine-account { position:relative; height:100%; max-inline-size:15rem; padding-block:0; padding-inline-end:0; }
+.vitrine .vitrine-account .user-info span { color:var(--nav-text); }
 .vitrine .vitrine-folder {
   position:relative; flex:none; align-self:stretch; align-content:center;
 }
@@ -3302,8 +3304,7 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
 }
 .vitrine .vitrine-dropdown .nav-sub-item { text-decoration:none; white-space:nowrap; }
 .vitrine .vitrine-dropdown :is(a,button).nav-sub-item { width:100%; cursor:pointer; }
-.vitrine .vitrine-dropdown [data-live-status] { margin-inline-start:6px; }
-@media(max-width:650px) {
+@media(max-width:900px) {
   .vitrine .vitrine-topnav { overflow-x:auto; scrollbar-width:none; }
   .vitrine .vitrine-nav-start { flex:none; overflow:visible; }
   .vitrine .vitrine-dropdown {

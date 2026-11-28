@@ -50,7 +50,7 @@ function vitrine_bound_catalog_menu(array $tables): array {
             $link=$links[$field]??null;
             if(!$link||!workspace_can('catalog',(string)$link['id'],'view',$table['id']))continue;
             $title=wquery('SELECT title FROM catalogs WHERE id=?',[$link['id']])->fetchColumn();
-            $items[]=['id'=>$link['id'],'title'=>$title];
+            $items[]=['id'=>$link['id'],'title'=>$title,'kind'=>$link['kind']];
         }
         $additional=wquery("SELECT c.id,c.title,c.kind FROM catalogs c JOIN catalog_bindings b ON c.id=b.catalog_id
             WHERE b.table_id=? AND b.field_key='' AND c.kind IN ('transport','drivers-detailed','drivers-legacy',

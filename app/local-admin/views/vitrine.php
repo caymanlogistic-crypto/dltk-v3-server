@@ -23,14 +23,23 @@ $directoryUrl = $catalogGrid ? '/vitrine?catalog='.$directory.match ($directory)
     default => '',
 } : null;
 $workspaceTables=workspace_tables();
-$boundCatalogMenu=vitrine_bound_catalog_menu($workspaceTables);
+$boundCatalogMenu = $documentColorMenu = $systemCatalogMenu = [];
+foreach (vitrine_bound_catalog_menu($workspaceTables) as $item) {
+    if (workspace_is_document_status_catalog($item['kind'])) $documentColorMenu[] = $item;
+    elseif ($item['kind']==='edo-operators') $systemCatalogMenu[] = $item;
+    else $boundCatalogMenu[] = $item;
+}
+$catalogKind = $currentTable['catalogKind'] ?? '';
+$currentCatalogId = $directory==='entries' ? (int)($catalogGrid['id'] ?? 0) : 0;
+$isSystemDirectory = $directory==='entries' && $catalogKind==='edo-operators';
 $canOpenStatuses = !$directory || in_array('vyvoz',array_column($workspaceTables,'slug'),true);
 $canViewClientColors = workspace_can('system','client-order-statuses','view');
 $tripTable = null;
 foreach ($workspaceTables as $availableTable) if ($availableTable['slug']==='vyvoz') { $tripTable=$availableTable; break; }
 $tripFieldColorMenu = $tripTable ? array_filter(workspace_trip_field_status_directories(),
     static fn(string $column): bool=>workspace_trip_field_status_can($tripTable,$column,'view'),ARRAY_FILTER_USE_KEY) : [];
-$isColorDirectory = $directory==='flight-statuses' || ($directory!==null && workspace_order_status_directory($directory)!==null);
+$isColorDirectory = $directory==='flight-statuses' || ($directory!==null && workspace_order_status_directory($directory)!==null) ||
+    ($directory==='entries' && workspace_is_document_status_catalog($catalogKind));
 $preferences=empty($error) ? workspace_preferences($currentTable) : [];
 $isAvtovyvoz = !$directory && $currentTable['slug']==='vyvoz';
 $showTripRowOrder = $isAvtovyvoz && !$rowArchive && empty($error) &&
@@ -87,7 +96,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="workspace-table" content="<?= $escape($currentTable['slug']) ?>">
   <meta name="vitrine-load-error" content="<?= $escape($error ?? '') ?>">
   <title><?= $escape($currentTable['title']) ?> — ЛК ДЛТК</title>
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=unified-2'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=unified-3'),ENT_QUOTES,'UTF-8') ?>">
   <?php if ($loginArrival): ?>
   <link rel="expect" href="#workspace" blocking="render">
   <?php endif; ?>
@@ -161,6 +170,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
 <a class="vitrine-skip" href="#workspace">К таблице</a>
 <div class="app app--workspace<?= $embeddedCatalog ? ' vitrine-embedded-catalog' : '' ?>">
   <?php if (!$embeddedCatalog): ?>
+  <?php $account = workspace_employee_records((int)$currentUser['id'])[0] ?? []; ?>
   <header class="vitrine-topbar">
     <a class="sidebar-brand vitrine-brand" href="<?= htmlspecialchars(app_url_path('/vitrine'),ENT_QUOTES,'UTF-8') ?>"><span class="logo-mark" aria-hidden="true"></span><span class="brand-name">ЛК ДЛТК</span></a>
     <nav class="vitrine-topnav" aria-label="Основная навигация">
@@ -170,14 +180,13 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
       <?php endforeach; ?>
       </div>
       <details class="vitrine-folder">
-        <summary class="nav-item is-parent"><?= $navFolder ?><span class="nav-label">Система</span><?= $navChevron ?></summary>
-        <div class="vitrine-dropdown">
+        <summary class="nav-item is-parent<?= $isSystemDirectory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Система</span><?= $navChevron ?></summary>
+        <div class="vitrine-dropdown" aria-label="Система">
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>">Журнал изменений</a>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=reports')) ?>">Сводные</a>
-          <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=catalogs&table='.$managementTable)) ?>">Управление справочниками</a>
-          <?php if ($directoryUrl && $directory !== 'clients' && ($currentTable['catalogKind'] ?? '') !== 'managers'): ?>
-          <a class="nav-sub-item" href="<?= $escape($viewUrl($directoryUrl.($catalogGrid['archive'] ? '' : '&archive=1').(empty($catalogGrid['clientFilter']) ? '' : '&client='.(int)$catalogGrid['clientFilter']['id']))) ?>"><?= $catalogGrid['archive'] ? 'Вернуться к справочнику' : 'Архив справочника' ?></a>
-          <?php endif; ?>
+          <?php foreach ($systemCatalogMenu as $item): $current=$currentCatalogId===(int)$item['id']; ?>
+          <a class="nav-sub-item<?= $current ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$item['id'])) ?>"<?= $current ? ' aria-current="page"' : '' ?>><?= $escape($item['title']) ?></a>
+          <?php endforeach; ?>
           <?php if (!$directory): ?>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/vitrine?table='.$managementTable.($rowArchive ? '' : '&archive=1'))) ?>"><?= $rowArchive ? 'Вернуться к таблице' : 'Архив строк' ?></a>
           <?php if (!$rowArchive && $canManageRows): ?>
@@ -185,8 +194,6 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <?php endif; ?>
           <a class="nav-sub-item" href="<?= $escape($viewUrl('/workspace?section=history&table='.$managementTable)) ?>" id="workspace-row-history">История строки</a>
           <?php endif; ?>
-          <div class="nav-sub-item"><?= $escape($currentUser['login']) ?> <span data-workspace-live data-live-status aria-live="polite"></span></div>
-          <button class="nav-sub-item" type="button" id="workspace-logout">Выйти</button>
         </div>
       </details>
       <details class="vitrine-folder" id="vitrine-display-menu">
@@ -198,7 +205,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <a class="nav-sub-item" href="#grid-width" data-display-open="width">Ширина блока</a>
         </div>
       </details>
-      <?php if ($canOpenStatuses || $canViewClientColors || $tripFieldColorMenu): ?>
+      <?php if ($canOpenStatuses || $canViewClientColors || $tripFieldColorMenu || $documentColorMenu): ?>
       <details class="vitrine-folder" id="vitrine-cell-colors">
         <summary class="nav-item is-parent<?= $isColorDirectory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Цвета ячеек</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Цвета ячеек">
@@ -211,11 +218,22 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <?php foreach ($tripFieldColorMenu as $item): ?>
           <a class="nav-sub-item<?= $directory === $item['directory'] ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog='.$item['directory'])) ?>"<?= $directory === $item['directory'] ? ' aria-current="page"' : '' ?>><?= $escape($item['title']) ?></a>
           <?php endforeach; ?>
+          <?php foreach ($documentColorMenu as $item): $current=$currentCatalogId===(int)$item['id']; ?>
+          <a class="nav-sub-item<?= $current ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$item['id'])) ?>"<?= $current ? ' aria-current="page"' : '' ?>><?= $escape($item['title']) ?></a>
+          <?php endforeach; ?>
         </div>
       </details>
       <?php endif; ?>
+      <div class="sidebar-account vitrine-account" role="group" aria-label="Учётная запись">
+        <div class="user-info">
+          <strong><?= $escape($currentUser['name'] ?: $currentUser['login']) ?></strong>
+          <?php if (!empty($account['roles'])): ?><span><?= $escape(implode(', ', array_column($account['roles'],'name'))) ?></span><?php endif; ?>
+        </div>
+        <span class="vitrine-sr-only" data-workspace-live data-live-status aria-live="polite"></span>
+        <button class="nav-item" type="button" id="workspace-logout">Выйти</button>
+      </div>
       <details class="vitrine-folder" id="vitrine-catalogs">
-        <summary class="nav-item is-parent<?= $directory && !$isColorDirectory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
+        <summary class="nav-item is-parent<?= $directory && !$isColorDirectory && !$isSystemDirectory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
           <?php $directoryLinks = ['clients'=>'Клиенты', 'employees'=>'Учётные записи', 'roles'=>'Роли']; ?>
           <?php if (!workspace_client_grid_catalog()) unset($directoryLinks['clients']); ?>
@@ -229,7 +247,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
           <a class="nav-sub-item<?= $managerCurrent ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$managerCatalog)) ?>"<?= $managerCurrent ? ' aria-current="page"' : '' ?>>Сотрудники</a>
           <?php endif; ?>
           <?php foreach ($boundCatalogMenu as $item):
-            $current=$directory==='entries'&&($catalogGrid['id']??0)===$item['id'];
+            $current=$currentCatalogId===(int)$item['id'];
           ?>
           <a class="nav-sub-item<?= $current ? ' is-active' : '' ?>" href="<?= $escape($viewUrl('/vitrine?catalog=entries&id='.$item['id'])) ?>"<?= $current ? ' aria-current="page"' : '' ?>><?= $escape($item['title']) ?></a>
           <?php endforeach; ?>
