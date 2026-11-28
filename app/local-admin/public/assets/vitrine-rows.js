@@ -221,7 +221,9 @@
   async function exportRows(columns){
     const selectedIds=[...ids], search=appliedSearch, values=new Map(), missing=[];
     function capture(row){
-      const cells=new Map(Array.from(row.querySelectorAll('td[data-column]'),cell=>[cell.dataset.column,cell.textContent+(cell.dataset.fleetDriverSuffix ?? '')]));
+      const cells=new Map(Array.from(row.querySelectorAll('td[data-column]'),cell=>[
+        cell.dataset.column,(cell.dataset.tripPersonName ?? cell.textContent)+(cell.dataset.fleetDriverSuffix ?? ''),
+      ]));
       values.set(Number(row.dataset.rowNumber),[row.querySelector('th')?.firstChild?.textContent ?? '',...columns.map(column=>cells.get(column) ?? '')]);
     }
     for(const id of selectedIds){

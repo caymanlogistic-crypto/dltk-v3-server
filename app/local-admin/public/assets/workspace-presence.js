@@ -46,7 +46,7 @@
         node.dataset.row = String(group.row);node.dataset.column = group.column;
         document.body.append(node);badges.set(key,node);
       }
-      const names = [...group.users.values()].join(', ');
+      const names = [...group.users.values()].map(name=>window.VitrinePersonNames?.shortName(name) ?? name).join(', ');
       if (node.textContent !== names) node.textContent = names;
       node.setAttribute('aria-label','Редактирует: ' + names);
       const flash = pasteFlashes.get(key);

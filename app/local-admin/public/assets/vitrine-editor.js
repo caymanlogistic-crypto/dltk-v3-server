@@ -201,7 +201,11 @@
     const displayValue = slotRequested ? window.VitrineSlot.requestLabel
       : integerDigits ? integerMask.format(integerDigits) : result.value;
     const vehicleValue = cell.querySelector('[data-trip-vehicle-value]');
-    (vehicleValue ?? cell).textContent = displayValue;
+    if (cell.hasAttribute('data-trip-person-name')) {
+      const fullName = String(displayValue ?? '');
+      cell.dataset.tripPersonName = fullName;
+      cell.textContent = window.VitrinePersonNames.shortNames(fullName);
+    } else (vehicleValue ?? cell).textContent = displayValue;
     if (vehicleValue) cell.querySelector('[data-trip-driver-button]').hidden = !displayValue.trim();
     cell.dataset.original = result.original ?? '';
     cell.dataset.revision = String(result.revision);

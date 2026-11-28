@@ -29,7 +29,8 @@ function workspace_trip_search_ids(array $table,PDOStatement $records,string $qu
     $numeric=preg_match('/[0-9]/',$query)===1;
     $contains=static fn(string $value): bool=>$value!=='' && mb_stripos(str_replace($spaces,' ',$value),$query)!==false;
     $canJoin=!str_contains($query,"\0");
-    $formattedFields=$slots;
+    $personFields=['AL'=>true,'AM'=>true];
+    $formattedFields=$slots+$personFields;
     if ($numeric) {
         $formattedFields+=array_fill_keys(array_keys(array_filter($compact,static fn($kind)=>$kind!=='container')),true);
         if ($phoneColumn!==null) $formattedFields[$phoneColumn]=true;
@@ -89,6 +90,7 @@ function workspace_trip_search_ids(array $table,PDOStatement $records,string $qu
                 $shownMatches=$formattedMatches[$field][$cacheKey]??null;
                 if ($shownMatches===null) {
                     $display=match (true) {
+                        isset($personFields[$field])=>workspace_account_short_names($value),
                         isset($slots[$field])=>vitrine_slot_input($value)??$value,
                         $field===$phoneColumn=>workspace_fleet_trip_phone_display($value),
                         $margin && in_array($field,['X','Y'],true)=>($amount=workspace_trip_amount_minor($raw))!==null

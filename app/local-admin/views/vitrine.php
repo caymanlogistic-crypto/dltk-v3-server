@@ -106,14 +106,17 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-slot.js?v=quick-catalog-2'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-time-picker.js')) ?>"></script>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-calendar.js')) ?>"></script>
-  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js?v=quick-catalog-2'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <?php if ($isAvtovyvoz): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-person-names.js')) ?>"></script>
+  <?php endif; ?>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js?v=short-names-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (in_array(true,array_column($columns,'tripDriverCard'),true)): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-trip-driver.js')) ?>"></script>
   <?php endif; ?>
   <?php if ($isAvtovyvoz && !$rowArchive): ?>
   <script defer<?= $arrivalBlocking ?> src="<?= $escape($viewUrl('/assets/vitrine-trip-date-groups.js')) ?>"></script>
   <?php endif; ?>
-  <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js?v=2'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js?v=3'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if ($canReorderCatalogRows || $showTripRowOrder): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-order.js?v=2')) ?>"></script>
   <?php endif; ?>
@@ -122,7 +125,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-range-paste.js?v=quick-catalog-2')) ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-grid.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (!$directory): ?>
-  <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-presence.js'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-presence.js?v=short-names-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php endif; ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-search.js?v=quick-catalog-2')) ?>"></script>
   <?php if ($terminalTariffs !== null): ?>

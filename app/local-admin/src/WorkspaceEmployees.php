@@ -1,6 +1,21 @@
 <?php
 declare(strict_types=1);
 
+function workspace_account_short_name(string $name): string {
+    preg_match('/ · №[0-9]+$/uD',$name,$match);
+    $suffix=$match[0]??'';
+    $parts=preg_split('/\s+/u',trim(substr($name,0,strlen($name)-strlen($suffix))),-1,PREG_SPLIT_NO_EMPTY);
+    if (!$parts || count($parts)<2 || count($parts)>3) return $name;
+    foreach ($parts as $part) {
+        if (!preg_match("/^\\p{L}+(?:[-'’]\\p{L}+)*$/uD",$part)) return $name;
+    }
+    return $parts[1].' '.mb_strtoupper(mb_substr($parts[0],0,1)).'.'.$suffix;
+}
+
+function workspace_account_short_names(string $names): string {
+    return implode(', ',array_map('workspace_account_short_name',explode(', ',$names)));
+}
+
 const WORKSPACE_PRIVATE_EMPLOYEE_ROLES = ['superadmin', 'admin', 'directory_analytics'];
 
 function workspace_employee_role_names(): array {
