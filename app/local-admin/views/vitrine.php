@@ -105,7 +105,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="workspace-table" content="<?= $escape($currentTable['slug']) ?>">
   <meta name="vitrine-load-error" content="<?= $escape($error ?? '') ?>">
   <title><?= $escape($currentTable['title']) ?> — ЛК ДЛТК</title>
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=unified-7'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=password-cell-2'),ENT_QUOTES,'UTF-8') ?>">
   <?php if ($loginArrival): ?>
   <link rel="expect" href="#workspace" blocking="render">
   <?php endif; ?>
@@ -127,7 +127,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if ($isAvtovyvoz): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-person-names.js')) ?>"></script>
   <?php endif; ?>
-  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js?v=account-password-1'),ENT_QUOTES,'UTF-8') ?>"></script>
+  <script defer src="<?= htmlspecialchars(app_url_path('/assets/vitrine-editor.js?v=password-cell-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (in_array(true,array_column($columns,'tripDriverCard'),true)): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-trip-driver.js')) ?>"></script>
   <?php endif; ?>
@@ -139,7 +139,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-order.js?v=2')) ?>"></script>
   <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-range.js')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-range.js?v=password-cell-1')) ?>"></script>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-range-paste.js?v=account-password-1')) ?>"></script>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-grid.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if (!$directory): ?>
@@ -154,7 +154,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-import.js')) ?>"></script>
   <?php endif; ?>
   <?php if ($canManageRows || $rowRelatedLabel): ?>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js?v=quick-catalog-2')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js?v=optional-delete-note-1')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['unloadPoints'])): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-unload-contacts.js')) ?>"></script>
@@ -163,7 +163,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-relations-keyboard.js')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['clientUnloadCatalog'])): ?>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-unload-points.js')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-unload-points.js?v=optional-delete-note-1')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['clientManagers'])): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-client-managers.js?v=2')) ?>"></script>

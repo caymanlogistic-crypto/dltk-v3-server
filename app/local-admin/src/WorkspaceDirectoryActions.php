@@ -26,11 +26,12 @@ function workspace_directory_rows_endpoint(string $directory, array $body): neve
 }
 
 function workspace_row_delete_reason(mixed $value): string {
-    $reason=is_string($value) ? trim($value) : '';
-    if (!preg_match('/\S/u',$reason) || mb_strlen($reason)>1000) {
-        throw new ApiError('invalid_delete_reason','Укажите причину удаления до 1000 символов.');
+    if ($value === null) return '';
+    if (!is_string($value) || mb_strlen(trim($value))>1000) {
+        throw new ApiError('invalid_delete_reason','Комментарий к удалению должен быть не длиннее 1000 символов.');
     }
-    return $reason;
+    $reason=trim($value);
+    return preg_match('/\S/u',$reason) ? $reason : '';
 }
 
 function workspace_row_deleted(string $prefix,int $id): bool {

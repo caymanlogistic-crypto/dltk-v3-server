@@ -7,7 +7,7 @@ declare(strict_types=1);
     <div class="modal-body">
       <p data-directory-delete-text></p>
       <label class="field vitrine-editor-field-group" data-directory-reason-field hidden>
-        <span class="field-label">Причина удаления</span>
+        <span class="field-label">Комментарий к удалению (необязательно)</span>
         <textarea class="field-input" name="reason" rows="3" maxlength="1000" disabled></textarea>
       </label>
     </div>

@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 $employeePage = $directory === 'employees';
-$employeeScope = $employeePage ? workspace_employee_editor_scope() : null;
 $archive = $catalogGrid['archive'];
 $canUploadExcel = !$embeddedCatalog && $catalogGrid['canEdit'] && !$archive && workspace_directory_excel_supported($directory);
 $staffDirectory = ($currentTable['catalogKind'] ?? '') === 'managers';
@@ -68,9 +67,10 @@ $unloadClientName = !empty($catalogGrid['unloadPoints']) ? ($catalogGrid['client
   <?php endif; ?>
 </section>
 <?php if ($canUploadExcel) require __DIR__.'/vitrine-directory-import.php'; ?>
-<?php if ($employeeScope === 'superadmin'): ?>
-<template id="vitrine-password-eye">
-  <?php $passwordEyeField='vitrine-editor-field'; require __DIR__.'/password-eye.php'; ?>
+<?php if ($employeePage && $catalogGrid['canEdit']): ?>
+<template id="vitrine-password-actions">
+  <button class="vitrine-cell-icon" type="button" data-password-save aria-label="Сохранить пароль"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>
+  <button class="vitrine-cell-icon" type="button" data-password-cancel aria-label="Отмена"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
 </template>
 <?php endif; ?>
 

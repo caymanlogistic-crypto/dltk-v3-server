@@ -10,7 +10,6 @@
   const deleteDialog = document.querySelector('[data-directory-delete-dialog]');
   const reasonField = deleteDialog?.querySelector('[data-directory-reason-field]');
   const reason = reasonField?.querySelector('textarea');
-  const confirm = deleteDialog?.querySelector('[type="submit"]');
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const endpoint = window.VitrineGridScope.url('/api/vitrine/cell');
   const table = document.querySelector('.vitrine-table');
@@ -181,7 +180,7 @@
       const field = fields[column];
       if (!field) continue;
       const display = field.type === 'password' && value ? 'Введён' : value;
-      cell.textContent = display;
+      (cell.querySelector('[data-password-cell-value]') ?? cell).textContent = display;
       cell.toggleAttribute('data-draft-allow-empty',Boolean(field.allowEmpty));
       const fill = choice(column,value)?.color;
       if (fill) cell.style.setProperty('--order-status-fill',fill);
@@ -283,12 +282,9 @@
         {restore:'Восстановить',archive:'Перенести в архив',delete:'Удалить'}[action]+' «'+result.name+'»?';
       if (reason) {
         reasonField.hidden = reason.disabled = action !== 'delete';
-        reason.required = action === 'delete';
         reason.value = '';
-        confirm.disabled = !reason.disabled;
       }
       deleteDialog.showModal();
-      if (reason && !reason.disabled) reason.focus();
     } catch (error) {
       onError(error);
     } finally {
@@ -297,7 +293,6 @@
   }
   archiveToggle?.addEventListener('click',()=>confirmRow());
   remove?.addEventListener('click',()=>confirmRow('delete'));
-  reason?.addEventListener('input',()=>{confirm.disabled=!reason.value.trim();});
   if (deleteDialog) bindForm(deleteDialog, async fields => {
     const payload=reason && !reason.disabled ? {...target.row,reason:fields.get('reason').trim()} : target.row;
     await request(target.action,payload);

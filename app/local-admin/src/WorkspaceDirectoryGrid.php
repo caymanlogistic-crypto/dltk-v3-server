@@ -139,7 +139,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     }
     return [
         'table'=>$model, 'columns'=>$model['columns'], 'rows'=>$rows, 'rowIds'=>$rowIds,
-        'palette'=>$palette, 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,'draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)],
+        'palette'=>$palette, 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,'passwordEye'=>$employees && $scope==='superadmin','draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)],
     ];
 }
 
