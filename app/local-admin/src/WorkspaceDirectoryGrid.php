@@ -43,7 +43,7 @@ function workspace_directory_grid_model(string $directory): array {
     }
     $employees = $directory === 'employees';
     if ($employees) {
-        if (workspace_employee_view_scope() === null) throw new ApiError('forbidden','Учётные записи недоступны для вашей роли.',403);
+        workspace_employee_require_view_scope();
     } else workspace_require('system','roles','view');
     $labels = $employees ? ['A'=>'ФИО','B'=>'Логин','C'=>'Пароль','D'=>'Email','E'=>'Роль'] : ['A'=>'Роль'];
     $columns = [];

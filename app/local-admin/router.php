@@ -15,6 +15,7 @@ try {
     workspace_auth_route($path);
     if(str_starts_with($path,'/api/workspace/'))workspace_api($path);
     if ($path === '/workspace' && ($_GET['section'] ?? null) === 'users') {
+        workspace_employee_require_view_scope();
         $url = '/vitrine?catalog=employees';
         header('Location: '.(function_exists('app_url_path') ? app_url_path($url) : $url),true,302);
         return;

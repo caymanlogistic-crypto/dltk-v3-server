@@ -80,6 +80,10 @@ function workspace_employee_view_scope(): ?string {
     return null;
 }
 
+function workspace_employee_require_view_scope(): string {
+    return workspace_employee_view_scope() ?? throw new ApiError('forbidden','Учётные записи недоступны для вашей роли.',403);
+}
+
 function workspace_employee_credential_scope(): ?string {
     return workspace_can('system','users','edit') ? workspace_employee_view_scope() : null;
 }
@@ -115,8 +119,7 @@ function workspace_employee_is_private(array $employee): bool {
 }
 
 function workspace_employee_visible_records(?bool $active = null): array {
-    $scope = workspace_employee_view_scope();
-    if ($scope === null) throw new ApiError('forbidden','Учётные записи недоступны для вашей роли.',403);
+    $scope = workspace_employee_require_view_scope();
     return array_values(array_filter(workspace_employee_records(active:$active),
         static fn(array $employee): bool => workspace_employee_can_view($scope,$employee)));
 }
@@ -160,8 +163,7 @@ function workspace_employees_endpoint(string $method): never {
     }
 
     if ($method === 'GET') {
-        $scope = workspace_employee_view_scope();
-        if ($scope === null) throw new ApiError('forbidden','Учётные записи недоступны для вашей роли.',403);
+        $scope = workspace_employee_require_view_scope();
         $id = filter_var($_GET['id'], FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
         $employee = $id ? (workspace_employee_records($id)[0] ?? null) : null;
         if (!$employee) throw new ApiError('not_found','Сотрудник не найден.',404);
