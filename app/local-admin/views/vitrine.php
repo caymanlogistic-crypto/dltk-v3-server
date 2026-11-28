@@ -96,7 +96,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="workspace-table" content="<?= $escape($currentTable['slug']) ?>">
   <meta name="vitrine-load-error" content="<?= $escape($error ?? '') ?>">
   <title><?= $escape($currentTable['title']) ?> — ЛК ДЛТК</title>
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=unified-3'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=unified-4'),ENT_QUOTES,'UTF-8') ?>">
   <?php if ($loginArrival): ?>
   <link rel="expect" href="#workspace" blocking="render">
   <?php endif; ?>
@@ -174,6 +174,14 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <header class="vitrine-topbar">
     <a class="sidebar-brand vitrine-brand" href="<?= htmlspecialchars(app_url_path('/vitrine'),ENT_QUOTES,'UTF-8') ?>"><span class="logo-mark" aria-hidden="true"></span><span class="brand-name">ЛК ДЛТК</span></a>
     <nav class="vitrine-topnav" aria-label="Основная навигация">
+      <div class="sidebar-account vitrine-account" role="group" aria-label="Учётная запись">
+        <div class="user-info">
+          <strong><?= $escape($currentUser['name'] ?: $currentUser['login']) ?></strong>
+          <?php if (!empty($account['roles'])): ?><span><?= $escape(implode(', ', array_column($account['roles'],'name'))) ?></span><?php endif; ?>
+        </div>
+        <span class="vitrine-sr-only" data-workspace-live data-live-status aria-live="polite"></span>
+        <button class="nav-item" type="button" id="workspace-logout">Выйти</button>
+      </div>
       <div class="vitrine-nav-start">
       <?php foreach($workspaceTables as $table): ?>
         <a class="nav-item <?= $currentTable['id']===$table['id']?'is-active':'' ?>" href="<?= htmlspecialchars(app_url_path('/vitrine?table='),ENT_QUOTES,'UTF-8') ?><?= $escape($table['slug']) ?>"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 10h18M10 3v18"/></svg><span class="nav-label"><?= $escape($table['title']) ?></span></a>
@@ -224,14 +232,6 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
         </div>
       </details>
       <?php endif; ?>
-      <div class="sidebar-account vitrine-account" role="group" aria-label="Учётная запись">
-        <div class="user-info">
-          <strong><?= $escape($currentUser['name'] ?: $currentUser['login']) ?></strong>
-          <?php if (!empty($account['roles'])): ?><span><?= $escape(implode(', ', array_column($account['roles'],'name'))) ?></span><?php endif; ?>
-        </div>
-        <span class="vitrine-sr-only" data-workspace-live data-live-status aria-live="polite"></span>
-        <button class="nav-item" type="button" id="workspace-logout">Выйти</button>
-      </div>
       <details class="vitrine-folder" id="vitrine-catalogs">
         <summary class="nav-item is-parent<?= $directory && !$isColorDirectory && !$isSystemDirectory ? ' is-active' : '' ?>"><?= $navFolder ?><span class="nav-label">Справочники</span><?= $navChevron ?></summary>
         <div class="vitrine-dropdown" aria-label="Справочники">
