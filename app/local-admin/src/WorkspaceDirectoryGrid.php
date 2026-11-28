@@ -45,7 +45,7 @@ function workspace_directory_grid_model(string $directory): array {
     if ($employees) {
         workspace_employee_require_view_scope();
     } else workspace_require('system','roles','view');
-    $labels = $employees ? ['A'=>'ФИО','B'=>'Логин','C'=>'Пароль','D'=>'Email','E'=>'Роль'] : ['A'=>'Роль'];
+    $labels = $employees ? ['A'=>'ФИО','B'=>'Логин','C'=>'Пароль','E'=>'Роль'] : ['A'=>'Роль'];
     $columns = [];
     foreach ($labels as $letter => $label) $columns[] = ['letter'=>$letter,'label'=>$label];
     return [
@@ -118,7 +118,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         ];
         if ($employees) {
             $row['baseHash'] = workspace_employee_revision($entry);
-            $row['singleLine'] = ['A'=>true,'B'=>true,'C'=>true,'D'=>true];
+            $row['singleLine'] = ['A'=>true,'B'=>true,'C'=>true];
             $row['kinds']['C'] = 'password';
             foreach (array_keys($values) as $column) {
                 $row['readOnly'][$column] = workspace_employee_grid_readonly($column,$scope,$entry) ?? '';
@@ -165,7 +165,7 @@ function workspace_directory_draft_fields(string $directory, array $roles = [], 
     $optionalAssignment = ['type'=>'text','required'=>true,'allowEmpty'=>true];
     return match ($directory) {
         'flight-statuses'=>['A'=>$name,'B'=>$color],
-        'employees'=>['A'=>$name,'B'=>$name,'C'=>['required'=>true,'type'=>'password'],'D'=>['type'=>'email'],
+        'employees'=>['A'=>$name,'B'=>['required'=>true,'type'=>'email'],'C'=>['required'=>true,'type'=>'password'],
             'E'=>['required'=>true,'type'=>'choice','choices'=>$roles]],
         'clients'=>['A'=>$name,'B'=>$optionalAssignment]+array_fill_keys(array_keys(WORKSPACE_CLIENT_REQUISITE_LABELS),['type'=>'text']),
         'entries'=>match (true) {

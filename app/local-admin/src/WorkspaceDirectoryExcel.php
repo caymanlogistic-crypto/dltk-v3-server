@@ -100,6 +100,7 @@ function workspace_directory_excel_header(array $labels,array $sheet,string $kin
     $allowed=[...array_values($labels),'ID записи','Версия записи','Строка'];
     if (in_array('Клиент',$labels,true) && in_array('Менеджер',$labels,true)) $allowed[]='Точки выгрузки';
     if ($kind==='fleet-vehicles') $allowed[]='Тип транспорта';
+    if ($kind==='employees') $allowed[]='Email';
     $required=array_diff($labels,['Пароль','Доп. телефон']);
     if ($kind==='clients') $required=array_diff_key($required,WORKSPACE_CLIENT_REQUISITE_LABELS);
     if ($kind==='carriers') unset($required['D']);

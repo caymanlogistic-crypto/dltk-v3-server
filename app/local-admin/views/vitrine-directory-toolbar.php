@@ -8,7 +8,7 @@ $visibilityLabel = $staffDirectory ? 'Все сотрудники' : ($directory
 $visibilityAria = $staffDirectory ? 'Фильтр сотрудников' : ($directory === 'clients' ? 'Фильтр клиентов' : 'Фильтр записей');
 $searchPlaceholder = match ($directory) {
     'clients'=>'Клиент или менеджер',
-    'employees'=>'ФИО, логин, email или роль',
+    'employees'=>'ФИО, логин или роль',
     'roles'=>'Название роли',
     'entries'=>'Поиск по справочнику',
     default=>'Название статуса',

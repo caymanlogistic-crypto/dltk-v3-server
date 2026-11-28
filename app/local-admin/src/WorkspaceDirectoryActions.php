@@ -163,7 +163,7 @@ function workspace_employee_row_action(array $body): array {
         $role = array_column(workspace_employee_role_options($scope),'id','name')[$values['E'] ?? ''] ?? null;
         if (!$role) throw new ApiError('invalid_role','Выберите роль из доступного списка.',403);
         return workspace_employee_save(['name'=>$values['A'] ?? '', 'login'=>$values['B'] ?? '',
-            'password'=>$values['C'] ?? '', 'email'=>$values['D'] ?? '', 'roleIds'=>[$role]]);
+            'password'=>$values['C'] ?? '', 'roleIds'=>[$role]]);
     }
     $scope = workspace_employee_credential_scope();
     if ($scope === null) throw new ApiError('forbidden','Для этого действия нет доступа.',403);

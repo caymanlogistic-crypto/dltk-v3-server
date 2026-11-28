@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 function workspace_employee_grid_readonly(string $column, ?string $scope, array $employee): ?string {
-    $field = ['A'=>'name','B'=>'login','C'=>'password','D'=>'email','E'=>'roleIds'][$column];
+    $field = ['A'=>'name','B'=>'login','C'=>'password','E'=>'roleIds'][$column];
     if ($scope === null || !workspace_employee_can_view($scope,$employee) || !workspace_employee_can_edit_field($scope,$field,$employee)) {
         return 'Запись или поле доступны только для просмотра.';
     }
@@ -12,7 +12,7 @@ function workspace_employee_grid_readonly(string $column, ?string $scope, array 
 
 function workspace_employee_grid_values(array $employee): array {
     return [
-        'A'=>$employee['name'], 'B'=>$employee['login'], 'C'=>'Скрыт', 'D'=>$employee['email'],
+        'A'=>$employee['name'], 'B'=>$employee['login'], 'C'=>'Скрыт',
         'E'=>implode(', ',array_column($employee['roles'],'name')),
     ];
 }
@@ -25,7 +25,7 @@ function workspace_employee_grid_endpoint(bool $pasteCheck = false): never {
 function workspace_employee_grid_edit(array $body, bool $pasteCheck = false): array {
     $scope = workspace_employee_credential_scope();
     if ($scope === null) throw new ApiError('forbidden','Редактирование учётных записей недоступно.',403);
-    if (!is_int($body['row'] ?? null) || $body['row']<1 || !in_array($body['column'] ?? null,['A','B','C','D','E'],true)
+    if (!is_int($body['row'] ?? null) || $body['row']<1 || !in_array($body['column'] ?? null,['A','B','C','E'],true)
         || !is_string($body['value'] ?? null)) {
         throw new ApiError('invalid_edit','Некорректные данные ячейки сотрудника.');
     }
@@ -48,8 +48,8 @@ function workspace_employee_grid_edit(array $body, bool $pasteCheck = false): ar
         }
         $changes['password'] = $value;
     } else {
-        $field = ['A'=>'name','B'=>'login','D'=>'email'][$column];
-        $changes[$field] = workspace_employee_profile_value($field,$value);
+        $field = ['A'=>'name','B'=>'login'][$column];
+        $changes[$field] = workspace_employee_profile_value($field,$value,$employee['login']);
     }
     if ($pasteCheck) return ['accepted'=>true];
 

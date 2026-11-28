@@ -31,9 +31,8 @@ function workspace_access_excel_payload(string $kind,array $values,?array $old):
         throw new ApiError('forbidden','Для этой учётной записи нет доступа.',403);
     }
     $name=workspace_employee_profile_value('name',$values['A']);
-    $login=workspace_employee_profile_value('login',$values['B']);
-    $email=workspace_employee_profile_value('email',$values['D']);
-    $payload=['name'=>$name,'login'=>$login,'email'=>$email,'active'=>true];
+    $login=workspace_employee_profile_value('login',$values['B'],$old['login']??null);
+    $payload=['name'=>$name,'login'=>$login,'active'=>true];
     $sameRole=$old && $values['E']===$old['values']['E'];
     if ($old && $old['id']===workspace_current_user()['id'] && (!$sameRole || $login!==$old['login'])) {
         throw new ApiError('own_account','Свой логин и роль через Excel менять нельзя.',409);
@@ -44,6 +43,6 @@ function workspace_access_excel_payload(string $kind,array $values,?array $old):
         $payload['roleIds']=[$role];
     }
     if ($old) $payload+=['id'=>$old['id'],'revision'=>workspace_employee_revision(array_intersect_key($old,
-        array_flip(['id','name','login','email','active','authVersion','roles'])))];
+        array_flip(['id','name','login','active','authVersion','roles'])))];
     return [$login,$payload];
 }

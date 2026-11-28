@@ -44,9 +44,8 @@ function workspace_employee_roles(bool $archive = false, bool $includeAll = fals
 
 function workspace_employee_records(?int $id = null, ?bool $active = null): array {
     $sql = "SELECT u.id,u.name,u.login,u.active,u.auth_version,
-            COALESCE(JSON_UNQUOTE(m.value),'') AS email,r.id AS role_id,r.code,r.name AS role_name
+            r.id AS role_id,r.code,r.name AS role_name
             FROM users u
-            LEFT JOIN workspace_meta m ON m.`key`=CONCAT('employee_email_',u.id)
             LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id";
     $where = ["NOT EXISTS (SELECT 1 FROM workspace_meta WHERE `key`=CONCAT('directory_deleted_user_',u.id))"];
     $args = [];
@@ -58,7 +57,7 @@ function workspace_employee_records(?int $id = null, ?bool $active = null): arra
     foreach (wquery($sql.' ORDER BY u.name,u.id,r.id',$args)->fetchAll() as $row) {
         $userId = (int)$row['id'];
         $employees[$userId] ??= [
-            'id'=>$userId, 'name'=>$row['name'], 'login'=>$row['login'], 'email'=>$row['email'],
+            'id'=>$userId, 'name'=>$row['name'], 'login'=>$row['login'],
             'active'=>(bool)$row['active'], 'authVersion'=>(int)$row['auth_version'], 'roles'=>[],
         ];
         if ($row['role_id'] !== null) $employees[$userId]['roles'][] = [
@@ -199,7 +198,7 @@ function workspace_employees_endpoint(string $method): never {
     json_response(['user'=>workspace_employee_save(wbody())]);
 }
 
-function workspace_employee_profile_value(string $field, mixed $value): string {
+function workspace_employee_profile_value(string $field, mixed $value, ?string $previousLogin = null): string {
     if (!is_string($value)) throw new ApiError('invalid_user','Проверьте поля сотрудника.');
     $value = trim($value);
     if ($field === 'name' && ($value === '' || mb_strlen($value)>160 || preg_match('/[[:cntrl:]]/u',$value))) {
@@ -207,13 +206,9 @@ function workspace_employee_profile_value(string $field, mixed $value): string {
     }
     if ($field === 'login') {
         $value = strtolower($value);
-        if (!preg_match('/^[a-z0-9_.-]{2,60}$/D',$value) &&
-            (strlen($value)>60 || !filter_var($value,FILTER_VALIDATE_EMAIL))) {
-            throw new ApiError('invalid_user','Укажите email до 60 символов или логин из 2–60 латинских букв, цифр, точек, дефисов или подчёркиваний.');
+        if ($value !== $previousLogin && (strlen($value)>60 || !filter_var($value,FILTER_VALIDATE_EMAIL))) {
+            throw new ApiError('invalid_login','Введите в столбце «Логин» email длиной до 60 символов.');
         }
-    }
-    if ($field === 'email' && $value !== '' && (strlen($value)>254 || !filter_var($value,FILTER_VALIDATE_EMAIL))) {
-        throw new ApiError('invalid_email','Укажите корректный email.');
     }
     return $value;
 }
@@ -243,8 +238,8 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
         }
     }
     $profile = [];
-    foreach (['name','login','email'] as $field) {
-        if (isset($input[$field])) $profile[$field] = workspace_employee_profile_value($field,$input[$field]);
+    foreach (['name','login'] as $field) {
+        if (isset($input[$field])) $profile[$field] = workspace_employee_profile_value($field,$input[$field],$old['login']??null);
     }
     if (!$cellEdit && $deleteReason === null && !isset($profile['name'],$profile['login'])) {
         throw new ApiError('invalid_user','Укажите ФИО и логин.');
@@ -288,7 +283,6 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
         }
         $name = $profile['name'] ?? $old['name'];
         $login = $profile['login'] ?? $old['login'];
-        $email = $profile['email'] ?? ($old['email'] ?? '');
         if ($old) {
             $invalidate = $passwordHash !== null || $roleChanged || $active !== $old['active'] || $login !== $old['login'];
             wquery('UPDATE users SET login=?,name=?,active=?,auth_version=auth_version+?,password_hash=COALESCE(?,password_hash) WHERE id=?',
@@ -301,9 +295,6 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
             wquery('DELETE FROM user_roles WHERE user_id=?',[$id]);
             foreach ($nextRoles as $roleId) wquery('INSERT INTO user_roles(user_id,role_id) VALUES(?,?)',[$id,$roleId]);
         }
-        if ($email !== ($old['email'] ?? '')) {
-            wquery('INSERT INTO workspace_meta VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',['employee_email_'.$id,wjson($email)]);
-        }
         $audit = static fn(array $employee): array => [
             'id'=>$employee['id'], 'login'=>$employee['login'], 'name'=>$employee['name'],
             'active'=>$employee['active'], 'roleIds'=>array_column($employee['roles'],'id'),
@@ -315,7 +306,7 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
             $deletion=['deleted'=>true,'reason'=>$deleteReason];
         }
         workspace_audit(['category'=>'management','label'=>'Сотрудник','before'=>$old ? $audit($old) : null,
-            'after'=>$audit($after)+['emailChanged'=>$email !== ($old['email'] ?? ''), 'passwordChanged'=>$passwordHash !== null,
+            'after'=>$audit($after)+['passwordChanged'=>$passwordHash !== null,
                 'privateAccount'=>workspace_employee_is_private($after) || ($old && workspace_employee_is_private($old))]+$deletion,
             'action'=>$deleteReason!==null ? 'delete' : ($old ? 'edit' : 'create')]);
         workspace_event('users.changed',['id'=>$id]);
