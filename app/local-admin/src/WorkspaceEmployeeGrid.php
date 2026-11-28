@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 function workspace_employee_grid_readonly(string $column, ?string $scope, array $employee): ?string {
     $field = ['A'=>'name','B'=>'login','C'=>'password','D'=>'email','E'=>'roleIds'][$column];
-    if ($scope === null || !workspace_employee_can_view($scope,$employee) || !workspace_employee_can_edit_field($scope,$field)) {
+    if ($scope === null || !workspace_employee_can_view($scope,$employee) || !workspace_employee_can_edit_field($scope,$field,$employee)) {
         return 'Запись или поле доступны только для просмотра.';
     }
     if ($column === 'E' && $employee['id'] === workspace_current_user()['id']) return 'Свою роль изменить нельзя.';

@@ -3338,7 +3338,7 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
   padding-inline-start:calc(var(--vitrine-row-number-width) + 10px);
   border-block-start:1px solid var(--line);
   border-block-end:1px solid var(--line-soft);
-  background:var(--surface-muted);
+  background:var(--vitrine-header-fill);
   color:var(--text-main);
   text-align:start;
 }

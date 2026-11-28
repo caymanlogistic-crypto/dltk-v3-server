@@ -93,8 +93,17 @@ function workspace_employee_editor_scope(): ?string {
     return in_array($scope,['superadmin','admin'],true) ? $scope : null;
 }
 
+function workspace_employee_can_manage_dispatchers(?string $scope): bool {
+    return in_array($scope,['directory_senior_manager','directory_senior_logist'],true);
+}
+
+function workspace_employee_is_dispatcher(array $employee): bool {
+    return array_column($employee['roles'],'code') === ['dispatcher'];
+}
+
 function workspace_employee_can_view(string $scope, array $employee): bool {
     if (in_array($scope,['superadmin','directory_analytics'],true) || $employee['id']===workspace_current_user()['id']) return true;
+    if (workspace_employee_can_manage_dispatchers($scope) && workspace_employee_is_dispatcher($employee)) return true;
     $allowed = match ($scope) {
         'admin' => WORKSPACE_TEAM_EMPLOYEE_ROLES,
         'directory_senior_manager' => ['manager'],
@@ -105,11 +114,12 @@ function workspace_employee_can_view(string $scope, array $employee): bool {
     return $roles && !array_diff($roles,$allowed);
 }
 
-function workspace_employee_can_edit_field(string $scope, string $field): bool {
+function workspace_employee_can_edit_field(string $scope, string $field, array $employee): bool {
     return match ($scope) {
         'superadmin','admin' => true,
         'directory_analytics' => $field==='password',
-        'directory_senior_manager','directory_senior_logist' => in_array($field,['login','password'],true),
+        'directory_senior_manager','directory_senior_logist' =>
+            !workspace_employee_is_dispatcher($employee) && in_array($field,['login','password'],true),
         default => false,
     };
 }
@@ -128,6 +138,11 @@ function workspace_employee_can_edit(string $scope, array $employee): bool {
     return in_array($scope,['superadmin','admin'],true) && workspace_employee_can_view($scope,$employee);
 }
 
+function workspace_employee_can_delete(string $scope, array $employee): bool {
+    return workspace_employee_can_edit($scope,$employee) ||
+        (workspace_employee_can_manage_dispatchers($scope) && workspace_employee_is_dispatcher($employee));
+}
+
 function workspace_employee_history_filter(): string {
     $scope = workspace_employee_view_scope();
     if (in_array($scope,['superadmin','directory_analytics'],true)) return '1=1';
@@ -142,8 +157,8 @@ function workspace_employee_role_options(?string $scope): array {
     $allowed = match ($scope) {
         'superadmin','directory_analytics' => null,
         'admin' => WORKSPACE_TEAM_EMPLOYEE_ROLES,
-        'directory_senior_manager' => ['manager','directory_senior_manager'],
-        'directory_senior_logist' => ['logist','directory_senior_logist'],
+        'directory_senior_manager' => ['manager','directory_senior_manager','dispatcher'],
+        'directory_senior_logist' => ['logist','directory_senior_logist','dispatcher'],
         default => [],
     };
     if ($allowed === null) return workspace_employee_roles(includeAll:true);
@@ -211,10 +226,19 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
     $scope = workspace_employee_credential_scope();
     if ($scope === null) throw new ApiError('forbidden','Редактирование учётных записей недоступно.',403);
     $id = $input['id'] ?? null;
-    if (!in_array($scope,['superadmin','admin'],true) && ($id !== null || $cellEdit || $deleteReason !== null)) {
+    if ($id !== null && (!is_int($id) || $id<1)) throw new ApiError('invalid_user','Некорректный идентификатор сотрудника.');
+    $old = $id === null ? null : (workspace_employee_records($id)[0] ?? null);
+    if ($id !== null && !$old) throw new ApiError('not_found','Сотрудник не найден.',404);
+    if ($old && !workspace_employee_can_view($scope,$old)) throw new ApiError('forbidden','Для этой учётной записи нет доступа.',403);
+    if ($deleteReason !== null) {
+        if (!$old || !workspace_employee_can_delete($scope,$old) || ($input['active'] ?? null)!==false ||
+            array_diff(array_keys($input),['id','revision','active'])) {
+            throw new ApiError('forbidden','Удаление этой учётной записи недоступно.',403);
+        }
+    } elseif (!in_array($scope,['superadmin','admin'],true) && ($id !== null || $cellEdit)) {
         $changeFields = array_diff(array_keys($input),['id','revision']);
-        if (!$cellEdit || $deleteReason !== null || !$changeFields ||
-            array_filter($changeFields,static fn(string $field): bool=>!workspace_employee_can_edit_field($scope,$field))) {
+        if (!$cellEdit || !$old || !$changeFields ||
+            array_filter($changeFields,static fn(string $field): bool=>!workspace_employee_can_edit_field($scope,$field,$old))) {
             throw new ApiError('forbidden','Для этого поля нет доступа.',403);
         }
     }
@@ -222,7 +246,7 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
     foreach (['name','login','email'] as $field) {
         if (isset($input[$field])) $profile[$field] = workspace_employee_profile_value($field,$input[$field]);
     }
-    if (!$cellEdit && !isset($profile['name'],$profile['login'])) {
+    if (!$cellEdit && $deleteReason === null && !isset($profile['name'],$profile['login'])) {
         throw new ApiError('invalid_user','Укажите ФИО и логин.');
     }
     $password = $input['password'] ?? '';
@@ -231,7 +255,6 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
         ((!$rosterPin && mb_strlen($password)<8) || strlen($password)>72 || str_contains($password,"\0")))) {
         throw new ApiError('invalid_password','Пароль должен содержать от 8 символов и занимать до 72 байт.');
     }
-    if ($id !== null && (!is_int($id) || $id<1)) throw new ApiError('invalid_user','Некорректный идентификатор сотрудника.');
     $roleIds = $input['roleIds'] ?? [];
     if (!is_array($roleIds) || !array_is_list($roleIds) || count($roleIds)>1 ||
         ($roleIds && (!is_int($roleIds[0]) || $roleIds[0]<1))) {
@@ -246,9 +269,6 @@ function workspace_employee_write(array $input, bool $cellEdit = false, ?string 
     $passwordHash = $password === '' ? null : password_hash($password,PASSWORD_DEFAULT);
 
     try {
-        $old = $id === null ? null : (workspace_employee_records($id)[0] ?? null);
-        if ($id !== null && !$old) throw new ApiError('not_found','Сотрудник не найден.',404);
-        if ($old && !workspace_employee_can_view($scope,$old)) throw new ApiError('forbidden','Для этой учётной записи нет доступа.',403);
         if ($old && ($cellEdit || isset($input['revision'])) && ($input['revision'] ?? null) !== workspace_employee_revision($old)) {
             $message = $cellEdit
                 ? 'Данные сотрудника изменились. Скопируйте черновик и обновите страницу.'

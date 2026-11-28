@@ -10,6 +10,7 @@ $canManageDirectory = $catalogGrid['canEdit'] ?? false;
 $canReorderCatalogRows = $embeddedCatalog && $canManageDirectory && !in_array($_GET['archive']??null,['1','all'],true);
 $canManageRows = $canManageDirectory || (!$directory && !empty($data['table']['id']) &&
     workspace_can('table',(string)$data['table']['id'],'edit',$data['table']['id']));
+$canDeleteRows = $canManageRows || !empty($catalogGrid['canDelete']);
 $rowArchive = $catalogGrid['archive'] ?? (($_GET['archive']??null)==='1');
 $rowRelatedLabel = $directory ? ($catalogGrid['relatedLabel']??null) : 'История строки';
 $showDraftRows = ($catalogGrid['canAdd'] ?? $canManageDirectory) && !$catalogGrid['archive'];
@@ -105,7 +106,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="workspace-table" content="<?= $escape($currentTable['slug']) ?>">
   <meta name="vitrine-load-error" content="<?= $escape($error ?? '') ?>">
   <title><?= $escape($currentTable['title']) ?> — ЛК ДЛТК</title>
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=trip-today-1'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=trip-date-header-1'),ENT_QUOTES,'UTF-8') ?>">
   <?php if ($loginArrival): ?>
   <link rel="expect" href="#workspace" blocking="render">
   <?php endif; ?>
@@ -153,7 +154,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if ($canManageDirectory && workspace_directory_excel_supported($directory)): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-import.js')) ?>"></script>
   <?php endif; ?>
-  <?php if ($canManageRows || $rowRelatedLabel || $showDraftRows): ?>
+  <?php if ($canDeleteRows || $rowRelatedLabel || $showDraftRows): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js?v=employee-drafts-1')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['unloadPoints'])): ?>
@@ -318,8 +319,8 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
       <?php endif; ?>
     </section>
     <?php endif; ?>
-    <?php if ($canManageRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
-    if ($canManageRows) require __DIR__.'/vitrine-directory-row-dialogs.php';
+    <?php if ($canDeleteRows || $rowRelatedLabel) require __DIR__.'/vitrine-directory-row-actions.php';
+    if ($canDeleteRows) require __DIR__.'/vitrine-directory-row-dialogs.php';
     require __DIR__.'/vitrine-clear-cell-dialog.php';
     require __DIR__.'/vitrine-hide-column-dialog.php';
     if (in_array(true,array_column($columns,'tripDriverCard'),true)) require __DIR__.'/vitrine-trip-driver-dialog.php'; ?>

@@ -114,7 +114,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         $row = [
             'rowIndex'=>$id, 'rowLabel'=>count($rowIds), 'values'=>$values,
             'kinds'=>array_fill_keys(array_keys($values),'text'),
-            'rowActions'=>$canEdit && (!$employees || workspace_employee_can_edit($scope,$entry)),
+            'rowActions'=>$employees ? $scope!==null && workspace_employee_can_delete($scope,$entry) : $canEdit,
         ];
         if ($employees) {
             $row['baseHash'] = workspace_employee_revision($entry);
@@ -144,6 +144,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         'draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)];
     if ($employees) {
         $catalogGrid += ['canAdd'=>$roleChoices!==[],'draftRowCount'=>2,
+            'canDelete'=>workspace_employee_can_manage_dispatchers($scope),
             'passwordEdit'=>$scope!==null,'passwordEye'=>$scope==='superadmin'];
     }
     return [
