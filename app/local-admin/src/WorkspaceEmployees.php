@@ -152,13 +152,13 @@ function workspace_employee_can_delete(string $scope, array $employee): bool {
 
 function workspace_employee_can_set_access(?string $scope, array $employee): bool {
     return $scope!==null && $employee['active'] && $employee['id']!==workspace_current_user()['id'] &&
-        workspace_employee_can_edit($scope,$employee);
+        workspace_employee_can_view($scope,$employee);
 }
 
 function workspace_employee_set_access(array $input): array {
     if (!is_bool($input['paused']??null)) throw new ApiError('invalid_user','Укажите состояние доступа.');
     return workspace_transaction(static function () use ($input): array {
-        $scope = workspace_employee_credential_scope();
+        $scope = workspace_employee_view_scope();
         $employee = workspace_employee_records($input['row'])[0] ?? null;
         if (!$employee || !workspace_employee_can_set_access($scope,$employee)) {
             throw new ApiError('forbidden','Изменение доступа для этой учётной записи недоступно.',403);
@@ -180,7 +180,8 @@ function workspace_employee_set_access(array $input): array {
             $employee['accessPaused']=$paused;
             ++$employee['authVersion'];
         }
-        return ['paused'=>$paused,'revision'=>$employee['authVersion'],'baseHash'=>workspace_employee_revision($employee)];
+        return ['name'=>$employee['name'],'paused'=>$paused,'revision'=>$employee['authVersion'],
+            'baseHash'=>workspace_employee_revision($employee)];
     });
 }
 

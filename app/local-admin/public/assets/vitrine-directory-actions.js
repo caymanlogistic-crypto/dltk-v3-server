@@ -2,7 +2,8 @@
 (() => {
   const actions = document.querySelector('[data-directory-row-actions]');
   const draftBody = document.getElementById('vitrine-draft-rows');
-  if (!actions && !draftBody) return;
+  const isEmployeeDirectory = document.body.dataset.vitrineCatalog === 'employees';
+  if (!actions && !draftBody && !isEmployeeDirectory) return;
   const remove = actions?.querySelector('[data-directory-delete]');
   const archiveToggle = actions?.querySelector('[data-directory-archive-toggle]');
   const related = actions?.querySelector('[data-directory-related]');
@@ -132,7 +133,7 @@
       button.dataset.employeeAccessIndicator=state.paused ? 'paused' : 'active';
       button.setAttribute('aria-label',state.paused
         ? 'Доступ приостановлен. Возобновить доступ' : 'Доступ активен. Приостановить доступ');
-      notice(state.paused ? 'Доступ приостановлен.' : 'Доступ возобновлён.','success');
+      notice(`Доступ для «${state.name}» ${state.paused ? 'приостановлен' : 'доступен'}.`,'success');
     } catch (error) {
       onError(error);
     } finally {
@@ -168,7 +169,6 @@
     document.body.dataset.workspaceTable, draftBody?.dataset.draftVersion].filter(Boolean).join('.');
   const legacyKey = draftKey.replace('directory-drafts','flight-status-drafts');
   const isFlight = document.body.dataset.vitrineCatalog === 'flight-statuses';
-  const isEmployeeDirectory = document.body.dataset.vitrineCatalog === 'employees';
   let stored = {};
   try {
     const current = sessionStorage.getItem(draftKey);

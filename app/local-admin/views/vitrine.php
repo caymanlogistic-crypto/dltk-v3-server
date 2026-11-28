@@ -107,7 +107,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <meta name="workspace-table" content="<?= $escape($currentTable['slug']) ?>">
   <meta name="vitrine-load-error" content="<?= $escape($error ?? '') ?>">
   <title><?= $escape($currentTable['title']) ?> — ЛК ДЛТК</title>
-  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=employee-access-1'),ENT_QUOTES,'UTF-8') ?>">
+  <link rel="stylesheet" href="<?= htmlspecialchars(app_url_path('/assets/vitrine.css?v=employee-access-2'),ENT_QUOTES,'UTF-8') ?>">
   <?php if ($loginArrival): ?>
   <link rel="expect" href="#workspace" blocking="render">
   <?php endif; ?>
@@ -155,8 +155,8 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php if ($canManageDirectory && workspace_directory_excel_supported($directory)): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-import.js')) ?>"></script>
   <?php endif; ?>
-  <?php if ($canDeleteRows || $rowRelatedLabel || $showDraftRows): ?>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js?v=employee-access-1')) ?>"></script>
+  <?php if ($canDeleteRows || $rowRelatedLabel || $showDraftRows || !empty($catalogGrid['canSetEmployeeAccess'])): ?>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-directory-actions.js?v=employee-access-2')) ?>"></script>
   <?php endif; ?>
   <?php if (!empty($catalogGrid['unloadPoints'])): ?>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-unload-contacts.js')) ?>"></script>
