@@ -7,7 +7,7 @@ $clientCatalog = $directory === 'clients';
 $catalogGrid = $data['catalogGrid'] ?? null;
 $terminalTariffs = $data['terminalTariffs'] ?? null;
 $canManageDirectory = $catalogGrid['canEdit'] ?? false;
-$canReorderCatalogRows = (($embeddedCatalog && $canManageDirectory) || !empty($catalogGrid['canReorder']))
+$canReorderCatalogRows = ($catalogGrid['canReorder'] ?? $canManageDirectory)
     && !in_array($_GET['archive']??null,['1','all'],true);
 $canManageRows = $canManageDirectory || (!$directory && !empty($data['table']['id']) &&
     workspace_can('table',(string)$data['table']['id'],'edit',$data['table']['id']));
@@ -138,7 +138,7 @@ $navChevron = '<svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="
   <?php endif; ?>
   <script defer<?= $arrivalBlocking ?> src="<?= htmlspecialchars(app_url_path('/assets/vitrine-rows.js?v=trip-today-1'),ENT_QUOTES,'UTF-8') ?>"></script>
   <?php if ($canReorderCatalogRows || $showTripRowOrder): ?>
-  <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-order.js?v=3')) ?>"></script>
+  <script defer src="<?= $escape($viewUrl('/assets/vitrine-catalog-order.js?v=4')) ?>"></script>
   <?php endif; ?>
   <script defer src="<?= htmlspecialchars(app_url_path('/assets/workspace-live.js'),ENT_QUOTES,'UTF-8') ?>"></script>
   <script defer src="<?= $escape($viewUrl('/assets/vitrine-grid-range.js?v=password-cell-1')) ?>"></script>

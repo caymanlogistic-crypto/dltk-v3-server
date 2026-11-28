@@ -39,7 +39,7 @@ function workspace_employee_roles(bool $archive = false, bool $includeAll = fals
         if (isset($archived[$id]) !== $archive) continue;
         $roles[] = ['id'=>$id,'code'=>$code,'name'=>$knownNames[$code] ?? $role['name']];
     }
-    return $roles;
+    return $archive ? $roles : array_values(workspace_directory_order_entries($roles,'roles'));
 }
 
 function workspace_employee_records(?int $id = null, ?bool $active = null): array {

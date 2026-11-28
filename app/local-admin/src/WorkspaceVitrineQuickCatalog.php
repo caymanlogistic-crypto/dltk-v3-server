@@ -53,9 +53,9 @@ function vitrine_quick_catalog_validate_directory(mixed $key,?string $directory)
 function vitrine_quick_catalog_reorder(): never {
     if ($_SERVER['REQUEST_METHOD']!=='POST') throw new ApiError('method','Метод не поддерживается.',405);
     $directory = vitrine_directory_requested();
-    $employeeOrder = $directory==='employees' && $_GET['quickOrder']==='employees';
-    $catalog = $employeeOrder ? ['directory'=>'employees','id'=>0]
-        : vitrine_quick_catalog_validate_directory($_GET['quickOrder'],$directory);
+    $standalone = $directory!==null && $_GET['quickOrder']===$directory;
+    $employeeOrder = $standalone && $directory==='employees';
+    $quick = $standalone ? null : vitrine_quick_catalog_validate_directory($_GET['quickOrder'],$directory);
     $move = wbody();
     $source = $move['source']??null;
     $target = $move['target']??null;
@@ -66,13 +66,15 @@ function vitrine_quick_catalog_reorder(): never {
     if (in_array($_GET['archive']??null,['1','all'],true)) {
         throw new ApiError('invalid_order','Перенос доступен для активных записей.');
     }
-    if (!$employeeOrder) unset($_GET['q']);
+    if (!$standalone) unset($_GET['q']);
     workspace_begin();
     try {
-        if ($employeeOrder && !workspace_employee_can_reorder(workspace_employee_credential_scope())) {
-            throw new ApiError('forbidden','Изменение порядка учётных записей недоступно.',403);
+        $data = workspace_directory_grid_data($directory,[]);
+        $grid = $data['catalogGrid'];
+        if ($standalone && !($grid['canReorder'] ?? $grid['canEdit'])) {
+            throw new ApiError('forbidden','Изменение порядка строк справочника недоступно.',403);
         }
-        $visible = workspace_directory_grid_data($catalog['directory'],[])['rowIds'];
+        $visible = $data['rowIds'];
         if (!in_array($source,$visible,true) || !in_array($target,$visible,true)) {
             throw new ApiError('not_found','Строка справочника больше не доступна.',404);
         }
@@ -81,12 +83,12 @@ function vitrine_quick_catalog_reorder(): never {
         array_splice($next,$position,0,[$source]);
         $changed = $next!==$visible;
         if ($changed) {
-            if ($employeeOrder || isset($_GET['client']) || isset($_GET['partyRole'])) {
+            if ($employeeOrder || isset($_GET['q']) || isset($_GET['client']) || isset($_GET['partyRole'])) {
                 if ($employeeOrder) {
                     $all = array_column(workspace_directory_order_entries(workspace_employee_records(active:true),'employees'),'id');
                 } else {
-                    unset($_GET['client'],$_GET['partyRole']);
-                    $all = workspace_directory_grid_data($catalog['directory'],[])['rowIds'];
+                    unset($_GET['q'],$_GET['client'],$_GET['partyRole']);
+                    $all = workspace_directory_grid_data($directory,[])['rowIds'];
                 }
                 $scoped = array_fill_keys($visible,true);
                 $index = 0;
@@ -96,7 +98,8 @@ function vitrine_quick_catalog_reorder(): never {
                 unset($row);
                 $next = $all;
             }
-            $key = workspace_directory_row_order_key($catalog['id'] ?: $catalog['directory']);
+            $orderKey = $quick ? ($quick['id'] ?: $directory) : ($grid['orderKey'] ?? $grid['id'] ?? $directory);
+            $key = workspace_directory_row_order_key($orderKey);
             wquery('INSERT INTO workspace_meta(`key`,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
                 [$key,wjson($next)]);
             $previousPosition = array_search($source,$visible,true)+1;

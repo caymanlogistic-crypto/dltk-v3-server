@@ -141,6 +141,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         $rows[] = $row;
     }
     $catalogGrid = ['archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,
+        'orderKey'=>$flightStatuses ? (int)$catalog['id'] : $directory,
         'draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)];
     if ($employees) {
         $catalogGrid += ['canAdd'=>$roleChoices!==[],'draftRowCount'=>2,
