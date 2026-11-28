@@ -2,7 +2,10 @@
 declare(strict_types=1);
 
 function workspace_employee_grid_readonly(string $column, ?string $scope, array $employee): ?string {
-    if ($scope === null || !workspace_employee_can_edit($scope,$employee)) return 'Запись доступна только для просмотра.';
+    $field = ['A'=>'name','B'=>'login','C'=>'password','D'=>'email','E'=>'roleIds'][$column];
+    if ($scope === null || !workspace_employee_can_view($scope,$employee) || !workspace_employee_can_edit_field($scope,$field)) {
+        return 'Запись или поле доступны только для просмотра.';
+    }
     if ($column === 'E' && $employee['id'] === workspace_current_user()['id']) return 'Свою роль изменить нельзя.';
     return null;
 }
@@ -20,8 +23,8 @@ function workspace_employee_grid_endpoint(bool $pasteCheck = false): never {
 }
 
 function workspace_employee_grid_edit(array $body, bool $pasteCheck = false): array {
-    $scope = workspace_employee_editor_scope();
-    if ($scope === null) throw new ApiError('forbidden','Редактирование доступно администратору.',403);
+    $scope = workspace_employee_credential_scope();
+    if ($scope === null) throw new ApiError('forbidden','Редактирование учётных записей недоступно.',403);
     if (!is_int($body['row'] ?? null) || $body['row']<1 || !in_array($body['column'] ?? null,['A','B','C','D','E'],true)
         || !is_string($body['value'] ?? null)) {
         throw new ApiError('invalid_edit','Некорректные данные ячейки сотрудника.');

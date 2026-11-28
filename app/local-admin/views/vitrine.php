@@ -33,7 +33,7 @@ $catalogKind = $currentTable['catalogKind'] ?? '';
 $currentCatalogId = $directory==='entries' ? (int)($catalogGrid['id'] ?? 0) : 0;
 $systemDirectoryLinks = array_filter(
     ['employees'=>'Учётные записи', 'roles'=>'Роли'],
-    static fn(string $key): bool => workspace_can('system',$key==='employees' ? 'users' : 'roles','view'),
+    static fn(string $key): bool => $key==='employees' ? workspace_employee_view_scope()!==null : workspace_can('system','roles','view'),
     ARRAY_FILTER_USE_KEY
 );
 $isSystemDirectory = isset($systemDirectoryLinks[$directory]) || ($directory==='entries' && $catalogKind==='edo-operators');

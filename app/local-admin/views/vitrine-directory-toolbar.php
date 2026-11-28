@@ -67,7 +67,7 @@ $unloadClientName = !empty($catalogGrid['unloadPoints']) ? ($catalogGrid['client
   <?php endif; ?>
 </section>
 <?php if ($canUploadExcel) require __DIR__.'/vitrine-directory-import.php'; ?>
-<?php if ($employeePage && $catalogGrid['canEdit']): ?>
+<?php if ($employeePage && !empty($catalogGrid['passwordEdit'])): ?>
 <?php if (!empty($catalogGrid['passwordEye'])): ?>
 <template id="vitrine-password-inline-eye">
   <?php $passwordEyeField='vitrine-editor-field'; $passwordEyeInline=true; require __DIR__.'/password-eye.php'; unset($passwordEyeInline); ?>

@@ -42,7 +42,9 @@ function workspace_directory_grid_model(string $directory): array {
             'columns'=>[['letter'=>'A','label'=>$statusDirectory['label']],['letter'=>'B','label'=>'Цвет']]];
     }
     $employees = $directory === 'employees';
-    workspace_require('system',$employees ? 'users' : 'roles','view');
+    if ($employees) {
+        if (workspace_employee_view_scope() === null) throw new ApiError('forbidden','Учётные записи недоступны для вашей роли.',403);
+    } else workspace_require('system','roles','view');
     $labels = $employees ? ['A'=>'ФИО','B'=>'Логин','C'=>'Пароль','D'=>'Email','E'=>'Роль'] : ['A'=>'Роль'];
     $columns = [];
     foreach ($labels as $letter => $label) $columns[] = ['letter'=>$letter,'label'=>$label];
@@ -95,9 +97,10 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     if (!$archive) {
         $entries=workspace_directory_order_entries($entries,$flightStatuses ? (int)$catalog['id'] : $directory);
     }
-    $scope = $employees ? workspace_employee_editor_scope() : null;
-    $roleChoices = $scope === null ? [] : array_column(workspace_employee_role_options($scope),'name');
-    $canEdit = $employees ? $scope !== null : ($orderStatuses ? $canEditStatuses : workspace_directory_roles_editable());
+    $scope = $employees ? workspace_employee_credential_scope() : null;
+    $canManageEmployees = in_array($scope,['superadmin','admin'],true);
+    $roleChoices = $canManageEmployees ? array_column(workspace_employee_role_options($scope),'name') : [];
+    $canEdit = $employees ? $canManageEmployees : ($orderStatuses ? $canEditStatuses : workspace_directory_roles_editable());
     $rowIds = [];
     $rows = [];
     $requested = $requestedRows !== null ? array_fill_keys($requestedRows,true) : null;
@@ -139,7 +142,8 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     }
     return [
         'table'=>$model, 'columns'=>$model['columns'], 'rows'=>$rows, 'rowIds'=>$rowIds,
-        'palette'=>$palette, 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,'passwordEye'=>$employees && $scope==='superadmin','draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)],
+        'palette'=>$palette, 'catalogGrid'=>['archive'=>$archive,'search'=>$search,'canEdit'=>$canEdit,'passwordEdit'=>$employees && $scope!==null,
+            'passwordEye'=>$employees && $scope==='superadmin','draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)],
     ];
 }
 

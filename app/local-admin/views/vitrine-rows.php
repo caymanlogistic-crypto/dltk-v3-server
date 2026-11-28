@@ -38,7 +38,7 @@
               $conflict = !empty($edit['conflict']);
               $readOnlyMessage = $column['readOnly'] ?? $row['readOnly'][$letter] ?? (!empty($row['archived']) ? 'Запись в архиве.' : ($catalogReadOnly ? 'Запись доступна только для просмотра.' : ''));
               $passwordCell = $kind==='password' || ($row['draftTypes'][$letter] ?? '')==='password';
-              $passwordCellAction = $kind==='password' && empty($row['draftSlot']) && !empty($catalogGrid['passwordEye']) && $readOnlyMessage==='';
+              $passwordCellAction = $kind==='password' && empty($row['draftSlot']) && !empty($catalogGrid['passwordEdit']) && $readOnlyMessage==='';
               $requiredChoice = !empty($row['requiredChoices'][$letter]);
               $statusColor = $letter === 'A' ? (string)($row['statusColor'] ?? '') : '';
               $hasStatusColor = preg_match('/^#[0-9a-fA-F]{6}$/D', $statusColor) === 1;
