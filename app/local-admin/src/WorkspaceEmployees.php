@@ -96,6 +96,10 @@ function workspace_employee_can_manage_dispatchers(?string $scope): bool {
     return in_array($scope,['directory_senior_manager','directory_senior_logist'],true);
 }
 
+function workspace_employee_can_reorder(?string $scope): bool {
+    return in_array($scope,['superadmin','admin'],true) || workspace_employee_can_manage_dispatchers($scope);
+}
+
 function workspace_employee_is_dispatcher(array $employee): bool {
     return array_column($employee['roles'],'code') === ['dispatcher'];
 }

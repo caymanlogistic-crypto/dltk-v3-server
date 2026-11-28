@@ -145,6 +145,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
     if ($employees) {
         $catalogGrid += ['canAdd'=>$roleChoices!==[],'draftRowCount'=>2,
             'canDelete'=>workspace_employee_can_manage_dispatchers($scope),
+            'canReorder'=>workspace_employee_can_reorder($scope),
             'passwordEdit'=>$scope!==null,'passwordEye'=>$scope==='superadmin'];
     }
     return [
