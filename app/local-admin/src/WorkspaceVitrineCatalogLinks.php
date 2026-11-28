@@ -87,11 +87,26 @@ function vitrine_apply_catalog_dependents(array &$values,array $references,array
             $reference=$references[$source]??null;
             if (!$reference || $reference['catalogId']!==$link['id']) continue;
             $entryId=$reference['id'];
+        } elseif (in_array($link['kind'],['clients','carriers'],true)) {
+            $entryId=vitrine_trip_people_source_id($link,$references[$source]??null,$names[$source]??[],workspace_string($values[$source]??''));
         } else {
             $entryId=$names[$source][vitrine_catalog_key($values[$source]??'')]??0;
         }
         $values[$link['target']]=$dependentValues[$source][$entryId]??'';
     }
+}
+
+function vitrine_trip_people_source_id(array $link,?array $reference,array $names,string $value): int {
+    if ($reference && (int)$reference['catalogId']===(int)$link['id']) return (int)$reference['id'];
+    return (int)($names[vitrine_catalog_key($value)]??0);
+}
+
+function vitrine_trip_people_catalog_names(int $catalogId): array {
+    $entries=wquery("SELECT e.id,e.normalized FROM catalog_entries e WHERE e.catalog_id=?
+        AND NOT EXISTS (SELECT 1 FROM workspace_meta m WHERE m.`key`=CONCAT('catalog_deleted_client_',e.id))",[$catalogId])->fetchAll();
+    $entryIds=array_fill_keys(array_column($entries,'id'),true);
+    $aliases=array_filter(workspace_client_catalog_aliases($catalogId),static fn($id): bool=>isset($entryIds[$id]));
+    return array_column($entries,'id','normalized')+$aliases;
 }
 
 function vitrine_catalog_uses_cell_fill(string $kind): bool {
@@ -216,9 +231,10 @@ function vitrine_catalog_options(array $t,array $links): array {
                 'search'=>workspace_fleet_plate_key($plate).' '.workspace_fleet_plate_key($trailer)];
         }
     }
-    foreach(['B','E'] as $key){
-        if(isset($links[$key]))$entriesByName[$key]=($entriesByName[$key]??[])+workspace_client_catalog_aliases($links[$key]['id']);
+    foreach (['B','S'] as $key) {
+        if (isset($links[$key])) $entriesByName[$key]=vitrine_trip_people_catalog_names($links[$key]['id']);
     }
+    if (isset($links['E'])) $entriesByName['E']=($entriesByName['E']??[])+workspace_client_catalog_aliases($links['E']['id']);
     foreach ($boundChoices as $key=>$options) {
         $entries=[];
         foreach ($options as $id=>$option) $entries[]=['id'=>$id,'option'=>$option];
