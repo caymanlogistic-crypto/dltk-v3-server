@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 function workspace_directory_rows_endpoint(string $directory, array $body): never {
     $action = $body['action'];
-    if (!in_array($action,['add','check_delete','delete','archive','restore'],true)) {
+    if (!in_array($action,['add','check_delete','delete','archive','restore'],true) &&
+        !($directory==='employees' && $action==='set_access')) {
         throw new ApiError('invalid_action','Действие со строкой не поддерживается.');
     }
     if ($action==='delete') $body['reason']=workspace_row_delete_reason($body['reason']??null);
@@ -156,6 +157,7 @@ function workspace_assert_catalog_entry_unused(string $kind, int $catalogId, arr
 }
 
 function workspace_employee_row_action(array $body): array {
+    if ($body['action']==='set_access') return workspace_employee_set_access($body);
     if ($body['action'] === 'add') {
         $scope = workspace_employee_credential_scope();
         if ($scope === null) throw new ApiError('forbidden','Создание учётных записей недоступно.',403);

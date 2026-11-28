@@ -2,7 +2,8 @@
 (() => {
   const actions = document.querySelector('[data-directory-row-actions]');
   const draftBody = document.getElementById('vitrine-draft-rows');
-  if (!actions && !draftBody) return;
+  const isEmployeeDirectory = document.body.dataset.vitrineCatalog === 'employees';
+  if (!actions && !draftBody && !isEmployeeDirectory) return;
   const remove = actions?.querySelector('[data-directory-delete]');
   const archiveToggle = actions?.querySelector('[data-directory-archive-toggle]');
   const related = actions?.querySelector('[data-directory-related]');
@@ -57,6 +58,11 @@
   }
 
   table.addEventListener('click', event => {
+    const access = event.target.closest('button[data-employee-access-indicator]');
+    if (access) {
+      changeEmployeeAccess(access);
+      return;
+    }
     const header = event.target.closest('th[scope="row"]');
     const cell = header?.parentElement.querySelector('td[data-edit-cell]:not([hidden])');
     if (!cell || window.VitrineGrid.editing()) return;
@@ -111,6 +117,30 @@
     return result;
   }
 
+  async function changeEmployeeAccess(button) {
+    if (button.hasAttribute('aria-busy') || window.VitrineGrid.editing() || window.VitrineRangePaste?.busy()) return;
+    const cell = button.closest('td[data-edit-cell]');
+    button.setAttribute('aria-busy','true');
+    try {
+      const state = await request('set_access',{
+        row:Number(cell.dataset.row),revision:Number(cell.dataset.revision),baseHash:cell.dataset.base,
+        paused:button.dataset.employeeAccessIndicator==='active'
+      });
+      for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) {
+        sibling.dataset.revision=state.revision;
+        sibling.dataset.base=state.baseHash;
+      }
+      button.dataset.employeeAccessIndicator=state.paused ? 'paused' : 'active';
+      button.setAttribute('aria-label',state.paused
+        ? 'Доступ приостановлен. Возобновить доступ' : 'Доступ активен. Приостановить доступ');
+      notice(`Доступ для «${state.name}» ${state.paused ? 'приостановлен' : 'доступен'}.`,'success');
+    } catch (error) {
+      onError(error);
+    } finally {
+      button.removeAttribute('aria-busy');
+    }
+  }
+
   function refresh(message) {
     try { sessionStorage.setItem(feedbackKey,message); } catch {}
     location.reload();
@@ -139,7 +169,6 @@
     document.body.dataset.workspaceTable, draftBody?.dataset.draftVersion].filter(Boolean).join('.');
   const legacyKey = draftKey.replace('directory-drafts','flight-status-drafts');
   const isFlight = document.body.dataset.vitrineCatalog === 'flight-statuses';
-  const isEmployeeDirectory = document.body.dataset.vitrineCatalog === 'employees';
   let stored = {};
   try {
     const current = sessionStorage.getItem(draftKey);

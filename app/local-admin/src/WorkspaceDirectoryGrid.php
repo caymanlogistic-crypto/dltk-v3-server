@@ -98,6 +98,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         $entries=workspace_directory_order_entries($entries,$flightStatuses ? (int)$catalog['id'] : $directory);
     }
     $scope = $employees ? workspace_employee_credential_scope() : null;
+    $employeeViewScope = $employees ? ($scope ?? workspace_employee_view_scope()) : null;
     $canManageEmployees = in_array($scope,['superadmin','admin'],true);
     $roleChoices = array_column(workspace_employee_role_options($scope),'name');
     $canEdit = $employees ? $canManageEmployees : ($orderStatuses ? $canEditStatuses : workspace_directory_roles_editable());
@@ -118,6 +119,9 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         ];
         if ($employees) {
             $row['baseHash'] = workspace_employee_revision($entry);
+            if ($entry['active']) $row['employeeAccess'] = [
+                'paused'=>$entry['accessPaused'],'editable'=>workspace_employee_can_set_access($employeeViewScope,$entry),
+            ];
             $row['singleLine'] = ['A'=>true,'B'=>true,'C'=>true];
             $row['kinds']['C'] = 'password';
             foreach (array_keys($values) as $column) {
@@ -145,6 +149,7 @@ function workspace_directory_grid_data(string $directory, ?array $requestedRows 
         'draftFields'=>workspace_directory_draft_fields($directory,$roleChoices)];
     if ($employees) {
         $catalogGrid += ['canAdd'=>$roleChoices!==[],'draftRowCount'=>2,
+            'canSetEmployeeAccess'=>!$archive && $employeeViewScope!==null,
             'canDelete'=>workspace_employee_can_manage_dispatchers($scope),
             'canReorder'=>workspace_employee_can_reorder($scope),
             'passwordEdit'=>$scope!==null,'passwordEye'=>$scope==='superadmin'];

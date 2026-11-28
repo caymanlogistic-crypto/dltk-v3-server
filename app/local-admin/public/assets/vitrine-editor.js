@@ -205,7 +205,7 @@
       const fullName = String(displayValue ?? '');
       cell.dataset.tripPersonName = fullName;
       cell.textContent = window.VitrinePersonNames.shortNames(fullName);
-    } else (vehicleValue ?? cell.querySelector('[data-password-cell-value]') ?? cell).textContent = displayValue;
+    } else (vehicleValue ?? cell.querySelector('[data-password-cell-value], [data-employee-name-value]') ?? cell).textContent = displayValue;
     if (vehicleValue) cell.querySelector('[data-trip-driver-button]').hidden = !displayValue.trim();
     cell.dataset.original = result.original ?? '';
     cell.dataset.revision = String(result.revision);
@@ -908,7 +908,7 @@
     window.dispatchEvent(new CustomEvent('vitrine-cell-selected'));
   }
   function eventCell(event) {
-    if (event.target.closest('.vitrine-derived-icon, .display-column-controls, [data-quick-row-drag], .vitrine-clipboard-menu, input, textarea, select')) return null;
+    if (event.target.closest('.vitrine-derived-icon, .display-column-controls, [data-quick-row-drag], [data-employee-access-indicator], .vitrine-clipboard-menu, input, textarea, select')) return null;
     return event.target === document.body || event.target.closest('.vitrine-table-scroll') ? selected : null;
   }
   if (!isTripGrid) select(selected);
@@ -1027,6 +1027,14 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
+    if (event.key==='Enter' && event.altKey) {
+      const access=cell.querySelector('button[data-employee-access-indicator]');
+      if (access) {
+        event.preventDefault();
+        access.click();
+        return;
+      }
+    }
     if (event.key === 'Enter' && event.altKey && cell.querySelector('[data-password-cell-action]')) {
       event.preventDefault();
       open(cell);

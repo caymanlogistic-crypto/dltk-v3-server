@@ -34,7 +34,8 @@ function wquery(string $sql,array $args=[]): PDOStatement { $q=workspace_db()->p
 function wjson(mixed $v): string {return json_encode($v,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE|JSON_THROW_ON_ERROR);}
 function wbody(): array { $raw=file_get_contents('php://input',false,null,0,120000);$body=json_decode((string)$raw,true);if(!is_array($body))throw new ApiError('invalid_body','Некорректный запрос.');return $body; }
 function workspace_user(int $id): ?array {
-    $u=wquery('SELECT id,login,name,active,auth_version FROM users WHERE id=?',[$id])->fetch();if(!$u)return null;
+    $u=wquery('SELECT u.id,u.login,u.name,u.active,u.auth_version,'.WORKSPACE_EMPLOYEE_ACCESS_PAUSED_SQL.
+        ' AS access_paused FROM users u WHERE u.id=?',[$id])->fetch();if(!$u)return null;
     $u['id']=(int)$u['id'];$u['active']=(bool)$u['active'];$u['roles']=wquery('SELECT r.name FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=? ORDER BY r.id',[$id])->fetchAll(PDO::FETCH_COLUMN);
     return $u;
 }
@@ -42,7 +43,7 @@ function workspace_current_user(): array {
     static $user;
     if($user)return $user;
     $u=isset($_SESSION['user_id'])?workspace_user((int)$_SESSION['user_id']):null;
-    if(!$u||!$u['active']||(int)$u['auth_version']!==(int)($_SESSION['auth_version']??0))throw new ApiError('unauthenticated','Войдите в систему.',401);
+    if(!$u||!$u['active']||$u['access_paused']||(int)$u['auth_version']!==(int)($_SESSION['auth_version']??0))throw new ApiError('unauthenticated','Войдите в систему.',401);
     return $user=$u;
 }
 function workspace_password_verify(string $password,string $hash): bool {
@@ -59,8 +60,9 @@ function workspace_auth_route(string $path): void {
             wquery('INSERT INTO login_attempts(login_key,attempts) VALUES(?,1) ON DUPLICATE KEY UPDATE attempts=IF(window_start<UTC_TIMESTAMP()-INTERVAL 5 MINUTE,1,attempts+1),window_start=IF(window_start<UTC_TIMESTAMP()-INTERVAL 5 MINUTE,UTC_TIMESTAMP(),window_start)',[$attemptKey]);
             $count=(int)wquery('SELECT attempts FROM login_attempts WHERE login_key=?',[$attemptKey])->fetchColumn();
             if($count>20)throw new ApiError('login_limited','Слишком много попыток. Повторите через 5 минут.',429);
-            $u=wquery('SELECT * FROM users WHERE login=?',[$login])->fetch();
-            if(!$u||!$u['active']||!workspace_password_verify($password,$u['password_hash']))throw new ApiError('invalid_login','Неверный логин или пароль.',401);
+            $u=wquery('SELECT u.id,u.active,u.auth_version,u.password_hash,'.WORKSPACE_EMPLOYEE_ACCESS_PAUSED_SQL.
+                ' AS access_paused FROM users u WHERE u.login=?',[$login])->fetch();
+            if(!$u||!$u['active']||$u['access_paused']||!workspace_password_verify($password,$u['password_hash']))throw new ApiError('invalid_login','Неверный логин или пароль.',401);
             wquery('DELETE FROM login_attempts WHERE login_key=?',[$attemptKey]);
             session_start();session_regenerate_id(true);$_SESSION['user_id']=(int)$u['id'];$_SESSION['auth_version']=(int)$u['auth_version'];$_SESSION['csrf']=bin2hex(random_bytes(32));session_write_close();
             json_response(['redirect'=>app_url_path('/vitrine?table=vyvoz')]);
@@ -237,7 +239,15 @@ function workspace_api(string $path): never {
         json_response(workspace_preferences($model,$method==='POST'?wbody():null));
     }
     if($path==='/api/workspace/ws-ticket'&&$method==='POST'){
-        $ticket=bin2hex(random_bytes(32));$u=workspace_current_user();wquery('DELETE FROM ws_tickets WHERE expires_at<UTC_TIMESTAMP()-INTERVAL 1 HOUR');wquery('INSERT INTO ws_tickets(token_hash,user_id,expires_at) VALUES(?,?,UTC_TIMESTAMP(6)+INTERVAL 30 SECOND)',[hash('sha256',$ticket),$u['id']]);
+        $ticket=bin2hex(random_bytes(32));
+        $u=workspace_current_user();
+        wquery('DELETE FROM ws_tickets WHERE expires_at<UTC_TIMESTAMP()-INTERVAL 1 HOUR');
+        if (wquery('INSERT INTO ws_tickets(token_hash,user_id,expires_at)
+            SELECT ?,u.id,UTC_TIMESTAMP(6)+INTERVAL 30 SECOND FROM users u
+            WHERE u.id=? AND u.active=1 AND u.auth_version=? AND NOT '.WORKSPACE_EMPLOYEE_ACCESS_PAUSED_SQL,
+            [hash('sha256',$ticket),$u['id'],$u['auth_version']])->rowCount()!==1) {
+            throw new ApiError('unauthenticated','Войдите в систему.',401);
+        }
         json_response(['ticket'=>$ticket,'url'=>runtime_config()['WS_URL'],'cursor'=>(int)wquery('SELECT COALESCE(MAX(id),0) FROM outbox_events')->fetchColumn(),'userId'=>$u['id']]);
     }
     if($path==='/api/workspace/events'&&$method==='GET'){

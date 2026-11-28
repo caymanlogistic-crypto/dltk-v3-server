@@ -44,6 +44,12 @@ def connection():
     return pymysql.connect(**transport,database=cfg['db_name'],user=cfg['db_user'],password=cfg['db_password'],charset='utf8mb4',autocommit=True,cursorclass=pymysql.cursors.DictCursor,connect_timeout=3,read_timeout=5,write_timeout=5)
 
 
+ACTIVE_ACCOUNT = (
+    "u.active=1 AND NOT EXISTS (SELECT 1 FROM workspace_meta p "
+    "WHERE p.`key`=CONCAT('employee_access_paused_',u.id))"
+)
+
+
 def authenticate(ticket):
     if not isinstance(ticket, str) or not 32 <= len(ticket) <= 256:
         return None
@@ -51,7 +57,9 @@ def authenticate(ticket):
     try:
         db.begin()
         with db.cursor() as cur:
-            cur.execute('SELECT t.user_id,u.auth_version,u.name FROM ws_tickets t JOIN users u ON u.id=t.user_id WHERE t.token_hash=%s AND t.consumed_at IS NULL AND t.expires_at>UTC_TIMESTAMP(6) AND u.active=1 FOR UPDATE', (hashlib.sha256(ticket.encode()).hexdigest(),))
+            cur.execute('SELECT t.user_id,u.auth_version,u.name FROM ws_tickets t JOIN users u ON u.id=t.user_id '
+                        'WHERE t.token_hash=%s AND t.consumed_at IS NULL AND t.expires_at>UTC_TIMESTAMP(6) AND '
+                        + ACTIVE_ACCOUNT + ' FOR UPDATE', (hashlib.sha256(ticket.encode()).hexdigest(),))
             user = cur.fetchone()
             if user:
                 cur.execute('UPDATE ws_tickets SET consumed_at=UTC_TIMESTAMP(6) WHERE token_hash=%s', (hashlib.sha256(ticket.encode()).hexdigest(),))
@@ -107,7 +115,7 @@ class Hub:
                 if check_auth:
                     cur.execute('SELECT EXISTS(SELECT 1 FROM access_rules) AS restricted')
                     restricted = bool(cur.fetchone()['restricted'])
-                    cur.execute('SELECT id,name,active,auth_version FROM users')
+                    cur.execute('SELECT u.id,u.name,(' + ACTIVE_ACCOUNT + ') AS active,u.auth_version FROM users u')
                     users = {int(u['id']): u for u in cur.fetchall()}
                 cur.execute('SELECT id,event_type,payload FROM outbox_events WHERE id>%s ORDER BY id LIMIT 500', (after,))
                 return cur.fetchall(), users, restricted
