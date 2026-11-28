@@ -126,7 +126,7 @@ function workspace_employee_can_edit_field(string $scope, string $field, array $
         'superadmin','admin' => true,
         'directory_analytics' => $field==='password',
         'directory_senior_manager','directory_senior_logist' =>
-            !workspace_employee_is_dispatcher($employee) && in_array($field,['login','password'],true),
+            $field==='password' || ($field==='login' && !workspace_employee_is_dispatcher($employee)),
         default => false,
     };
 }
