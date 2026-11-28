@@ -752,15 +752,16 @@
     }
     if (password) {
       panel.append(...actions.children);
-      const eye = cell.querySelector('[data-password-cell-eye]');
-      if (eye && window.DltkPasswordVisibility) {
-        const toggle = eye.cloneNode(true);
-        toggle.removeAttribute('data-password-cell-eye');
-        toggle.removeAttribute('aria-keyshortcuts');
-        toggle.removeAttribute('tabindex');
-        toggle.setAttribute('aria-controls',field.id);
+      const toggle = document.getElementById('vitrine-password-inline-eye')?.content.firstElementChild.cloneNode(true);
+      if (toggle && window.DltkPasswordVisibility) {
         panel.append(toggle);
-        window.DltkPasswordVisibility(field,toggle)(false);
+        const setVisible = window.DltkPasswordVisibility(field,toggle);
+        const updateToggle = () => {
+          toggle.hidden = field.value === '';
+          if (toggle.hidden) setVisible(false);
+        };
+        updateToggle();
+        field.addEventListener('input',updateToggle);
         buttons.push(toggle);
       }
       cell.append(panel);
@@ -858,9 +859,9 @@
   const clickedCell = event => event.target.closest('button, a[href], input, select, textarea')
     ? null : event.target.closest('td[data-edit-cell]');
   table?.addEventListener('click', event => {
-    const passwordEye = event.target.closest('[data-password-cell-eye]');
-    if (passwordEye && !window.VitrineRangePaste?.busy()) {
-      open(passwordEye.closest('td[data-edit-cell]'));
+    const passwordAction = event.target.closest('[data-password-cell-action]');
+    if (passwordAction && !window.VitrineRangePaste?.busy()) {
+      open(passwordAction.closest('td[data-edit-cell]'));
       return;
     }
     const cell = clickedCell(event);
@@ -1026,7 +1027,7 @@
     }
     const cell = eventCell(event);
     if (!cell) return;
-    if (event.key === 'Enter' && event.altKey && cell.querySelector('[data-password-cell-eye]')) {
+    if (event.key === 'Enter' && event.altKey && cell.querySelector('[data-password-cell-action]')) {
       event.preventDefault();
       open(cell);
       return;

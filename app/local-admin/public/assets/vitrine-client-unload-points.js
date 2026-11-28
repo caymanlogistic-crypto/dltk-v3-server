@@ -158,9 +158,12 @@
     controls.forEach(control=>control.disabled=true);
     try {
       data=await request(payload);
-      render();
-      if (form===deleteForm) dialog.close();
-      else {
+      if (form===deleteForm) {
+        showOnly(list);
+        await window.VitrineRows.animateRowRemoval(rows.querySelector('tr[data-relation-id="'+payload.entryId+'"]'));
+        dialog.close();
+      } else {
+        render();
         const savedId=selectedPoint?.id??data.points.find(point=>point.address===payload.address.trim())?.id;
         showOnly(list);
         focusList(savedId);

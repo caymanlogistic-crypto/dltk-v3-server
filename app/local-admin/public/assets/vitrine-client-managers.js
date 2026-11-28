@@ -162,7 +162,11 @@
       const cell=window.VitrineRows?.resolveCell(opener)??opener;
       for (const sibling of cell.parentElement.querySelectorAll('td[data-edit-cell]')) sibling.dataset.revision=String(data.revision);
       cell.textContent=cell.dataset.original=data.summary;
-      if (section===removeForm) dialog.close();
+      if (section===removeForm) {
+        show(list);
+        await window.VitrineRows.animateRowRemoval(rows.querySelector('tr[data-relation-id="'+selected.id+'"]'));
+        dialog.close();
+      }
       else { render();show(list);focusList(data.createdId??savedId); }
       notice('Менеджеры клиента сохранены.','success');
     } catch (error) {

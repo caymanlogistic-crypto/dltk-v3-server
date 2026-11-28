@@ -9,7 +9,7 @@ declare(strict_types=1);
        data-draft-fields="<?= $escape(wjson($catalogGrid['draftFields'])) ?>">
 <?php endif; ?>
 <?php
-(static function (array $columns, ?array $tripDraft, array $fields, bool $passwordEye, Closure $escape, Closure $columnClass): void {
+(static function (array $columns, ?array $tripDraft, array $fields, Closure $escape, Closure $columnClass): void {
     $template = $tripDraft ?? ['rowLabel'=>'','draftSlot'=>true,
         'readOnly'=>array_fill_keys(array_column(array_filter($columns,static fn(array $column): bool=>($column['export']??true)===false),'letter'),
             'Сначала сохраните машину и укажите водителя.'),
@@ -20,8 +20,7 @@ declare(strict_types=1);
     $rows = array_map(static fn(int $slot): array=>array_replace($template,[
         'rowIndex'=>-$slot,'rowLabel'=>'','draftSlot'=>true,'tripDraft'=>$tripDraft!==null,
     ]),range(1,$count));
-    $catalogGrid = $tripDraft ? null : ['passwordEye'=>$passwordEye,'archive'=>false,'canEdit'=>true];
     require __DIR__.'/vitrine-rows.php';
-})($columns,$tripDraft,$catalogGrid['draftFields']??[],!empty($catalogGrid['passwordEye']),$escape,$columnClass);
+})($columns,$tripDraft,$catalogGrid['draftFields']??[],$escape,$columnClass);
 ?>
 </tbody>

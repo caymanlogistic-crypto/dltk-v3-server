@@ -3563,7 +3563,7 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
   from { transform:translateY(var(--vitrine-row-shift,0px)); }
   to { transform:translateY(0); }
 }
-.vitrine .vitrine-table tbody tr[data-trip-row-removing] {
+.vitrine :is(.vitrine-table,.vitrine-client-relations-table) tbody tr[data-trip-row-removing] {
   pointer-events:none;
   animation:vitrine-trip-row-remove 240ms ease-in both;
 }
@@ -3579,8 +3579,9 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
   to { opacity:1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .vitrine .vitrine-table tbody tr:is([data-vitrine-row-moving],[data-trip-row-removing],[data-trip-draft-arrival]) { animation:none; }
+  .vitrine :is(.vitrine-table,.vitrine-client-relations-table) tbody tr:is([data-vitrine-row-moving],[data-trip-row-removing],[data-trip-draft-arrival]) { animation:none; }
 }
+.vitrine .vitrine-client-relations-table tbody tr[data-trip-row-removing] > td,
 .vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing],[data-trip-row-inserted]) > :is(th,td),
 .vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing],[data-trip-row-inserted]) > td.has-status-color,
 .vitrine .vitrine-table tbody tr:is([data-trip-row-reordered],[data-trip-row-removing],[data-trip-row-inserted]) > td.has-status-color.is-current-cell,
@@ -3798,8 +3799,8 @@ input[type=color].field-input{width:50px;height:32px;padding:2px}
 }
 
 .vitrine td:has(>[data-password-cell-value]):not([data-frozen-column]) { position:relative; }
-.vitrine td:has(>[data-password-cell-eye]) { padding-inline-end:30px; }
-.vitrine td.is-editing > [data-password-cell-eye] { display:none; }
+.vitrine td:has(>[data-password-cell-action]) { padding-inline-end:30px; }
+.vitrine td.is-editing > [data-password-cell-action] { display:none; }
 .vitrine .vitrine-password-inline {
   position:absolute;
   inset:0;

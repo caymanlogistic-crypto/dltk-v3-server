@@ -296,13 +296,12 @@
   if (deleteDialog) bindForm(deleteDialog, async fields => {
     const payload=reason && !reason.disabled ? {...target.row,reason:fields.get('reason').trim()} : target.row;
     await request(target.action,payload);
-    if (target.action==='delete' && document.body.dataset.workspaceTable==='vyvoz' && !document.body.dataset.vitrineCatalog) {
+    if (target.action==='delete') {
       deleteDialog.close();
-      window.VitrineRows.refreshManifest({keepViewport:true,removedRow:payload.row})
-        .then(()=>notice('Запись удалена.','success'))
-        .catch(onError);
+      await window.VitrineRows.refreshManifest({keepViewport:true,removedRow:payload.row});
+      notice('Запись удалена.','success');
       return;
     }
-    refresh({restore:'Запись восстановлена.',archive:'Запись перенесена в архив.',delete:'Запись удалена.'}[target.action]);
+    refresh({restore:'Запись восстановлена.',archive:'Запись перенесена в архив.'}[target.action]);
   });
 })();
